@@ -586,22 +586,23 @@ def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     pct28 = _pct_hit(28)
     pct63 = _pct_hit(63)
     media_geral = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").mean()) if not df_view.empty else None
-    dp_geral = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").std()) if not df_view.empty else None
-    n_rel = df_view["Relatório"].nunique()
+    dp_geral   = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").std())  if not df_view.empty else None
+    n_rel      = df_view["Relatório"].nunique()
 
+    # >>> defina _semaforo com a MESMA indentação de _pct_hit
     def _semaforo(p28, p63):
-    if (p28 is None) and (p63 is None):
-        return ("Sem dados", "#9ca3af")
-    score = 0
-    if p28 is not None:
-        score += p28 * 0.6
-    if p63 is not None:
-        score += p63 * 0.4
-    if score >= 90:
-        return ("✅ Bom", "#16a34a")
-    if score >= 75:
-        return ("⚠️ Atenção", "#d97706")
-    return ("🔴 Crítico", "#ef4444")
+        if (p28 is None) and (p63 is None):
+            return ("Sem dados", "#9ca3af")
+        score = 0.0
+        if p28 is not None:
+            score += float(p28) * 0.6
+        if p63 is not None:
+            score += float(p63) * 0.4
+        if score >= 90:
+            return ("✅ Bom", "#16a34a")
+        if score >= 75:
+            return ("⚠️ Atenção", "#d97706")
+        return ("🔴 Crítico", "#ef4444")
 
     status_txt, status_cor = _semaforo(pct28, pct63)
 
@@ -609,7 +610,6 @@ def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
         "pct28": pct28, "pct63": pct63, "media": media_geral, "dp": dp_geral,
         "n_rel": n_rel, "status_txt": status_txt, "status_cor": status_cor
     }
-
 
 def place_right_legend(ax):
     handles, labels = ax.get_legend_handles_labels()
@@ -1433,4 +1433,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

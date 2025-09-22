@@ -590,18 +590,18 @@ def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     n_rel = df_view["Relatório"].nunique()
 
     def _semaforo(p28, p63):
-        if p28 is None and p63 é None:
-            return ("Sem dados", "#9ca3af")
-        score = 0
-        if p28 is not None:
-            score += p28 * 0.6
-        if p63 is not None:
-            score += p63 * 0.4
-        if score >= 90:
-            return ("✅ Bom", "#16a34a")
-        if score >= 75:
-            return ("⚠️ Atenção", "#d97706")
-        return ("🔴 Crítico", "#ef4444")
+    if (p28 is None) and (p63 is None):
+        return ("Sem dados", "#9ca3af")
+    score = 0
+    if p28 is not None:
+        score += p28 * 0.6
+    if p63 is not None:
+        score += p63 * 0.4
+    if score >= 90:
+        return ("✅ Bom", "#16a34a")
+    if score >= 75:
+        return ("⚠️ Atenção", "#d97706")
+    return ("🔴 Crítico", "#ef4444")
 
     status_txt, status_cor = _semaforo(pct28, pct63)
 
@@ -1433,3 +1433,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

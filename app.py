@@ -143,6 +143,26 @@ s.setdefault("OUTLIER_SIGMA", 3.0)  # (guardado para expansão futura)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterior do uploader
+# --- ler preferências da URL (persistentes via link) ---
+def _apply_query_prefs():
+    try:
+        qp = st.experimental_get_query_params()
+    except Exception:
+        qp = {}
+
+    # aceita nomes longos e curtos
+    theme = (qp.get("theme") or qp.get("t") or [None])[0]
+    brand_q = (qp.get("brand") or qp.get("b") or [None])[0]
+    qr = (qp.get("qr") or qp.get("u") or [None])[0]
+
+    if theme in ["Escuro moderno", "Claro corporativo"]:
+        s["theme_mode"] = theme
+    if brand_q in ["Laranja", "Azul", "Verde", "Roxo"]:
+        s["brand"] = brand_q
+    if qr is not None:
+        s["qr_url"] = qr
+
+_apply_query_prefs()
 
 # =============================================================================
 # Estilo e tema
@@ -338,12 +358,24 @@ with st.container():
 
         with col_a:
             if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-                save_user_prefs({
-                    "theme_mode": s["theme_mode"],
-                    "brand": s["brand"],
-                    "qr_url": s["qr_url"]
-                })
-                st.success("Preferências salvas.")
+    # salva localmente quando houver disco
+    save_user_prefs({
+        "theme_mode": s["theme_mode"],
+        "brand": s["brand"],
+        "qr_url": s["qr_url"]
+    })
+
+    # grava também na URL para persistir via favorito
+    try:
+        st.experimental_set_query_params(
+            theme=s["theme_mode"],
+            brand=s["brand"],
+            qr=s["qr_url"]
+        )
+    except Exception:
+        pass
+
+    st.success("Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências.")
 
         with col_b:
             if st.button("Sair", use_container_width=True, key="k_logout"):
@@ -1586,3 +1618,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

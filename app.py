@@ -146,15 +146,12 @@ s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterio
 # --- ler preferências da URL (persistentes via link) ---
 def _apply_query_prefs():
     try:
-        # --- ler preferências da URL (persistentes via link) ---
-def _apply_query_prefs():
-    try:
-        qp = st.query_params  # API nova
+        qp = st.query_params   # API nova, sem aviso deprecat.
 
         # aceita nomes longos e curtos
         theme_v = qp.get("theme") or qp.get("t")
         brand_v = qp.get("brand") or qp.get("b")
-        qr_v    = qp.get("q")     or qp.get("qr") or qp.get("u")
+        qr_v    = qp.get("q") or qp.get("qr") or qp.get("u")
 
         def _first(x):
             if x is None:
@@ -173,10 +170,9 @@ def _apply_query_prefs():
             s["qr_url"] = qr
 
     except Exception:
-        # sem query ou ambiente antigo → ignora
+        # se não houver query ou a API não estiver disponível, apenas ignora
         pass
-
-_apply_query_prefs()
+)
 
 # =============================================================================
 # Estilo e tema
@@ -1616,6 +1612,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

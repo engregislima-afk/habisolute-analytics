@@ -1416,9 +1416,10 @@ if ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_vie
 else:
     st.info("Envie um PDF para visualizar a verificação detalhada por CP.")
 
-# ===== PDF / Impressão
-if "gerar_pdf" in globals():
-    try:
+# ===== PDF / Impressão =====
+pdf_bytes = None
+try:
+    if "gerar_pdf" in globals():
         pdf_bytes = gerar_pdf(
             df_view,
             df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
@@ -1430,21 +1431,12 @@ if "gerar_pdf" in globals():
             str(fck_active) if fck_active is not None else "—",
             verif_fck_df, cond_df, pareamento_df
         )
-        _nome_pdf = "Relatorio_Graficos.pdf"
-        st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                           file_name=_nome_pdf, mime="application/pdf")
-    except Exception as e:
-        st.info(f"PDF não gerado: {e}")
+except Exception as e:
+    st.info(f"PDF não gerado: {e}")
 
-if "render_print_block" in globals() and "pdf_bytes" in locals():
-    try:
-        render_print_block(pdf_bytes, None,
-                           locals().get("brand", "#3b82f6"),
-                           locals().get("brand600", "#2563eb"))
-    except:
-        pass
-
-        # ===== Exportação: Excel (XLSX) e CSV (ZIP) =====
+# ===== Exportação: Excel (XLSX) e CSV (ZIP) =====
+excel_buffer = None
+zip_buf = None
 try:
     # Estatísticas gerais por idade (para planilha de comparação)
     stats_all_full = (
@@ -1499,15 +1491,7 @@ try:
         except:  # noqa: E722
             pass
 
-    st.download_button(
-        "📊 Baixar Excel (XLSX)",
-        data=excel_buffer.getvalue(),
-        file_name="Relatorio_Graficos.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-
-    # ==== CSVs em ZIP
+    # ==== CSVs em ZIP ====
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
@@ -1523,29 +1507,70 @@ try:
         if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
             z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
 
-        # Se a comp_df foi criada, exporta também
         if "comp_df" in locals():
             z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
 
+except Exception as e:
+    st.info(f"Exportação para Excel/CSV não realizada: {e}")
+
+# ===============================
+#   BARRA ÚNICA PADRONIZADA
+# ===============================
+st.markdown("<div class='h-toolbar'>", unsafe_allow_html=True)
+
+# 1) Baixar Relatório (PDF)
+if pdf_bytes:
+    st.download_button(
+        "📄 Baixar Relatório (PDF)",
+        data=pdf_bytes,
+        file_name="Relatorio_Graficos.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        key="dl_pdf"
+    )
+
+# 2) Imprimir — Tudo (mesmo estilo, via .h-print-btn)
+try:
+    if "render_print_block" in globals() and pdf_bytes:
+        render_print_block(pdf_bytes, None,
+                           locals().get("brand", "#3b82f6"),
+                           locals().get("brand600", "#2563eb"))
+except:  # noqa: E722
+    pass
+
+# 3) Baixar Excel (XLSX)
+if excel_buffer:
+    st.download_button(
+        "📊 Baixar Excel (XLSX)",
+        data=excel_buffer.getvalue(),
+        file_name="Relatorio_Graficos.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key="dl_xlsx"
+    )
+
+# 4) Baixar CSVs (ZIP)
+if zip_buf:
     st.download_button(
         "🗃️ Baixar CSVs (ZIP)",
         data=zip_buf.getvalue(),
         file_name="Relatorio_Graficos_CSVs.zip",
         mime="application/zip",
-        use_container_width=True
+        use_container_width=True,
+        key="dl_zip"
     )
 
-except Exception as e:
-    st.info(f"Exportação para Excel/CSV não realizada: {e}")
-
-# Botão para novo upload
-st.markdown("---")
-if st.button("📂 Ler Novo(s) Certificado(s)", type="primary"):
+# 5) Ler Novo(s) Certificado(s)
+if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
     s["uploader_key"] += 1  # força um widget novo
     st.rerun()
 
-# Rodapé: Normas
+st.markdown("</div>", unsafe_allow_html=True)
+
+# (opcional) separador antes do rodapé
 st.markdown("---")
+
+# ===== Rodapé: Normas =====
 st.subheader("📘 Normas de Referência")
 st.markdown("""
 - **NBR 5738** – Concreto: Procedimento para moldagem e cura de corpos de prova  
@@ -1561,9 +1586,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-

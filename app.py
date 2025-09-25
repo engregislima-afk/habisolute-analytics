@@ -1311,45 +1311,54 @@ if uploaded_files:
 
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação DETALHADA por CP (todas as peças) =====
-st.write("#### 🧪 Verificação detalhada por CP (7/28/63 dias)")
+        # >>> Coloque este bloco no MESMO escopo onde você já tem df_view (ou seja,
+#     DENTRO do if uploaded_files: ... depois de construir df_view)
 
-_view_736 = (
-    df_view[df_view["Idade (dias)"].isin([7, 28, 63])]
-    .groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-    .mean()  # se houver mais de um rompimento por (CP, idade), faz a média
-    .unstack("Idade (dias)")
-    .rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"})
-    .reset_index()
-)
+st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
 
-# 👉 Garante que todas as colunas existam (evita KeyError quando faltar 63d, por exemplo)
-for col in ["7d (MPa)", "28d (MPa)", "63d (MPa)"]:
-    if col not in _view_736.columns:
-        _view_736[col] = float("nan")
+if ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty):
+    # coluna necessária?
+    if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
+        st.info("Sem colunas necessárias para a verificação detalhada (Idade/Resistência).")
+    else:
+        _tmp = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
+        if _tmp.empty:
+            st.info("Sem corpos de prova de 7, 28 ou 63 dias no filtro atual.")
+        else:
+            _tmp["MPa"] = pd.to_numeric(_tmp["Resistência (MPa)"], errors="coerce")
+            _view_736 = (
+                _tmp.pivot_table(index="CP", columns="Idade (dias)", values="MPa", aggfunc="mean")
+                    .rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"})
+                    .reset_index()
+            )
 
-def _status_text(val, idade, fckp):
-    # 7 dias é apenas informativo (amarelo)
-    if pd.isna(val) or (fckp is None) or pd.isna(fckp):
-        return "⚪ Sem dados"
-    if idade == 7:
-        return "🟡 Informativo (7d)"
-    return "🟢 OK (≥ fck)" if float(val) >= float(fckp) else "🔴 Abaixo (< fck)"
+            # fck ativo (do filtro ou geral)
+            fck_series_focus = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+            fck_active = float(fck_series_focus.mode().iloc[0]) if not fck_series_focus.empty else None
 
-# Agora é seguro aplicar: as colunas existem mesmo quando faltam medições
-_view_736["Status 7d"]  = _view_736["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
-_view_736["Status 28d"] = _view_736["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
-_view_736["Status 63d"] = _view_736["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
+            def _status_text(val, idade, fckp):
+                # 7 dias é informativo (amarelo)
+                if pd.isna(val) or (fckp is None) or pd.isna(fckp):
+                    return "⚪ Sem dados"
+                if idade == 7:
+                    return "🟡 Informativo (7d)"
+                return "🟢 Atingiu fck" if float(val) >= float(fckp) else "🔴 Não atingiu fck"
 
-# Ordenação amigável por número do CP (se existir)
-try:
-    _view_736["__cp_sort__"] = _view_736["CP"].astype(str).str.extract(r"(\d+)").astype(float)
-except Exception:
-    _view_736["__cp_sort__"] = range(len(_view_736))
+            # adiciona colunas de status (coloridas)
+            _view_736["Status 7d"]  = _view_736["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
+            _view_736["Status 28d"] = _view_736["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
+            _view_736["Status 63d"]  = _view_736["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
 
-_view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__")
+            # ordenar por número do CP se existir padrão tipo "123" no nome
+            try:
+                _view_736["__cp_sort__"] = _view_736["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+            except Exception:
+                _view_736["__cp_sort__"] = range(len(_view_736))
+            _view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-st.dataframe(_view_736, use_container_width=True)
+            st.dataframe(_view_736, use_container_width=True)
+else:
+    st.info("Envie um PDF para visualizar a verificação detalhada por CP.")
 
 # ===== PDF / Impressão
 if "gerar_pdf" in globals():
@@ -1476,5 +1485,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

@@ -1460,148 +1460,121 @@ else:
     st.info("Envie um PDF para visualizar a verificação detalhada por CP.")
 
 # ===== PDF / Impressão =====
-pdf_bytes = None
-try:
+has_df = ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty)
+# ===== PDF / Impressão (só quando houver dados) =====
+if has_df:
     if "gerar_pdf" in globals():
-        pdf_bytes = gerar_pdf(
-            df_view,
-            df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                   .agg(Média="mean", Desvio_Padrão="std", n="count")
-                   .reset_index(),
-            fig1, fig2, fig3, fig4,
-            str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-            str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-            str(fck_active) if fck_active is not None else "—",
-            verif_fck_df, cond_df, pareamento_df
-        )
-except Exception as e:
-    st.info(f"PDF não gerado: {e}")
-
-# ===== Exportação: Excel (XLSX) e CSV (ZIP) =====
-excel_buffer = None
-zip_buf = None
-try:
-    # Estatísticas gerais por idade (para planilha de comparação)
-    stats_all_full = (
-        df_view.groupby("Idade (dias)")["Resistência (MPa)"]
-              .agg(mean="mean", std="std", count="count")
-              .reset_index()
-    )
-
-    excel_buffer = io.BytesIO()
-    with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-        # 1) Resultados individuais
-        df_view.to_excel(writer, sheet_name="Individuais", index=False)
-
-        # 2) Médias por CP e Idade
-        df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"] \
-               .agg(Média="mean", Desvio_Padrão="std", n="count") \
-               .reset_index() \
-               .to_excel(writer, sheet_name="Médias_DP", index=False)
-
-        # 3) Comparação (Real × Estimado), se houver curva estimada
-        comp_df = stats_all_full.rename(
-            columns={"mean": "Média Real", "std": "DP Real", "count": "n"}
-        )
-        _est_df = locals().get("est_df")  # pode não existir
-        if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
-            comp_df = comp_df.merge(
-                _est_df.rename(columns={"Resistência (MPa)": "Estimado"}),
-                left_on="Idade (dias)", right_on="Idade (dias)", how="outer"
-            ).sort_values("Idade (dias)")
-            comp_df.to_excel(writer, sheet_name="Comparação", index=False)
-
-        # 4) Inserir imagens dos gráficos (se existirem)
         try:
-            ws_md = writer.sheets.get("Médias_DP")
-            if ws_md is not None and "fig1" in locals() and fig1 is not None:
-                img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
-                ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
-        except:  # noqa: E722
+            pdf_bytes = gerar_pdf(
+                df_view,
+                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index(),
+                fig1, fig2, fig3, fig4,
+                str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
+                str(fck_active) if fck_active is not None else "—",
+                verif_fck_df, cond_df, pareamento_df
+            )
+            _nome_pdf = "Relatorio_Graficos.pdf"
+            st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                               file_name=_nome_pdf, mime="application/pdf")
+        except Exception:
+            pass  # não mostra mensagem quando não for relevante
+
+    if "render_print_block" in globals() and "pdf_bytes" in locals():
+        try:
+            render_print_block(pdf_bytes, None,
+                               locals().get("brand", "#3b82f6"),
+                               locals().get("brand600", "#2563eb"))
+        except:
             pass
 
-        try:
-            ws_comp = writer.sheets.get("Comparação")
-            if ws_comp is not None and "fig2" in locals() and fig2 is not None:
-                img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
-                ws_comp.insert_image("H20", img2.name, {"x_scale": 0.7, "y_scale": 0.7})
-            if ws_comp is not None and "fig3" in locals() and fig3 is not None:
-                img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
-                ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
-        except:  # noqa: E722
-            pass
-
-    # ==== CSVs em ZIP ====
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
-
-        z.writestr(
-            "Medias_DP.csv",
-            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                   .agg(Média="mean", Desvio_Padrão="std", n="count")
-                   .reset_index()
-                   .to_csv(index=False, sep=";")
+    # ===== Exportação: Excel (XLSX) e CSV (ZIP) (só quando houver dados) =====
+    try:
+        stats_all_full = (
+            df_view.groupby("Idade (dias)")["Resistência (MPa)"]
+                  .agg(mean="mean", std="std", count="count")
+                  .reset_index()
         )
 
-        if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
-            z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+            df_view.to_excel(writer, sheet_name="Individuais", index=False)
 
-        if "comp_df" in locals():
-            z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
+            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"] \
+                   .agg(Média="mean", Desvio_Padrão="std", n="count") \
+                   .reset_index() \
+                   .to_excel(writer, sheet_name="Médias_DP", index=False)
 
-except Exception as e:
-    st.info(f"Exportação para Excel/CSV não realizada: {e}")
+            comp_df = stats_all_full.rename(
+                columns={"mean": "Média Real", "std": "DP Real", "count": "n"}
+            )
+            _est_df = locals().get("est_df")
+            if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                comp_df = comp_df.merge(
+                    _est_df.rename(columns={"Resistência (MPa)": "Estimado"}),
+                    on="Idade (dias)", how="outer"
+                ).sort_values("Idade (dias)")
+                comp_df.to_excel(writer, sheet_name="Comparação", index=False)
 
-# ===============================
-#   BARRA ÚNICA PADRONIZADA
-# ===============================
-st.markdown("<div class='h-toolbar'>", unsafe_allow_html=True)
+            try:
+                ws_md = writer.sheets.get("Médias_DP")
+                if ws_md is not None and "fig1" in locals() and fig1 is not None:
+                    img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
+                    ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
+            except:
+                pass
 
-# 1) Baixar Relatório (PDF)
-if pdf_bytes:
-    st.download_button(
-        "📄 Baixar Relatório (PDF)",
-        data=pdf_bytes,
-        file_name="Relatorio_Graficos.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-        key="dl_pdf"
-    )
+            try:
+                ws_comp = writer.sheets.get("Comparação")
+                if ws_comp is not None and "fig2" in locals() and fig2 is not None:
+                    img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
+                    ws_comp.insert_image("H20", img2.name, {"x_scale": 0.7, "y_scale": 0.7})
+                if ws_comp is not None and "fig3" in locals() and fig3 is not None:
+                    img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
+                    ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
+            except:
+                pass
 
-# 2) Imprimir — Tudo (mesmo estilo, via .h-print-btn)
-try:
-    if "render_print_block" in globals() and pdf_bytes:
-        render_print_block(pdf_bytes, None,
-                           locals().get("brand", "#3b82f6"),
-                           locals().get("brand600", "#2563eb"))
-except:  # noqa: E722
-    pass
+        st.download_button(
+            "📊 Baixar Excel (XLSX)",
+            data=excel_buffer.getvalue(),
+            file_name="Relatorio_Graficos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
-# 3) Baixar Excel (XLSX)
-if excel_buffer:
-    st.download_button(
-        "📊 Baixar Excel (XLSX)",
-        data=excel_buffer.getvalue(),
-        file_name="Relatorio_Graficos.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        key="dl_xlsx"
-    )
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
+            z.writestr(
+                "Medias_DP.csv",
+                df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index()
+                       .to_csv(index=False, sep=";")
+            )
+            if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
+            if "comp_df" in locals():
+                z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
 
-# 4) Baixar CSVs (ZIP)
-if zip_buf:
-    st.download_button(
-        "🗃️ Baixar CSVs (ZIP)",
-        data=zip_buf.getvalue(),
-        file_name="Relatorio_Graficos_CSVs.zip",
-        mime="application/zip",
-        use_container_width=True,
-        key="dl_zip"
-    )
+        st.download_button(
+            "🗃️ Baixar CSVs (ZIP)",
+            data=zip_buf.getvalue(),
+            file_name="Relatorio_Graficos_CSVs.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+    except Exception:
+        pass  # silêncio quando não há dados
+else:
+    # (opcional) mensagem enxuta enquanto não há upload
+    st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
 # 5) Ler Novo(s) Certificado(s)
 if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
@@ -1629,6 +1602,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

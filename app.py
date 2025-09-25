@@ -146,33 +146,29 @@ s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterio
 # --- ler preferências da URL (persistentes via link) ---
 def _apply_query_prefs():
     try:
-        qp = st.query_params   # API nova, sem aviso deprecat.
+        qp = st.query_params  # API nova, sem aviso deprecat.
 
-        # aceita nomes longos e curtos
-        theme_v = qp.get("theme") or qp.get("t")
-        brand_v = qp.get("brand") or qp.get("b")
-        qr_v    = qp.get("q") or qp.get("qr") or qp.get("u")
-
+        # helper: pega o primeiro item se vier lista, ou o próprio valor
         def _first(x):
             if x is None:
                 return None
             return x[0] if isinstance(x, list) else x
 
-        theme = _first(theme_v)
-        brand = _first(brand_v)
-        qr    = _first(qr_v)
+        # aceita nomes longos e curtos
+        theme = _first(qp.get("theme") or qp.get("t"))
+        brand = _first(qp.get("brand") or qp.get("b"))
+        qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
 
-        if theme in ["Escuro moderno", "Claro corporativo"]:
+        if theme in ("Escuro moderno", "Claro corporativo"):
             s["theme_mode"] = theme
-        if brand in ["Laranja", "Azul", "Verde", "Roxo"]:
+        if brand in ("Laranja", "Azul", "Verde", "Roxo"):
             s["brand"] = brand
         if qr:
             s["qr_url"] = qr
 
     except Exception:
-        # se não houver query ou a API não estiver disponível, apenas ignora
+        # sem query ou API indisponível → ignora
         pass
-)
 
 # =============================================================================
 # Estilo e tema
@@ -1612,6 +1608,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

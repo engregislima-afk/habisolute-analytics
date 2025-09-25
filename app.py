@@ -1,101 +1,16 @@
-# app.py — 🏗️ Habisolute Analytics (completo)
-# Requisitos: streamlit, pandas, pdfplumber, matplotlib, reportlab, xlsxwriter
+# app.py — base com login + cadastro (admin) + preferências
+# Requisitos básicos: streamlit
+
+from __future__ import annotations
 
 import io
-import re
 import json
-import base64
-import tempfile
-import zipfile
-from datetime import datetime
+import hashlib
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Dict, Any
 
 import streamlit as st
-import pandas as pd
-import pdfplumber
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
 
-# PDF (ReportLab)
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
-)
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.pdfgen import canvas as pdfcanvas  # ⬅️ para numeração/rodapé
-
-# ===== Rodapé e numeração do PDF =====
-FOOTER_TEXT = (
-    "Estes resultados referem-se exclusivamente as amostras ensaiadas, portanto esse documento poderá ser "
-    "reproduzido somente na integra. Resultados sem considerar a incerteza da medição."
-)
-
-class NumberedCanvas(pdfcanvas.Canvas):
-    """Canvas que adiciona 'Página X de Y' e o rodapé legal em todas as páginas."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        total_pages = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer_and_pagenum(total_pages)
-            super().showPage()
-        super().save()
-
-    def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
-        """Quebra simples de linha para o rodapé."""
-        if max_width is None:
-            max_width = self._pagesize[0] - 36 - 140  # margem esq ~36, reserva à direita pro número de página
-        words = text.split()
-        lines, line = [], ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if self.stringWidth(test, font_name, font_size) <= max_width:
-                line = test
-            else:
-                if line:
-                    lines.append(line)
-                line = w
-        if line:
-            lines.append(line)
-        return lines
-
-    def _draw_footer_and_pagenum(self, total_pages: int):
-        w, h = self._pagesize
-
-        # ——— Rodapé (texto legal) ———
-        text_font = "Helvetica"
-        text_size = 7           # pode reduzir para 6.5 se precisar
-        leading   = text_size+1 # espaçamento entre linhas (≈8)
-        right_reserve = 95      # espaço reservado pro "Página X de Y" (era 140)
-
-        self.setFont(text_font, text_size)
-        lines = self._wrap_footer(
-            FOOTER_TEXT,
-            font_name=text_font,
-            font_size=text_size,
-            max_width=w - 36 - right_reserve   # 18px margem esq + 18px margem dir
-        )
-
-        base_y = 10  # começa bem embaixo para não invadir o conteúdo
-        for i, ln in enumerate(lines):
-            y = base_y + i * leading
-            # garante que não suba além da margem inferior (28 pt do doc)
-            if y > 28 - leading:
-                break
-            self.drawString(18, y, ln)
-
-        # ——— Número de página (direita) ———
-        self.setFont("Helvetica", 8)
-        self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
@@ -105,8 +20,12 @@ st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 PREFS_DIR = Path.home() / ".habisolute"
 PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"
+USERS_PATH = PREFS_DIR / "users.json"
 
 
+# =============================================================================
+# Persistência de preferências (por usuário “default”)
+# =============================================================================
 def _load_all_prefs() -> Dict[str, Any]:
     try:
         if PREFS_PATH.exists():
@@ -132,43 +51,93 @@ def save_user_prefs(prefs: Dict[str, Any], user_key: str = "default") -> None:
     _save_all_prefs(data)
 
 
-# Estado
+# =============================================================================
+# Usuários (persistidos em ~/.habisolute/users.json)
+# =============================================================================
+def _pwd_hash(pwd: str) -> str:
+    return hashlib.sha256(pwd.encode("utf-8")).hexdigest()
+
+
+def _load_users() -> dict:
+    """Carrega usuários do disco; se não existir, cria admin/1234 (bootstrap)."""
+    try:
+        if USERS_PATH.exists():
+            return json.loads(USERS_PATH.read_text(encoding="utf-8")) or {}
+    except Exception:
+        pass
+    base = {"admin": {"pwd": _pwd_hash("1234"), "role": "admin"}}
+    try:
+        USERS_PATH.write_text(json.dumps(base, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return base
+
+
+def _save_users(users: dict) -> None:
+    USERS_PATH.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def check_credentials(username: str, password: str) -> tuple[bool, str]:
+    """Retorna (ok, role)."""
+    users = _load_users()
+    u = users.get(username)
+    if not u:
+        return (False, "")
+    ok = (_pwd_hash(password) == u.get("pwd"))
+    role = u.get("role", "user")
+    return (ok, role)
+
+
+def add_user(username: str, password: str, role: str = "user") -> tuple[bool, str]:
+    """Cadastra novo usuário; retorna (ok, msg)."""
+    if not username or not password:
+        return (False, "Preencha usuário e senha.")
+    if role not in {"user", "admin"}:
+        return (False, "Perfil inválido.")
+    users = _load_users()
+    if username in users:
+        return (False, "Usuário já existe.")
+    users[username] = {"pwd": _pwd_hash(password), "role": role}
+    _save_users(users)
+    return (True, f"Usuário '{username}' cadastrado com sucesso.")
+
+
+# =============================================================================
+# Estado / defaults
+# =============================================================================
 s = st.session_state
 s.setdefault("logged_in", False)
+s.setdefault("user", "")
+s.setdefault("user_role", "")
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
-s.setdefault("uploader_key", 0)
-s.setdefault("OUTLIER_SIGMA", 3.0)  # (guardado para expansão futura)
-s.setdefault("TOL_MP", 1.0)
-s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterior do uploader
-# --- ler preferências da URL (persistentes via link) ---
+
+# Lê preferências da URL (persistentes via link)
 def _apply_query_prefs():
     try:
-        qp = st.query_params  # API nova, sem aviso deprecat.
-
-        # helper: pega o primeiro item se vier lista, ou o próprio valor
+        qp = st.query_params  # API nova (sem aviso)
+        # aceita nomes longos e curtos
         def _first(x):
             if x is None:
                 return None
             return x[0] if isinstance(x, list) else x
 
-        # aceita nomes longos e curtos
-        theme = _first(qp.get("theme") or qp.get("t"))
-        brand = _first(qp.get("brand") or qp.get("b"))
-        qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
+        theme_v = _first(qp.get("theme") or qp.get("t"))
+        brand_v = _first(qp.get("brand") or qp.get("b"))
+        qr_v    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
 
-        if theme in ("Escuro moderno", "Claro corporativo"):
-            s["theme_mode"] = theme
-        if brand in ("Laranja", "Azul", "Verde", "Roxo"):
-            s["brand"] = brand
-        if qr:
-            s["qr_url"] = qr
-
+        if theme_v in ["Escuro moderno", "Claro corporativo"]:
+            s["theme_mode"] = theme_v
+        if brand_v in ["Laranja", "Azul", "Verde", "Roxo"]:
+            s["brand"] = brand_v
+        if qr_v:
+            s["qr_url"] = qr_v
     except Exception:
-        # sem query ou API indisponível → ignora
         pass
+
+_apply_query_prefs()
+
 
 # =============================================================================
 # Estilo e tema
@@ -181,16 +150,7 @@ BRAND_MAP = {
 }
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
-plt.rcParams.update({
-    "font.size": 10,
-    "axes.titlesize": 12,
-    "axes.labelsize": 10,
-    "axes.titleweight": "semibold",
-    "figure.autolayout": False,
-})
-
 if s["theme_mode"] == "Escuro moderno":
-    plt.style.use("dark_background")
     css = f"""
     <style>
     :root {{
@@ -200,8 +160,6 @@ if s["theme_mode"] == "Escuro moderno":
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
     .block-container{{ padding-top: 12px; max-width: 1300px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
            border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
     .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
@@ -212,7 +170,6 @@ if s["theme_mode"] == "Escuro moderno":
     </style>
     """
 else:
-    plt.style.use("default")
     css = f"""
     <style>
     :root {{
@@ -222,8 +179,6 @@ else:
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
     .block-container{{ padding-top: 12px; max-width: 1300px; }}
     .h-card{{ background: var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
            border:1px solid var(--line); background:#ffffff; font-size:12.5px; }}
     .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
@@ -234,66 +189,15 @@ else:
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
-st.markdown(f"""
-<style>
-/* barra/área para agrupar os botões (opcional) */
-.h-toolbar {{
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin: 6px 0 14px 0;
-}}
 
-@media (min-width: 900px) {{
-  .h-toolbar {{
-    grid-template-columns: 1fr 1fr; /* 2 colunas em telas largas */
-  }}
-}}
-
-/* PADRÃO ÚNICO: todos os botões do Streamlit + botão de imprimir */
-.stButton > button,
-.stDownloadButton > button,
-.h-print-btn {{
-  background: linear-gradient(180deg, {brand}, {brand600}) !important;
-  color: #fff !important;
-  border: 0 !important;
-  border-radius: 12px !important;
-  padding: 12px 16px !important;
-  font-weight: 800 !important;
-  box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
-  width: 100% !important;
-  transition: transform .06s ease, filter .1s ease;
-}}
-
-.stButton > button:hover,
-.stDownloadButton > button:hover,
-.h-print-btn:hover {{
-  filter: brightness(1.06);
-  transform: translateY(-1px);
-}}
-
-.stButton > button:active,
-.stDownloadButton > button:active,
-.h-print-btn:active {{
-  transform: translateY(0) scale(.99);
-}}
-
-/* variante cinza, se um dia quiser */
-.h-btn--secondary > button {{
-  background: #e5e7eb !important;
-  color: #111827 !important;
-}}
-</style>
-""", unsafe_allow_html=True)
 
 # =============================================================================
-# Login minimalista
+# Login
 # =============================================================================
 def show_login() -> None:
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
 
-    # inputs pequenos em 3 colunas para ficar compacto
     c1, c2, c3 = st.columns([1.3, 1.3, 0.7])
     with c1:
         user = st.text_input("Usuário", key="login_user", label_visibility="collapsed", placeholder="Usuário")
@@ -303,13 +207,16 @@ def show_login() -> None:
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
-            if user == "admin" and pwd == "1234":
+            ok, role = check_credentials(user.strip(), pwd)
+            if ok:
                 s["logged_in"] = True
+                s["user"] = user.strip()
+                s["user_role"] = role or "user"
                 st.rerun()
             else:
                 st.error("Usuário ou senha inválidos.")
 
-    st.caption("Dica: **admin / 1234**")
+    st.caption("Dica (bootstrap): **admin / 1234**")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -318,18 +225,12 @@ if not s["logged_in"]:
     st.stop()
 
 
-# -------------------- Barra de preferências --------------------
-st.markdown("""
-<style>
-  /* só pra descer a barra um pouquinho */
-  .prefs-bar { margin-top: 28px; }
-  @media (min-width: 1100px) { .prefs-bar { margin-top: 36px; } }
-</style>
-""", unsafe_allow_html=True)
+# =============================================================================
+# Barra de preferências (tema, cor da marca, url)
+# =============================================================================
+st.markdown("<h3 class='brand-title'>🏗️ Habisolute Tecnologia Analytics</h3>", unsafe_allow_html=True)
 
 with st.container():
-    st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
-
     c1, c2, c3, c4 = st.columns([1.1, 1.1, 2.5, 1.1])
 
     # Tema
@@ -362,46 +263,67 @@ with st.container():
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
 
-        # Salvar / Sair
-with c4:
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    col_a, col_b = st.columns(2)
-
-    # --- Botão SALVAR (coluna esquerda)
-    with col_a:
-        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-            # salva localmente
-            save_user_prefs({
-                "theme_mode": s["theme_mode"],
-                "brand":      s["brand"],
-                "qr_url":     s["qr_url"],
-            })
-
-                        # grava também na URL para persistir via favorito (sem aviso deprecat.)
-            try:
-                qp = st.query_params  # novo API do Streamlit
-                qp.update({
-                    "theme": s["theme_mode"],
+        with col_a:
+            if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+                save_user_prefs({
+                    "theme_mode": s["theme_mode"],
                     "brand": s["brand"],
-                    "q": s["qr_url"],
+                    "qr_url": s["qr_url"]
                 })
-            except Exception:
-                pass
+                # grava também na URL (sem aviso deprecat)
+                try:
+                    qp = st.query_params
+                    qp.update({
+                        "theme": s["theme_mode"],
+                        "brand": s["brand"],
+                        "q": s["qr_url"],
+                    })
+                except Exception:
+                    pass
+                st.success("Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências.")
 
-            st.success(
-                "Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências."
-            )
-
-    # --- Botão SAIR (coluna direita)
-    with col_b:
-        if st.button("Sair", use_container_width=True, key="k_logout"):
-            s["logged_in"] = False
-            st.rerun()
+        with col_b:
+            if st.button("Sair", use_container_width=True, key="k_logout"):
+                s["logged_in"] = False
+                s["user"] = ""
+                s["user_role"] = ""
+                st.rerun()
 
 
-    st.markdown("</div>", unsafe_allow_html=True)
-# ---------------------------------------------------------------
+# =============================================================================
+# Painel de Administração: Cadastrar usuários (apenas admin)
+# =============================================================================
+if s.get("logged_in") and s.get("user_role") == "admin":
+    with st.sidebar.expander("🛡️ Administração — Cadastrar usuário", expanded=False):
+        st.caption("Somente administradores podem cadastrar novos usuários.")
+        nu_col1, nu_col2 = st.columns(2)
+        with nu_col1:
+            new_user = st.text_input("Novo usuário", key="adm_new_user")
+        with nu_col2:
+            role = st.selectbox("Perfil", ["user", "admin"], index=0, key="adm_new_role")
 
+        new_pwd = st.text_input("Senha", type="password", key="adm_new_pwd")
+        new_pwd2 = st.text_input("Confirmar senha", type="password", key="adm_new_pwd2")
+
+        if st.button("➕ Cadastrar usuário", use_container_width=True):
+            if new_pwd != new_pwd2:
+                st.error("As senhas não conferem.")
+            else:
+                ok, msg = add_user(new_user.strip(), new_pwd, role)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption(f"Logado como: **{s.get('user','')}** — perfil **{s.get('user_role','user')}**")
+
+
+# =============================================================================
+# === A partir daqui entra seu app analítico (upload, gráficos, pdf, etc.) ===
+# =============================================================================
+
+st.info("Base de login/cadastro e preferências carregada. Agora cole aqui embaixo o restante do app (upload, leitura dos PDFs, análises, gráficos, PDF, etc.).")
 
 # =============================================================================
 # Sidebar
@@ -1608,6 +1530,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

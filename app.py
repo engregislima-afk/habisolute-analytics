@@ -149,21 +149,21 @@ def _apply_query_prefs():
         # --- ler preferências da URL (persistentes via link) ---
 def _apply_query_prefs():
     try:
-        qp = st.query_params   # ✅ API nova (sem aviso)
+        qp = st.query_params  # API nova
 
         # aceita nomes longos e curtos
         theme_v = qp.get("theme") or qp.get("t")
         brand_v = qp.get("brand") or qp.get("b")
-        qr_v    = qp.get("q") or qp.get("qr") or qp.get("u")
+        qr_v    = qp.get("q")     or qp.get("qr") or qp.get("u")
 
-        def pick_one(x):
+        def _first(x):
             if x is None:
                 return None
             return x[0] if isinstance(x, list) else x
 
-        theme = pick_one(theme_v)
-        brand = pick_one(brand_v)
-        qr    = pick_one(qr_v)
+        theme = _first(theme_v)
+        brand = _first(brand_v)
+        qr    = _first(qr_v)
 
         if theme in ["Escuro moderno", "Claro corporativo"]:
             s["theme_mode"] = theme
@@ -173,7 +173,7 @@ def _apply_query_prefs():
             s["qr_url"] = qr
 
     except Exception:
-        # sem query ou sem suporte à API → ignora
+        # sem query ou ambiente antigo → ignora
         pass
 
 _apply_query_prefs()
@@ -1616,6 +1616,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -1351,33 +1351,33 @@ _view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort
 
 st.dataframe(_view_736, use_container_width=True)
 
-        # ===== PDF / Impressão
-        if "gerar_pdf" in globals():
-            try:
-                pdf_bytes = gerar_pdf(
-                    df_view,
-                    df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                           .agg(Média="mean", Desvio_Padrão="std", n="count")
-                           .reset_index(),
-                    fig1, fig2, fig3, fig4,
-                    str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                    str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-                    str(fck_active) if fck_active is not None else "—",
-                    verif_fck_df, cond_df, pareamento_df
-                )
-                _nome_pdf = "Relatorio_Graficos.pdf"
-                st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                                   file_name=_nome_pdf, mime="application/pdf")
-            except Exception as e:
-                st.info(f"PDF não gerado: {e}")
+# ===== PDF / Impressão
+if "gerar_pdf" in globals():
+    try:
+        pdf_bytes = gerar_pdf(
+            df_view,
+            df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                   .agg(Média="mean", Desvio_Padrão="std", n="count")
+                   .reset_index(),
+            fig1, fig2, fig3, fig4,
+            str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+            str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
+            str(fck_active) if fck_active is not None else "—",
+            verif_fck_df, cond_df, pareamento_df
+        )
+        _nome_pdf = "Relatorio_Graficos.pdf"
+        st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                           file_name=_nome_pdf, mime="application/pdf")
+    except Exception as e:
+        st.info(f"PDF não gerado: {e}")
 
-        if "render_print_block" in globals() and "pdf_bytes" in locals():
-            try:
-                render_print_block(pdf_bytes, None,
-                                   locals().get("brand", "#3b82f6"),
-                                   locals().get("brand600", "#2563eb"))
-            except:
-                pass
+if "render_print_block" in globals() and "pdf_bytes" in locals():
+    try:
+        render_print_block(pdf_bytes, None,
+                           locals().get("brand", "#3b82f6"),
+                           locals().get("brand600", "#2563eb"))
+    except:
+        pass
 
         # ===== Excel/CSV
         try:
@@ -1476,4 +1476,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

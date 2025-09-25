@@ -159,7 +159,6 @@ def _apply_query_prefs():
         def pick_one(x):
             if x is None:
                 return None
-            # pode vir lista -> pega só o primeiro
             return x[0] if isinstance(x, list) else x
 
         theme = pick_one(theme_v)
@@ -174,7 +173,7 @@ def _apply_query_prefs():
             s["qr_url"] = qr
 
     except Exception:
-        # nada a fazer se não houver query ou se a API não estiver disponível
+        # sem query ou sem suporte à API → ignora
         pass
 
 _apply_query_prefs()
@@ -1617,6 +1616,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

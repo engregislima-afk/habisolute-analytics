@@ -1,15 +1,12 @@
-# app.py — 🏗️ Habisolute Analytics (completo + melhorias)
-# Requisitos base: streamlit, pandas, pdfplumber, matplotlib, reportlab, xlsxwriter
-# Melhorias extras: pytesseract, pdf2image, Pillow, qrcode
+# app.py — 🏗️ Habisolute Analytics (completo)
+# Requisitos: streamlit, pandas, pdfplumber, matplotlib, reportlab, xlsxwriter
 
 import io
-import os
 import re
 import json
 import base64
 import tempfile
 import zipfile
-import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -28,12 +25,6 @@ from reportlab.platypus import (
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas  # ⬅️ para numeração/rodapé
-
-# QR Code (opcional — se não instalado, o código continua rodando)
-try:
-    import qrcode
-except Exception:
-    qrcode = None
 
 # ===== Rodapé e numeração do PDF =====
 FOOTER_TEXT = (
@@ -84,7 +75,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         text_font = "Helvetica"
         text_size = 7           # pode reduzir para 6.5 se precisar
         leading   = text_size+1 # espaçamento entre linhas (≈8)
-        right_reserve = 95      # espaço reservado pro "Página X de Y"
+        right_reserve = 95      # espaço reservado pro "Página X de Y" (era 140)
 
         self.setFont(text_font, text_size)
         lines = self._wrap_footer(
@@ -151,8 +142,7 @@ s.setdefault("uploader_key", 0)
 s.setdefault("OUTLIER_SIGMA", 3.0)  # (guardado para expansão futura)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])  # guarda modo anterior do uploader
-s.setdefault("USE_OCR", False)  # 🔹 novo: fallback por OCR quando não houver texto
+s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterior do uploader
 
 # =============================================================================
 # Estilo e tema
@@ -221,7 +211,7 @@ st.markdown(css, unsafe_allow_html=True)
 
 
 # =============================================================================
-# Login minimalista (agora com secrets/ENV)
+# Login minimalista
 # =============================================================================
 def show_login() -> None:
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
@@ -237,16 +227,13 @@ def show_login() -> None:
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
-            # 🔐 busca credenciais de secrets/env; mantém default se não configurado
-            USER = st.secrets.get("APP_USER", os.getenv("APP_USER", "admin"))
-            PASS = st.secrets.get("APP_PASS", os.getenv("APP_PASS", "1234"))
-            if user == USER and pwd == PASS:
+            if user == "admin" and pwd == "1234":
                 s["logged_in"] = True
                 st.rerun()
             else:
                 st.error("Usuário ou senha inválidos.")
 
-    st.caption("Dica: configure APP_USER/APP_PASS nos Secrets. Padrão provisório: **admin / 1234**")
+    st.caption("Dica: **admin / 1234**")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -323,14 +310,11 @@ with st.container():
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
     s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
-    # se o modo do uploader mudou, trocamos a key para forçar um widget novo
+    # >>> FIX 400: se o modo do uploader mudou, trocamos a key para forçar um widget novo
     if s["BATCH_MODE"] != s["_prev_batch"]:
         s["_prev_batch"] = s["BATCH_MODE"]
         s["uploader_key"] += 1
-
     s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
-    s["USE_OCR"] = st.toggle("Usar OCR (fallback)", value=bool(s["USE_OCR"]),
-                             help="Tente OCR quando o PDF não tiver texto. Pode ficar mais lento.")
     st.markdown("---")
     st.caption("Logado como: Administrador")
 
@@ -440,20 +424,6 @@ def extrair_dados_certificado(uploaded_file):
         with pdfplumber.open(io.BytesIO(raw)) as pdf:
             for page in pdf.pages:
                 txt = page.extract_text() or ""
-                # 🔹 Fallback por OCR se habilitado e não houver texto
-                if (not txt.strip()) and st.session_state.get("USE_OCR", False):
-                    try:
-                        from pdf2image import convert_from_bytes
-                        import pytesseract
-                        # Renderiza somente a página atual
-                        imgs = convert_from_bytes(raw, first_page=page.page_number, last_page=page.page_number, fmt="png")
-                        if imgs:
-                            ocr_txt = pytesseract.image_to_string(imgs[0], lang="por+eng")
-                            txt = ocr_txt or ""
-                    except Exception:
-                        # se OCR não disponível no host, segue sem travar
-                        pass
-
                 txt = re.sub(r"[“”]", "\"", txt)
                 txt = re.sub(r"[’´`]", "'", txt)
                 linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip()])
@@ -602,22 +572,6 @@ def extrair_dados_certificado(uploaded_file):
 
 
 # =============================================================================
-# Cache do parsing (por bytes do PDF)
-# =============================================================================
-@st.cache_data(show_spinner=False)
-def _cached_extrair_dados_certificado(file_bytes: bytes) -> tuple[pd.DataFrame, str, str, str]:
-    class _MemFile:
-        def __init__(self, data: bytes):
-            self._b = io.BytesIO(data)
-            self.name = "arquivo.pdf"
-        def read(self): return self._b.read()
-        def seek(self, p): self._b.seek(p)
-        def getvalue(self): return self._b.getvalue()
-    mf = _MemFile(file_bytes)
-    return extrair_dados_certificado(mf)
-
-
-# =============================================================================
 # KPIs e utilidades gráficas
 # =============================================================================
 def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
@@ -635,6 +589,7 @@ def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     dp_geral   = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").std())  if not df_view.empty else None
     n_rel      = df_view["Relatório"].nunique()
 
+    # >>> defina _semaforo com a MESMA indentação de _pct_hit
     def _semaforo(p28, p63):
         if (p28 is None) and (p63 is None):
             return ("Sem dados", "#9ca3af")
@@ -758,32 +713,6 @@ def gerar_pdf(
     styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
 
     story = []
-
-    # ===== Capa: logo (opcional) + QR (se houver URL) =====
-    # Se existir um logo.png na mesma pasta do app, ele é inserido.
-    try:
-        logo_path = Path(__file__).with_name("logo.png")
-    except Exception:
-        logo_path = Path("logo.png")
-    if logo_path.exists():
-        try:
-            story.append(RLImage(str(logo_path), width=120, height=120))
-            story.append(Spacer(1, 8))
-        except Exception:
-            pass
-
-    if st.session_state.get("qr_url") and qrcode is not None:
-        try:
-            qr_img = qrcode.make(st.session_state["qr_url"])
-            tmp_qr = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            qr_img.save(tmp_qr.name)
-            story.append(Paragraph("Resumo / QR", styles['Heading3']))
-            story.append(RLImage(tmp_qr.name, width=110, height=110))
-            story.append(Spacer(1, 6))
-        except Exception:
-            pass
-
-    # Cabeçalho
     story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
     story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
     story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
@@ -906,7 +835,7 @@ st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relat�
 
 up_help = "Carregue 1 PDF (ou vários em modo lote)."
 
-# key única por modo + contador, para não reaproveitar widget antigo
+# >>> FIX 400: key única por modo + contador, para não reaproveitar widget antigo
 _uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
 
 if BATCH_MODE:
@@ -914,7 +843,7 @@ if BATCH_MODE:
         "📁 PDF(s)",
         type=["pdf"],
         accept_multiple_files=True,
-        key=_uploader_key,
+        key=_uploader_key,  # <<< key dinâmica
         help=up_help
     )
 else:
@@ -922,7 +851,7 @@ else:
         "📁 PDF (1 arquivo)",
         type=["pdf"],
         accept_multiple_files=False,
-        key=_uploader_key,
+        key=_uploader_key,  # <<< key dinâmica
         help=up_help
     )
     uploaded_files = [up1] if up1 is not None else []
@@ -936,15 +865,7 @@ if uploaded_files:
     for f in uploaded_files:
         if f is None:
             continue
-        # 🔹 lê bytes e usa cache de parsing
-        try:
-            f.seek(0)
-            raw = f.read()
-            f.seek(0)
-        except Exception:
-            raw = f.getvalue()
-        df_i, obra_i, data_i, fck_i = _cached_extrair_dados_certificado(raw)
-
+        df_i, obra_i, data_i, fck_i = extrair_dados_certificado(f)
         if not df_i.empty:
             df_i["Data Certificado"] = data_i
             df_i["Obra"] = obra_i
@@ -1062,11 +983,6 @@ if uploaded_files:
             sub = df_src[df_src["Idade (dias)"] == age].groupby("CP")["Resistência (MPa)"].mean()
             return int((sub >= fck).sum()), int(sub.shape[0])
 
-        mean_by_age = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7  = mean_by_age.get(7,  float("nan"))
-        m28 = mean_by_age.get(28, float("nan"))
-        m63 = mean_by_age.get(63, float("nan"))
-
         h28, t28 = _hits(df_view, 28, fck_val)
         h63, t63 = _hits(df_view, 63, fck_val)
 
@@ -1134,9 +1050,12 @@ if uploaded_files:
         sa_dp = stats_all_focus[stats_all_focus["count"] >= 2].copy()
         if not sa_dp.empty:
             ax.plot(sa_dp["Idade (dias)"], sa_dp["mean"], linewidth=2.2, marker="s", label="Média")
-            ax.fill_between(sa_dp["Idade (dias)"],
-                            sa_dp["mean"] - sa_dp["std"],
-                            sa_dp["mean"] + sa_dp["std"],
+        # preenchimento ±1DP só se houver DP disponível
+        _sdp = sa_dp.dropna(subset=["std"]).copy()
+        if not _sdp.empty:
+            ax.fill_between(_sdp["Idade (dias)"],
+                            _sdp["mean"] - _sdp["std"],
+                            _sdp["mean"] + _sdp["std"],
                             alpha=0.2, label="±1 DP")
 
         if fck_active is not None:
@@ -1325,10 +1244,10 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível parear os pontos do Gráfico 1 com o Gráfico 2 (Gráfico 4).")
 
-        # ===== Verificação do fck de Projeto
+        # ===== Verificação do fck de Projeto — RESUMO + DETALHADO =====
         st.write("#### ✅ Verificação do fck de Projeto")
 
-        origem_fck = "conjunto filtrado" if not fck_series_all.empty else "—"
+        origem_fck = "conjunto filtrado" if not fck_series_focus.empty else ("todos os dados" if not fck_series_all_g.empty else "—")
 
         def _badge(txt, color="#e5e7eb"):
             return f"<span class='pill' style='color:{color}; font-weight:700'>{txt}</span>"
@@ -1364,6 +1283,7 @@ if uploaded_files:
 
         st.markdown("<div style='display:flex;flex-wrap:wrap;gap:10px'>"+ "".join(linhas) +"</div>", unsafe_allow_html=True)
 
+        # Tabela resumo por idade (com emoji de cor)
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [
@@ -1377,20 +1297,54 @@ if uploaded_files:
                 (fck_active if fck_active is not None else float("nan")),
             ],
         })
-        _status_list = ["Informativo"]
-        if pd.isna(verif_fck_df.loc[1, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[1, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[1,"Média Real (MPa)"] >= verif_fck_df.loc[1,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        if pd.isna(verif_fck_df.loc[2, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[2, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[2,"Média Real (MPa)"] >= verif_fck_df.loc[2,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        verif_fck_df["Status"] = _status_list
+
+        resumo_status = []
+        for idade, media, fckp in verif_fck_df.itertuples(index=False):
+            if idade == 7:
+                resumo_status.append("🟡 Informativo (7d)")
+            else:
+                if pd.isna(media) or pd.isna(fckp):
+                    resumo_status.append("⚪ Sem dados")
+                else:
+                    resumo_status.append("🟢 Atingiu fck" if media >= fckp else "🔴 Não atingiu fck")
+        verif_fck_df["Status"] = resumo_status
 
         st.dataframe(verif_fck_df, use_container_width=True)
+
+        # ===== Verificação DETALHADA por CP (todas as peças) =====
+        st.write("#### 🧪 Verificação detalhada por CP (7/28/63 dias)")
+
+        _view_736 = (
+            df_view[df_view["Idade (dias)"].isin([7, 28, 63])]
+            .groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+            .mean()  # segurança: se vier mais de 1 por (CP, idade)
+            .unstack("Idade (dias)")
+            .rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"})
+            .reset_index()
+        )
+
+        def _status_text(val, idade, fckp):
+            if pd.isna(val) or (fckp is None) or pd.isna(fckp):
+                return "⚪ Sem dados"
+            if idade == 7:
+                return "🟡 Informativo (7d)"
+            return "🟢 OK (≥ fck)" if float(val) >= float(fckp) else "🔴 Abaixo (< fck)"
+
+        _view_736["Status 7d"]  = _status_text(_view_736["7d (MPa)"], 7,  fck_active) \
+                                   if _view_736.empty else _view_736["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
+        _view_736["Status 28d"] = _status_text(_view_736["28d (MPa)"], 28, fck_active) \
+                                   if _view_736.empty else _view_736["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
+        _view_736["Status 63d"] = _status_text(_view_736["63d (MPa)"], 63, fck_active) \
+                                   if _view_736.empty else _view_736["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
+
+        try:
+            _view_736["__cp_sort__"] = _view_736["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+        except Exception:
+            _view_736["__cp_sort__"] = range(len(_view_736))
+
+        _view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__")
+
+        st.dataframe(_view_736, use_container_width=True)
 
         # ===== PDF / Impressão
         if "gerar_pdf" in globals():

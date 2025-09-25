@@ -356,33 +356,41 @@ with st.container():
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
 
-        with col_a:
-    if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-        # salva localmente quando houver disco
-        save_user_prefs({
-            "theme_mode": s["theme_mode"],
-            "brand":      s["brand"],
-            "qr_url":     s["qr_url"],
-        })
+        # Salvar / Sair
+with c4:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    col_a, col_b = st.columns(2)
 
-        # grava também na URL para persistir via favorito
-        try:
-            st.experimental_set_query_params(
-                theme=s["theme_mode"],
-                brand=s["brand"],
-                q=s["qr_url"],
+    # --- Botão SALVAR (coluna esquerda)
+    with col_a:
+        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+            # salva localmente
+            save_user_prefs({
+                "theme_mode": s["theme_mode"],
+                "brand":      s["brand"],
+                "qr_url":     s["qr_url"],
+            })
+
+            # persiste também na URL p/ favoritá-la
+            try:
+                st.experimental_set_query_params(
+                    theme=s["theme_mode"],
+                    brand=s["brand"],
+                    q=s["qr_url"],
+                )
+            except Exception:
+                pass
+
+            st.success(
+                "Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências."
             )
-        except Exception:
-            pass
 
-        st.success(
-            "Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências."
-        )
+    # --- Botão SAIR (coluna direita)
+    with col_b:
+        if st.button("Sair", use_container_width=True, key="k_logout"):
+            s["logged_in"] = False
+            st.rerun()
 
-        with col_b:
-            if st.button("Sair", use_container_width=True, key="k_logout"):
-                s["logged_in"] = False
-                st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------------------------------
@@ -1620,5 +1628,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

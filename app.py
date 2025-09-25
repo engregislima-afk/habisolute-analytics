@@ -208,7 +208,57 @@ else:
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
+st.markdown(f"""
+<style>
+/* barra/área para agrupar os botões (opcional) */
+.h-toolbar {{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 6px 0 14px 0;
+}}
 
+@media (min-width: 900px) {{
+  .h-toolbar {{
+    grid-template-columns: 1fr 1fr; /* 2 colunas em telas largas */
+  }}
+}}
+
+/* PADRÃO ÚNICO: todos os botões do Streamlit + botão de imprimir */
+.stButton > button,
+.stDownloadButton > button,
+.h-print-btn {{
+  background: linear-gradient(180deg, {brand}, {brand600}) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
+  width: 100% !important;
+  transition: transform .06s ease, filter .1s ease;
+}}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.h-print-btn:hover {{
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}}
+
+.stButton > button:active,
+.stDownloadButton > button:active,
+.h-print-btn:active {{
+  transform: translateY(0) scale(.99);
+}}
+
+/* variante cinza, se um dia quiser */
+.h-btn--secondary > button {{
+  background: #e5e7eb !important;
+  color: #111827 !important;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 # =============================================================================
 # Login minimalista
@@ -1511,6 +1561,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

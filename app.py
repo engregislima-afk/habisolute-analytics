@@ -1325,72 +1325,87 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível parear os pontos do Gráfico 1 com o Gráfico 2 (Gráfico 4).")
 
-        # ===== Verificação do fck de Projeto
-        st.write("#### ✅ Verificação do fck de Projeto")
+        # ===== Verificação do fck de Projeto (RESUMO por idade) =====
+st.write("#### ✅ Verificação do fck de Projeto")
 
-        origem_fck = "conjunto filtrado" if not fck_series_all.empty else "—"
+origem_fck = "conjunto filtrado" if not fck_series_focus.empty else ("todos os dados" if not fck_series_all_g.empty else "—")
 
-        def _badge(txt, color="#e5e7eb"):
-            return f"<span class='pill' style='color:{color}; font-weight:700'>{txt}</span>"
+def _badge(txt, color="#e5e7eb"):
+    return f"<span class='pill' style='color:{color}; font-weight:700'>{txt}</span>"
 
-        linhas = []
-        if pd.notna(m7):
-            linhas.append(_badge(f"7 dias • média {m7:.2f} MPa", color="#f59e0b"))
+linhas = []
+if pd.notna(m7):
+    linhas.append(_badge(f"7 dias • média {m7:.2f} MPa", color="#f59e0b"))
+else:
+    linhas.append(_badge("7 dias • sem dados", color="#f59e0b"))
+
+if fck_active is None:
+    linhas.append(_badge("28 dias • fck não identificado (" + origem_fck + ")", color="#9ca3af"))
+    linhas.append(_badge("63 dias • fck não identificado (" + origem_fck + ")", color="#9ca3af"))
+else:
+    if pd.isna(m28):
+        linhas.append(_badge("28 dias • sem dados", color="#9ca3af"))
+    else:
+        ok28 = m28 >= fck_active
+        linhas.append(_badge(
+            f"28 dias • {'atingiu' if ok28 else 'não atingiu'} fck "
+            f"({m28:.2f} {'≥' if ok28 else '<'} {fck_active:.2f} MPa)",
+            color=("#16a34a" if ok28 else "#ef4444")
+        ))
+    if pd.isna(m63):
+        linhas.append(_badge("63 dias • sem dados", color="#9ca3af"))
+    else:
+        ok63 = m63 >= fck_active
+        linhas.append(_badge(
+            f"63 dias • {'atingiu' if ok63 else 'não atingiu'} fck "
+            f"({m63:.2f} {'≥' if ok63 else '<'} {fck_active:.2f} MPa)",
+            color=("#16a34a" if ok63 else "#ef4444")
+        ))
+
+st.markdown("<div style='display:flex;flex-wrap:wrap;gap:10px'>"+ "".join(linhas) +"</div>", unsafe_allow_html=True)
+
+verif_fck_df = pd.DataFrame({
+    "Idade (dias)": [7, 28, 63],
+    "Média Real (MPa)": [
+        m7 if pd.notna(m7) else float("nan"),
+        m28 if pd.notna(m28) else float("nan"),
+        m63 if pd.notna(m63) else float("nan"),
+    ],
+    "fck Projeto (MPa)": [
+        float("nan"),
+        (fck_active if fck_active is not None else float("nan")),
+        (fck_active if fck_active is not None else float("nan")),
+    ],
+})
+_status_list = []
+for idade, media, fckp in verif_fck_df.itertuples(index=False):
+    if idade == 7:
+        _status_list.append("Informativo (7d)")
+    else:
+        if pd.isna(media) or pd.isna(fckp):
+            _status_list.append("Sem dados")
         else:
-            linhas.append(_badge("7 dias • sem dados", color="#f59e0b"))
+            _status_list.append("Atingiu fck" if media >= fckp else "Não atingiu fck")
+verif_fck_df["Status"] = _status_list
 
-        if fck_active is None:
-            linhas.append(_badge("28 dias • fck não identificado (" + origem_fck + ")", color="#9ca3af"))
-            linhas.append(_badge("63 dias • fck não identificado (" + origem_fck + ")", color="#9ca3af"))
+# estiliza a coluna Status do RESUMO
+def _style_status_resumo(col):
+    out = []
+    for v in col:
+        if v == "Informativo (7d)":
+            out.append("color:#b45309; font-weight:700")  # amber-700
+        elif v == "Atingiu fck":
+            out.append("color:#16a34a; font-weight:700")
+        elif v == "Não atingiu fck":
+            out.append("color:#ef4444; font-weight:700")
         else:
-            if pd.isna(m28):
-                linhas.append(_badge("28 dias • sem dados", color="#9ca3af"))
-            else:
-                ok28 = m28 >= fck_active
-                linhas.append(_badge(
-                    f"28 dias • {'atingiu' if ok28 else 'não atingiu'} fck "
-                    f"({m28:.2f} {'≥' if ok28 else '<'} {fck_active:.2f} MPa)",
-                    color=("#16a34a" if ok28 else "#ef4444")
-                ))
-            if pd.isna(m63):
-                linhas.append(_badge("63 dias • sem dados", color="#9ca3af"))
-            else:
-                ok63 = m63 >= fck_active
-                linhas.append(_badge(
-                    f"63 dias • {'atingiu' if ok63 else 'não atingiu'} fck "
-                    f"({m63:.2f} {'≥' if ok63 else '<'} {fck_active:.2f} MPa)",
-                    color=("#16a34a" if ok63 else "#ef4444")
-                ))
+            out.append("color:#9ca3af; font-weight:700")
+    return out
 
-        st.markdown("<div style='display:flex;flex-wrap:wrap;gap:10px'>"+ "".join(linhas) +"</div>", unsafe_allow_html=True)
-
-        verif_fck_df = pd.DataFrame({
-            "Idade (dias)": [7, 28, 63],
-            "Média Real (MPa)": [
-                m7 if pd.notna(m7) else float("nan"),
-                m28 if pd.notna(m28) else float("nan"),
-                m63 if pd.notna(m63) else float("nan"),
-            ],
-            "fck Projeto (MPa)": [
-                float("nan"),
-                (fck_active if fck_active is not None else float("nan")),
-                (fck_active if fck_active is not None else float("nan")),
-            ],
-        })
-        _status_list = ["Informativo"]
-        if pd.isna(verif_fck_df.loc[1, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[1, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[1,"Média Real (MPa)"] >= verif_fck_df.loc[1,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        if pd.isna(verif_fck_df.loc[2, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[2, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[2,"Média Real (MPa)"] >= verif_fck_df.loc[2,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        verif_fck_df["Status"] = _status_list
-
-        st.dataframe(verif_fck_df, use_container_width=True)
+st.dataframe(
+    verif_fck_df.style.apply(_style_status_resumo, subset=["Status"]),
+    use_container_width=True
+)
 
         # ===== PDF / Impressão
         if "gerar_pdf" in globals():
@@ -1517,3 +1532,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

@@ -146,23 +146,35 @@ s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterio
 # --- ler preferências da URL (persistentes via link) ---
 def _apply_query_prefs():
     try:
-        qp = st.experimental_get_query_params()
+        # --- ler preferências da URL (persistentes via link) ---
+def _apply_query_prefs():
+    try:
+        qp = st.query_params  # ✅ API nova (sem aviso)
+
+        # aceita nomes longos e curtos
+        theme_v  = qp.get("theme") or qp.get("t")
+        brand_v  = qp.get("brand") or qp.get("b")
+        qr_v     = qp.get("q") or qp.get("qr") or qp.get("u")
+
+        def pick_one(x):
+            if x is None:
+                return None
+            return x[0] if isinstance(x, list) else x
+
+        theme = pick_one(theme_v)
+        brand = pick_one(brand_v)
+        qr    = pick_one(qr_v)
+
+        if theme in ["Escuro moderno", "Claro corporativo"]:
+            s["theme_mode"] = theme
+        if brand in ["Laranja", "Azul", "Verde", "Roxo"]:
+            s["brand"] = brand
+        if qr:
+            s["qr_url"] = qr
+
     except Exception:
-        qp = {}
-
-    # aceita nomes longos e curtos
-    theme = (qp.get("theme") or qp.get("t") or [None])[0]
-    brand_q = (qp.get("brand") or qp.get("b") or [None])[0]
-    qr = (qp.get("qr") or qp.get("u") or [None])[0]
-
-    if theme in ["Escuro moderno", "Claro corporativo"]:
-        s["theme_mode"] = theme
-    if brand_q in ["Laranja", "Azul", "Verde", "Roxo"]:
-        s["brand"] = brand_q
-    if qr is not None:
-        s["qr_url"] = qr
-
-_apply_query_prefs()
+        # nada a fazer se não houver query ou se a API não estiver disponível
+        pass
 
 # =============================================================================
 # Estilo e tema
@@ -1602,6 +1614,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -1312,39 +1312,44 @@ if uploaded_files:
         st.dataframe(verif_fck_df, use_container_width=True)
 
         # ===== Verificação DETALHADA por CP (todas as peças) =====
-        st.write("#### 🧪 Verificação detalhada por CP (7/28/63 dias)")
+st.write("#### 🧪 Verificação detalhada por CP (7/28/63 dias)")
 
-        _view_736 = (
-            df_view[df_view["Idade (dias)"].isin([7, 28, 63])]
-            .groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-            .mean()  # segurança: se vier mais de 1 por (CP, idade)
-            .unstack("Idade (dias)")
-            .rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"})
-            .reset_index()
-        )
+_view_736 = (
+    df_view[df_view["Idade (dias)"].isin([7, 28, 63])]
+    .groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+    .mean()  # se houver mais de um rompimento por (CP, idade), faz a média
+    .unstack("Idade (dias)")
+    .rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"})
+    .reset_index()
+)
 
-        def _status_text(val, idade, fckp):
-            if pd.isna(val) or (fckp is None) or pd.isna(fckp):
-                return "⚪ Sem dados"
-            if idade == 7:
-                return "🟡 Informativo (7d)"
-            return "🟢 OK (≥ fck)" if float(val) >= float(fckp) else "🔴 Abaixo (< fck)"
+# 👉 Garante que todas as colunas existam (evita KeyError quando faltar 63d, por exemplo)
+for col in ["7d (MPa)", "28d (MPa)", "63d (MPa)"]:
+    if col not in _view_736.columns:
+        _view_736[col] = float("nan")
 
-        _view_736["Status 7d"]  = _status_text(_view_736["7d (MPa)"], 7,  fck_active) \
-                                   if _view_736.empty else _view_736["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
-        _view_736["Status 28d"] = _status_text(_view_736["28d (MPa)"], 28, fck_active) \
-                                   if _view_736.empty else _view_736["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
-        _view_736["Status 63d"] = _status_text(_view_736["63d (MPa)"], 63, fck_active) \
-                                   if _view_736.empty else _view_736["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
+def _status_text(val, idade, fckp):
+    # 7 dias é apenas informativo (amarelo)
+    if pd.isna(val) or (fckp is None) or pd.isna(fckp):
+        return "⚪ Sem dados"
+    if idade == 7:
+        return "🟡 Informativo (7d)"
+    return "🟢 OK (≥ fck)" if float(val) >= float(fckp) else "🔴 Abaixo (< fck)"
 
-        try:
-            _view_736["__cp_sort__"] = _view_736["CP"].astype(str).str.extract(r"(\d+)").astype(float)
-        except Exception:
-            _view_736["__cp_sort__"] = range(len(_view_736))
+# Agora é seguro aplicar: as colunas existem mesmo quando faltam medições
+_view_736["Status 7d"]  = _view_736["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
+_view_736["Status 28d"] = _view_736["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
+_view_736["Status 63d"] = _view_736["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
 
-        _view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__")
+# Ordenação amigável por número do CP (se existir)
+try:
+    _view_736["__cp_sort__"] = _view_736["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+except Exception:
+    _view_736["__cp_sort__"] = range(len(_view_736))
 
-        st.dataframe(_view_736, use_container_width=True)
+_view_736 = _view_736.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__")
+
+st.dataframe(_view_736, use_container_width=True)
 
         # ===== PDF / Impressão
         if "gerar_pdf" in globals():
@@ -1471,3 +1476,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

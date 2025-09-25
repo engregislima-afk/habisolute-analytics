@@ -371,13 +371,14 @@ with c4:
                 "qr_url":     s["qr_url"],
             })
 
-            # persiste também na URL p/ favoritá-la
+                        # grava também na URL para persistir via favorito (sem aviso deprecat.)
             try:
-                st.experimental_set_query_params(
-                    theme=s["theme_mode"],
-                    brand=s["brand"],
-                    q=s["qr_url"],
-                )
+                qp = st.query_params  # novo API do Streamlit
+                qp.update({
+                    "theme": s["theme_mode"],
+                    "brand": s["brand"],
+                    "q": s["qr_url"],
+                })
             except Exception:
                 pass
 
@@ -1628,6 +1629,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

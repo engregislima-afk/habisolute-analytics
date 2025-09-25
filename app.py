@@ -357,25 +357,27 @@ with st.container():
         col_a, col_b = st.columns(2)
 
         with col_a:
-            if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-    # salva localmente quando houver disco
-    save_user_prefs({
-        "theme_mode": s["theme_mode"],
-        "brand": s["brand"],
-        "qr_url": s["qr_url"]
-    })
+    if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+        # salva localmente quando houver disco
+        save_user_prefs({
+            "theme_mode": s["theme_mode"],
+            "brand":      s["brand"],
+            "qr_url":     s["qr_url"],
+        })
 
-    # grava também na URL para persistir via favorito
-    try:
-        st.experimental_set_query_params(
-            theme=s["theme_mode"],
-            brand=s["brand"],
-            qr=s["qr_url"]
+        # grava também na URL para persistir via favorito
+        try:
+            st.experimental_set_query_params(
+                theme=s["theme_mode"],
+                brand=s["brand"],
+                q=s["qr_url"],
+            )
+        except Exception:
+            pass
+
+        st.success(
+            "Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências."
         )
-    except Exception:
-        pass
-
-    st.success("Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências.")
 
         with col_b:
             if st.button("Sair", use_container_width=True, key="k_logout"):
@@ -1618,4 +1620,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

@@ -116,7 +116,23 @@ s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 # >>> defaults do seu app analítico (para evitar KeyError em toggles/slider etc.)
 _uploader_key = f"uploader_{'multi' if s.get('BATCH_MODE', False) else 'single'}_{s['uploader_key']}"
 
-if s.get("BATCH_MODE", False):
+# --- Sidebar: opções ---
+with st.sidebar:
+    st.markdown("### ⚙️ Opções do relatório")
+    s["BATCH_MODE"] = st.toggle(
+        "Modo Lote (vários PDFs)",
+        value=bool(s.get("BATCH_MODE", False))
+    )
+    # se mudou o modo, força recriar o widget do uploader
+    if s["BATCH_MODE"] != s.get("_prev_batch", False):
+        s["_prev_batch"] = s["BATCH_MODE"]
+        s["uploader_key"] = s.get("uploader_key", 0) + 1
+
+# --- Uploader com key dinâmica ---
+BATCH_MODE = bool(s.get("BATCH_MODE", False))
+_uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
+
+if BATCH_MODE:
     uploaded_files = st.file_uploader(
         "📁 PDF(s)",
         type=["pdf"],
@@ -1540,6 +1556,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

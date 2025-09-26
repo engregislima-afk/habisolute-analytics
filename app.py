@@ -340,11 +340,6 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"Logado como: **{s.get('user','')}** — perfil **{s.get('user_role','user')}**")
 
-# >>>>>> COLE AQUI o restante do seu app (uploader, parsing, KPIs, gráficos, PDF, Excel/CSV...)
-# Removi a faixa de info para não “empurrar” a tela.
-
-
-
 # =============================================================================
 # Utilidades de parsing
 # =============================================================================
@@ -1532,6 +1527,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

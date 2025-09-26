@@ -704,8 +704,18 @@ def _img_from_fig(_fig, w=400, h=260):
 
 
 def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
+    # -> precisa de: import base64
     b64_all = base64.b64encode(pdf_all).decode()
     b64_cp = base64.b64encode(pdf_cp).decode() if pdf_cp else None
+
+    # monta o botão opcional do CP focado sem escapes malucos
+    cp_btn = ""
+    if b64_cp:
+        cp_btn = (
+            '<button class="h-print-btn" onclick="habiPrint(\''
+            + b64_cp +
+            '\')">🖨️ Imprimir — CP focado</button>'
+        )
 
     html = f"""
     <style>
@@ -718,9 +728,10 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
       }}
       .printbar small{{color:#6b7280}}
     </style>
+
     <div class="printbar">
       <button class="h-print-btn" onclick="habiPrint('{b64_all}')">🖨️ Imprimir — Tudo</button>
-      {('<button class="h-print-btn" onclick="habiPrint(\\''+b64_cp+'\\')">🖨️ Imprimir — CP focado</button>') if b64_cp else ''}
+      {cp_btn}
       <small>Permita pop-ups do navegador.</small>
     </div>
 
@@ -740,7 +751,7 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
           var w = window.open(url, '_blank');
           if (!w) {{ alert('Habilite pop-ups para imprimir.'); return; }}
 
-          // Espera o viewer terminar de carregar antes de imprimir
+          // aguarda o viewer carregar antes de imprimir (evita páginas em branco)
           (function waitAndPrint(retries) {{
             if (retries <= 0) return;
             try {{
@@ -751,10 +762,9 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
                 setTimeout(function(){{ waitAndPrint(retries-1); }}, 400);
               }}
             }} catch(e) {{
-              // Em alguns viewers o acesso levanta exceção até ficar pronto
               setTimeout(function(){{ waitAndPrint(retries-1); }}, 400);
             }}
-          }})(40); // ~16s de janela máxima
+          }})(40); // ~16s de janela
         }} catch(e) {{
           alert('Falha ao preparar impressão: ' + e);
         }}
@@ -1567,6 +1577,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

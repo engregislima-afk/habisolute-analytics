@@ -707,10 +707,8 @@ import base64, json
 import streamlit as st
 
 def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
-    # Base64 -> strings JS seguras (json.dumps cuida das aspas/escapes)
     b64_all = base64.b64encode(pdf_all).decode("ascii")
     js_b64_all = json.dumps(b64_all)
-
     btn_cp_html = ""
     if pdf_cp:
         b64_cp = base64.b64encode(pdf_cp).decode("ascii")
@@ -730,21 +728,20 @@ def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82
     <div class="printbar">
       <button class="h-print-btn" onclick="openPdf({js_b64_all})">📄 Abrir PDF — Tudo</button>
       {btn_cp_html}
-      <span style="font-size:12px;color:#6b7280">Abrirá em uma nova aba. Ative pop-ups se necessário.</span>
+      <span style="font-size:12px;color:#6b7280">Abrirá em uma nova aba. Habilite pop-ups.</span>
     </div>
     <script>
     function openPdf(b64) {{
       if (!b64) return;
       try {{
         var bin = atob(b64);
-        var len = bin.length;
-        var bytes = new Uint8Array(len);
-        for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-        var blob = new Blob([bytes], {{ type: 'application/pdf' }});
+        var bytes = new Uint8Array(bin.length);
+        for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], {{type:'application/pdf'}});
         var url = URL.createObjectURL(blob);
         var w = window.open(url, '_blank');
         if (!w) alert('Habilite pop-ups do navegador para visualizar o PDF.');
-      }} catch (e) {{
+      }} catch(e) {{
         alert('Falha ao abrir PDF: ' + e);
       }}
     }}
@@ -1556,6 +1553,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

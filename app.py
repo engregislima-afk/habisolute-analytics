@@ -1480,6 +1480,7 @@ if uploaded_files:
                 # >>> Botão de abrir/imprimir (corrigido: usa a função certa)
                 render_pdf_actions(pdf_bytes, None, brand, brand600)
                 def render_print_buttons(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
+                
     """Mostra botões 'Imprimir Tudo' e 'Imprimir por CP selecionado' usando iframe + Blob (sem páginas em branco)."""
     b64_all = base64.b64encode(pdf_all).decode("ascii")
     b64_cp = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""

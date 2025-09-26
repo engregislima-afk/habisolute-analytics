@@ -202,62 +202,41 @@ brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
 if s["theme_mode"] == "Escuro moderno":
     css = f"""
-    <style>
-      :root {{
-        --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-        --bg:#0b0f19; --panel:#0f172a; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
-      }}
-      .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-      .block-container{{ padding-top: 8px !important; max-width: 1180px !important; margin: 0 auto !important; }}
-      /* cards e tipografia */
-      .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-      .h-kpi{{font-size:18px;font-weight:800}}
-      .h-kpi-label{{font-size:12px;opacity:.85;margin-bottom:6px}}
-      .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                   -webkit-background-clip:text; background-clip:text; color:transparent}}
-      .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-             border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-      /* login */
-      .login-card{{max-width:520px;margin:24px auto;background:var(--panel);border:1px solid var(--line);
-                   border-radius:16px;padding:16px}}
-      .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
-      /* alinhamento dos inputs no header */
-      div[data-testid="column"] > div:has(button) {{ display:flex; align-items:end; }}
-      .pref-row [data-baseweb="select"] {{ min-width: 180px; }}
-      .pref-row input[type="text"]{{ height: 40px !important; }}
-      /* uploader ocupar largura total e sem “sobra” */
-      .uploadBlock .st-emotion-cache-1erivf3, .uploadBlock .stFileUploader {{
-        width: 100% !important;
-      }}
-    </style>
-    """
-else:
-    css = f"""
-    <style>
-      :root {{
-        --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-        --bg:#f8fafc; --surface:#ffffff; --text:#0f172a; --muted:#64748b; --line:rgba(2,6,23,.08);
-      }}
-      .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-      .block-container{{ padding-top: 8px !important; max-width: 1180px !important; margin: 0 auto !important; }}
-      .h-card{{ background: var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-      .h-kpi{{font-size:18px;font-weight:800}}
-      .h-kpi-label{{font-size:12px;opacity:.75;margin-bottom:6px}}
-      .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                   -webkit-background-clip:text; background-clip:text; color:transparent}}
-      .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-             border:1px solid var(--line); background:#ffffff; font-size:12.5px; }}
-      .login-card{{max-width:520px;margin:24px auto;background:var(--surface);border:1px solid var(--line);
-                   border-radius:16px;padding:16px}}
-      .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
-      div[data-testid="column"] > div:has(button) {{ display:flex; align-items:end; }}
-      .pref-row [data-baseweb="select"] {{ min-width: 180px; }}
-      .pref-row input[type="text"]{{ height: 40px !important; }}
-      .uploadBlock .st-emotion-cache-1erivf3, .uploadBlock .stFileUploader {{
-        width: 100% !important;
-      }}
-    </style>
-    """
+<style>
+  :root {{
+    --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
+    {"--bg:#0b0f19; --panel:#0f172a; --surface:#0f172a; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);" 
+      if s["theme_mode"]=="Escuro moderno" else
+     "--bg:#f8fafc; --panel:#ffffff; --surface:#ffffff; --text:#0f172a; --muted:#64748b; --line:rgba(2,6,23,.08);"}
+  }}
+
+  /* 🔧 respiro no topo da página */
+  .block-container{{
+      padding-top: 34px !important;    /* antes estava ~10px */
+      max-width: 1180px !important;
+      margin: 0 auto !important;
+  }}
+
+  /* 🔧 título com margem superior e inferior */
+  .brand-title{{
+      display:block;
+      margin: 8px 0 10px 0;            /* top/bottom mais confortáveis */
+      line-height: 1.15;
+      font-weight:800;
+      background:linear-gradient(90deg,var(--brand),var(--brand-700));
+      -webkit-background-clip:text; background-clip:text; color:transparent
+  }}
+
+  /* mantém o resto igual ao que já te enviei */
+  .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
+  .h-kpi{{font-size:18px;font-weight:800}}
+  .h-kpi-label{{font-size:12px;opacity:.8;margin-bottom:6px}}
+  .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+         border:1px solid var(--line); background:{'rgba(148,163,184,.10)' if s["theme_mode"]=='Escuro moderno' else '#fff'}; font-size:12.5px; }}
+  .pref-row [data-testid="column"] > div {{ display:flex; flex-direction:column; justify-content:flex-end; height:100%; }}
+  .uploadBlock .stFileUploader, .uploadBlock [data-testid="stFileUploadDropzone"]{{ width:100% !important; }}
+</style>
+"""
 st.markdown(css, unsafe_allow_html=True)
 
 # =============================================================================
@@ -1277,5 +1256,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

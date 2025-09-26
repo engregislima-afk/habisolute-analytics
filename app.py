@@ -710,37 +710,84 @@ def _img_from_fig(_fig, w=400, h=260):
 # -----------------------------------------------------------------------------
 # Botões de Abertura/Impressão do PDF (substitui render_print_block)
 # -----------------------------------------------------------------------------
-def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
+def render_print_block(pdf_all: bytes, pdf_cp: bytes | None = None,
+                       brand: str = "#3b82f6", brand600: str = "#2563eb"):
+    """
+    Visualiza o PDF em um iframe dentro da página e permite imprimir sem abrir pop-up/aba.
+    Evita páginas em branco e limita de data:URL longas.
+    """
     b64_all = base64.b64encode(pdf_all).decode("ascii")
-    btn_cp_html = ""
-    if pdf_cp:
-        b64_cp = base64.b64encode(pdf_cp).decode("ascii")
-        btn_cp_html = f'''
-          <a class="h-print-btn" href="data:application/pdf;base64,{b64_cp}" target="_blank" rel="noopener">
-            📄 Abrir PDF — CP focado
-          </a>'''
+    b64_cp  = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""
 
     html = f"""
     <style>
       :root {{ --brand:{brand}; --brand-600:{brand600}; }}
-      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
-      .h-print-btn {{
-        display:inline-block; text-decoration:none; background: linear-gradient(180deg, var(--brand), var(--brand-600));
-        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
-        box-shadow:0 10px 20px rgba(0,0,0,.10);
+      .printbar {{
+        display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:10px 0 8px 0;
       }}
-      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
+      .h-btn {{
+        background: linear-gradient(180deg, var(--brand), var(--brand-600));
+        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
+        box-shadow:0 10px 20px rgba(0,0,0,.10); cursor:pointer;
+      }}
+      .hint {{ font-size:12px; color:#6b7280; margin-left:6px }}
+      .viewer-wrap {{ border:1px solid rgba(0,0,0,.12); border-radius:10px; overflow:hidden; }}
+      .viewer {{ width:100%; height:720px; border:0; }}
     </style>
+
     <div class="printbar">
-      <a class="h-print-btn" href="data:application/pdf;base64,{b64_all}" target="_blank" rel="noopener">
-        📄 Abrir PDF — Tudo
-      </a>
-      {btn_cp_html}
-      <span class="print-hint">Abre em nova aba. No visor, use Ctrl/Cmd+P para imprimir.</span>
+      <button class="h-btn" onclick="printIframe('pdf_all_iframe')">🖨️ Imprimir — Tudo</button>
+      {('<button class="h-btn" onclick="loadCp()">Carregar CP focado</button>' if b64_cp else '')}
+      <span class="hint">Dica: você também pode usar Ctrl/Cmd+P no visualizador.</span>
     </div>
+
+    <div class="viewer-wrap">
+      <iframe id="pdf_all_iframe" class="viewer"></iframe>
+    </div>
+
+    <script>
+      (function loadAll(){{
+        try {{
+          var b64 = "{b64_all}";
+          var bin = atob(b64);
+          var len = bin.length;
+          var bytes = new Uint8Array(len);
+          for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
+          var blob = new Blob([bytes], {{type:'application/pdf'}});
+          var url  = URL.createObjectURL(blob);
+          var ifr  = document.getElementById('pdf_all_iframe');
+          ifr.src = url + "#toolbar=1&navpanes=0&view=FitH";
+        }} catch(e) {{ console.error("Falha ao preparar PDF:", e); }}
+      }})();
+
+      function printIframe(id){{
+        try {{
+          var f = document.getElementById(id);
+          if (!f) return alert("Visualizador não encontrado.");
+          setTimeout(function(){{
+            try {{ f.contentWindow.focus(); f.contentWindow.print(); }}
+            catch(e) {{ alert("Não foi possível acionar a impressão: " + e); }}
+          }}, 350);
+        }} catch(e) {{ alert("Erro: " + e); }}
+      }}
+
+      function loadCp(){{
+        try {{
+          var b64 = "{b64_cp}";
+          if (!b64) return;
+          var bin = atob(b64);
+          var len = bin.length;
+          var bytes = new Uint8Array(len);
+          for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
+          var blob = new Blob([bytes], {{type:'application/pdf'}});
+          var url  = URL.createObjectURL(blob);
+          var ifr  = document.getElementById('pdf_all_iframe');
+          ifr.src = url + "#toolbar=1&navpanes=0&view=FitH";
+        }} catch(e) {{ alert("Falha ao carregar CP focado: " + e); }}
+      }}
+    </script>
     """
-    # Importante: markdown (fora de iframe), sem JS
-    st.markdown(html, unsafe_allow_html=True)
+    st.components.v1.html(html, height=780)
 
 # =============================================================================
 # Cabeçalho e uploader
@@ -1545,4 +1592,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

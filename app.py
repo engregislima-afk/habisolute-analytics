@@ -712,47 +712,35 @@ def _img_from_fig(_fig, w=400, h=260):
 # -----------------------------------------------------------------------------
 def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
     b64_all = base64.b64encode(pdf_all).decode("ascii")
-    js_b64_all = json.dumps(b64_all)
     btn_cp_html = ""
     if pdf_cp:
         b64_cp = base64.b64encode(pdf_cp).decode("ascii")
-        js_b64_cp = json.dumps(b64_cp)
-        btn_cp_html = f'<button class="h-print-btn" onclick="openPdf({js_b64_cp})">📄 Abrir PDF — CP focado</button>'
+        btn_cp_html = f'''
+          <a class="h-print-btn" href="data:application/pdf;base64,{b64_cp}" target="_blank" rel="noopener">
+            📄 Abrir PDF — CP focado
+          </a>'''
 
     html = f"""
     <style>
       :root {{ --brand:{brand}; --brand-600:{brand600}; }}
       .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
       .h-print-btn {{
-        background: linear-gradient(180deg, var(--brand), var(--brand-600));
-        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer;
+        display:inline-block; text-decoration:none; background: linear-gradient(180deg, var(--brand), var(--brand-600));
+        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
         box-shadow:0 10px 20px rgba(0,0,0,.10);
       }}
+      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
     </style>
     <div class="printbar">
-      <button class="h-print-btn" onclick="openPdf({js_b64_all})">📄 Abrir PDF — Tudo</button>
+      <a class="h-print-btn" href="data:application/pdf;base64,{b64_all}" target="_blank" rel="noopener">
+        📄 Abrir PDF — Tudo
+      </a>
       {btn_cp_html}
-      <span style="font-size:12px;color:#6b7280">Abrirá em uma nova aba. Habilite pop-ups.</span>
+      <span class="print-hint">Abre em nova aba. No visor, use Ctrl/Cmd+P para imprimir.</span>
     </div>
-    <script>
-    function openPdf(b64) {{
-      if (!b64) return;
-      try {{
-        var bin = atob(b64);
-        var bytes = new Uint8Array(bin.length);
-        for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-        var blob = new Blob([bytes], {{type:'application/pdf'}});
-        var url = URL.createObjectURL(blob);
-        var w = window.open(url, '_blank');
-        if (!w) alert('Habilite pop-ups do navegador para visualizar o PDF.');
-      }} catch(e) {{
-        alert('Falha ao abrir PDF: ' + e);
-      }}
-    }}
-    </script>
     """
-    st.components.v1.html(html, height=74)
-
+    # Importante: markdown (fora de iframe), sem JS
+    st.markdown(html, unsafe_allow_html=True)
 
 # =============================================================================
 # Cabeçalho e uploader
@@ -1557,3 +1545,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

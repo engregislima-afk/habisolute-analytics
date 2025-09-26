@@ -1439,7 +1439,7 @@ if uploaded_files:
                                    file_name="Relatorio_Graficos.pdf", mime="application/pdf")
 
                 # bloco de impressão (volta o botão!)
-                render_print_block(pdf_bytes, None, brand, brand600)
+                render_pdf_actions(pdf_all=pdf_bytes, pdf_cp=None, brand=brand, brand600=brand600)
 
             except Exception:
                 st.warning("Não foi possível gerar o PDF agora.")
@@ -1553,6 +1553,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

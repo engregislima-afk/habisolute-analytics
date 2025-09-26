@@ -704,12 +704,9 @@ def _img_from_fig(_fig, w=400, h=260):
 
 
 def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
-    """Barra com botões para imprimir PDFs direto no navegador (pop-up)."""
     b64_all = base64.b64encode(pdf_all).decode()
-    cp_btn = ""
-    if pdf_cp:
-        b64_cp = base64.b64encode(pdf_cp).decode()
-        cp_btn = f'<button class="h-print-btn" onclick="habiPrint(\'{b64_cp}\')">🖨️ Imprimir — CP focado</button>'
+    b64_cp = base64.b64encode(pdf_cp).decode() if pdf_cp else None
+
     html = f"""
     <style>
       :root {{ --brand:{brand}; --brand-600:{brand600}; }}
@@ -719,28 +716,48 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
         color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer;
         box-shadow:0 10px 20px rgba(0,0,0,.10);
       }}
+      .printbar small{{color:#6b7280}}
     </style>
     <div class="printbar">
       <button class="h-print-btn" onclick="habiPrint('{b64_all}')">🖨️ Imprimir — Tudo</button>
-      {cp_btn}
-      <span style="font-size:12px;color:#6b7280">Permita pop-ups para imprimir</span>
+      {('<button class="h-print-btn" onclick="habiPrint(\\''+b64_cp+'\\')">🖨️ Imprimir — CP focado</button>') if b64_cp else ''}
+      <small>Permita pop-ups do navegador.</small>
     </div>
+
     <script>
+      function _b64ToBlobUrl(b64) {{
+        var bin = atob(b64);
+        var len = bin.length;
+        var bytes = new Uint8Array(len);
+        for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], {{type:'application/pdf'}});
+        return URL.createObjectURL(blob);
+      }}
+
       function habiPrint(b64) {{
         try {{
-          var bin=atob(b64), len=bin.length, bytes=new Uint8Array(len);
-          for (var i=0;i<len;i++) bytes[i]=bin.charCodeAt(i);
-          var blob=new Blob([bytes], {{type:'application/pdf'}});
-          var url=URL.createObjectURL(blob);
-          var w=window.open('', '_blank');
-          if(!w){{ alert('Habilite pop-ups para imprimir.'); return; }}
-          w.document.write('<!doctype html><html><head><title>Imprimir</title>'+
-            '<style>html,body{{margin:0;height:100%}}</style></head><body>'+
-            '<iframe id="__pf" style="width:100%;height:100%;border:0"></iframe>'+
-            '<script>var f=document.getElementById("__pf");f.onload=function(){{try{{f.contentWindow.focus();f.contentWindow.print();}}catch(e){{}}}};f.src="'+url+'#zoom=page-width";<\/script>'+
-            '</body></html>');
-          w.document.close();
-        }} catch(e) {{ alert('Falha ao preparar impressão: '+e); }}
+          var url = _b64ToBlobUrl(b64);
+          var w = window.open(url, '_blank');
+          if (!w) {{ alert('Habilite pop-ups para imprimir.'); return; }}
+
+          // Espera o viewer terminar de carregar antes de imprimir
+          (function waitAndPrint(retries) {{
+            if (retries <= 0) return;
+            try {{
+              if (w.document && w.document.readyState === 'complete') {{
+                w.focus();
+                w.print();
+              }} else {{
+                setTimeout(function(){{ waitAndPrint(retries-1); }}, 400);
+              }}
+            }} catch(e) {{
+              // Em alguns viewers o acesso levanta exceção até ficar pronto
+              setTimeout(function(){{ waitAndPrint(retries-1); }}, 400);
+            }}
+          }})(40); // ~16s de janela máxima
+        }} catch(e) {{
+          alert('Falha ao preparar impressão: ' + e);
+        }}
       }}
     </script>
     """
@@ -1550,6 +1567,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -58,10 +58,9 @@ class NumberedCanvas(canvas.Canvas):
 
     def draw_page_number(self, num_pages: int):
         page = self._pageNumber
-        text = f"{page}"  # ou f"{page}/{num_pages}" se preferir
+        text = f"{page}"  # ou f"{page}/{num_pages}"
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.grey)
-        # Usa base A4; está ok mesmo se pagesize for landscape
         w, h = A4
         self.drawRightString(w - 20, 14, text)
 
@@ -708,86 +707,99 @@ def _img_from_fig(_fig, w=400, h=260):
 
 
 # -----------------------------------------------------------------------------
-# Botões de Abertura/Impressão do PDF (substitui render_print_block)
+# Botões "Abrir PDF" (em nova aba)
 # -----------------------------------------------------------------------------
-def render_print_block(pdf_all: bytes, pdf_cp: bytes | None = None,
-                       brand: str = "#3b82f6", brand600: str = "#2563eb"):
-    """
-    Visualiza o PDF em um iframe dentro da página e permite imprimir sem abrir pop-up/aba.
-    Evita páginas em branco e limita de data:URL longas.
-    """
+def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
     b64_all = base64.b64encode(pdf_all).decode("ascii")
-    b64_cp  = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""
+    btn_cp_html = ""
+    if pdf_cp:
+        b64_cp = base64.b64encode(pdf_cp).decode("ascii")
+        btn_cp_html = f'''
+          <a class="h-print-btn" href="data:application/pdf;base64,{b64_cp}" target="_blank" rel="noopener">
+            📄 Abrir PDF — CP focado
+          </a>'''
 
     html = f"""
     <style>
       :root {{ --brand:{brand}; --brand-600:{brand600}; }}
-      .printbar {{
-        display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:10px 0 8px 0;
+      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
+      .h-print-btn {{
+        display:inline-block; text-decoration:none; background: linear-gradient(180deg, var(--brand), var(--brand-600));
+        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
+        box-shadow:0 10px 20px rgba(0,0,0,.10);
       }}
+      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
+    </style>
+    <div class="printbar">
+      <a class="h-print-btn" href="data:application/pdf;base64,{b64_all}" target="_blank" rel="noopener">
+        📄 Abrir PDF — Tudo
+      </a>
+      {btn_cp_html}
+      <span class="print-hint">Abre em nova aba. No visor, use Ctrl/Cmd+P para imprimir.</span>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# -----------------------------------------------------------------------------
+# Botões "Imprimir" confiáveis (iframe + Blob) — evita páginas em branco
+# -----------------------------------------------------------------------------
+def render_print_buttons(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
+    """Mostra botões 'Imprimir Tudo' e 'Imprimir por CP selecionado' usando iframe + Blob (sem páginas em branco)."""
+    b64_all = base64.b64encode(pdf_all).decode("ascii")
+    b64_cp = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""
+
+    html = f"""
+    <style>
+      :root {{ --brand:{brand}; --brand-600:{brand600}; }}
+      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
       .h-btn {{
+        display:inline-block; text-decoration:none;
         background: linear-gradient(180deg, var(--brand), var(--brand-600));
         color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
         box-shadow:0 10px 20px rgba(0,0,0,.10); cursor:pointer;
       }}
-      .hint {{ font-size:12px; color:#6b7280; margin-left:6px }}
-      .viewer-wrap {{ border:1px solid rgba(0,0,0,.12); border-radius:10px; overflow:hidden; }}
-      .viewer {{ width:100%; height:720px; border:0; }}
+      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
+      iframe#print_iframe_all, iframe#print_iframe_cp {{ width:0;height:0;border:0; position:absolute; left:-9999px; }}
     </style>
 
     <div class="printbar">
-      <button class="h-btn" onclick="printIframe('pdf_all_iframe')">🖨️ Imprimir — Tudo</button>
-      {('<button class="h-btn" onclick="loadCp()">Carregar CP focado</button>' if b64_cp else '')}
-      <span class="hint">Dica: você também pode usar Ctrl/Cmd+P no visualizador.</span>
+      <button class="h-btn" onclick="printFromB64('{b64_all}', 'print_iframe_all')">🖨️ Imprimir — Tudo</button>
+      {"<button class='h-btn' onclick=\"printFromB64('"+b64_cp+"', 'print_iframe_cp')\">🖨️ Imprimir — CP selecionado</button>" if pdf_cp else ""}
+      <span class="print-hint">Aguarde o viewer carregar; a impressão abrirá a caixa do navegador.</span>
     </div>
 
-    <div class="viewer-wrap">
-      <iframe id="pdf_all_iframe" class="viewer"></iframe>
-    </div>
+    <iframe id="print_iframe_all"></iframe>
+    <iframe id="print_iframe_cp"></iframe>
 
     <script>
-      (function loadAll(){{
+      function printFromB64(b64, iframeId) {{
+        if (!b64) return;
         try {{
-          var b64 = "{b64_all}";
-          var bin = atob(b64);
-          var len = bin.length;
-          var bytes = new Uint8Array(len);
-          for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
-          var blob = new Blob([bytes], {{type:'application/pdf'}});
-          var url  = URL.createObjectURL(blob);
-          var ifr  = document.getElementById('pdf_all_iframe');
-          ifr.src = url + "#toolbar=1&navpanes=0&view=FitH";
-        }} catch(e) {{ console.error("Falha ao preparar PDF:", e); }}
-      }})();
-
-      function printIframe(id){{
-        try {{
-          var f = document.getElementById(id);
-          if (!f) return alert("Visualizador não encontrado.");
-          setTimeout(function(){{
-            try {{ f.contentWindow.focus(); f.contentWindow.print(); }}
-            catch(e) {{ alert("Não foi possível acionar a impressão: " + e); }}
-          }}, 350);
-        }} catch(e) {{ alert("Erro: " + e); }}
-      }}
-
-      function loadCp(){{
-        try {{
-          var b64 = "{b64_cp}";
-          if (!b64) return;
-          var bin = atob(b64);
-          var len = bin.length;
-          var bytes = new Uint8Array(len);
-          for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
-          var blob = new Blob([bytes], {{type:'application/pdf'}});
-          var url  = URL.createObjectURL(blob);
-          var ifr  = document.getElementById('pdf_all_iframe');
-          ifr.src = url + "#toolbar=1&navpanes=0&view=FitH";
-        }} catch(e) {{ alert("Falha ao carregar CP focado: " + e); }}
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const blob = new Blob([bytes], {{type:'application/pdf'}});
+          const url = URL.createObjectURL(blob);
+          const iframe = document.getElementById(iframeId);
+          const done = () => {{
+            setTimeout(() => {{
+              try {{
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+              }} catch(e) {{
+                alert('Falha ao imprimir: ' + e);
+              }}
+            }}, 300);
+          }};
+          iframe.onload = done;
+          iframe.src = url;
+        }} catch(e) {{
+          alert('Falha ao preparar impressão: ' + e);
+        }}
       }}
     </script>
     """
-    st.components.v1.html(html, height=780)
+    st.markdown(html, unsafe_allow_html=True)
+
 
 # =============================================================================
 # Cabeçalho e uploader
@@ -1463,6 +1475,7 @@ if uploaded_files:
                     buffer.close()
                     return pdf
 
+                # 1) PDF geral (completo)
                 pdf_bytes = gerar_pdf(
                     df_view,
                     df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
@@ -1477,65 +1490,26 @@ if uploaded_files:
                 st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
                                    file_name="Relatorio_Graficos.pdf", mime="application/pdf")
 
-                # >>> Botão de abrir/imprimir (corrigido: usa a função certa)
-                render_pdf_actions(pdf_bytes, None, brand, brand600)
-                def render_print_buttons(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
-                
-    """Mostra botões 'Imprimir Tudo' e 'Imprimir por CP selecionado' usando iframe + Blob (sem páginas em branco)."""
-    b64_all = base64.b64encode(pdf_all).decode("ascii")
-    b64_cp = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""
+                # 2) PDF focado no CP (leve, sem gráficos) — para imprimir por CP
+                pdf_bytes_cp = None
+                if cp_focus:
+                    df_cp = df_view[df_view["CP"].astype(str) == cp_focus].copy()
+                    if not df_cp.empty:
+                        stats_cp = (df_cp.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                                        .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index())
+                        pdf_bytes_cp = gerar_pdf(
+                            df_cp, stats_cp,
+                            None, None, None, None,  # sem gráficos no PDF focado
+                            str(df_cp["Obra"].mode().iat[0]) if "Obra" in df_cp.columns and not df_cp["Obra"].dropna().empty else "—",
+                            str(df_cp["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_cp.columns and not df_cp["Data Certificado"].dropna().empty else "—",
+                            str(fck_active) if fck_active is not None else "—",
+                            None, None, None
+                        )
 
-    html = f"""
-    <style>
-      :root {{ --brand:{brand}; --brand-600:{brand600}; }}
-      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
-      .h-btn {{
-        display:inline-block; text-decoration:none;
-        background: linear-gradient(180deg, var(--brand), var(--brand-600));
-        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
-        box-shadow:0 10px 20px rgba(0,0,0,.10); cursor:pointer;
-      }}
-      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
-      iframe#print_iframe_all, iframe#print_iframe_cp {{ width:0;height:0;border:0; position:absolute; left:-9999px; }}
-    </style>
+                # 3) Abrir em nova aba + Botões de imprimir (Tudo / CP selecionado)
+                render_pdf_actions(pdf_bytes, pdf_bytes_cp, brand, brand600)
+                render_print_buttons(pdf_bytes, pdf_bytes_cp, brand, brand600)
 
-    <div class="printbar">
-      <button class="h-btn" onclick="printFromB64('{b64_all}', 'print_iframe_all')">🖨️ Imprimir — Tudo</button>
-      {"<button class='h-btn' onclick=\"printFromB64('"+b64_cp+"', 'print_iframe_cp')\">🖨️ Imprimir — CP selecionado</button>" if pdf_cp else ""}
-      <span class="print-hint">Dica: aguarde o viewer carregar; a impressão abre a caixa do navegador.</span>
-    </div>
-
-    <iframe id="print_iframe_all"></iframe>
-    <iframe id="print_iframe_cp"></iframe>
-
-    <script>
-      function printFromB64(b64, iframeId) {{
-        if (!b64) return;
-        try {{
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          const blob = new Blob([bytes], {{type:'application/pdf'}});
-          const url = URL.createObjectURL(blob);
-          const iframe = document.getElementById(iframeId);
-          const done = () => {{
-            // pequeno atraso para garantir renderização antes do print
-            setTimeout(() => {{
-              try {{
-                iframe.contentWindow.focus();
-                iframe.contentWindow.print();
-              }} catch(e) {{
-                alert('Falha ao imprimir: ' + e);
-              }}
-            }}, 300);
-          }};
-          iframe.onload = done;
-          iframe.src = url;
-        }} catch(e) {{
-          alert('Falha ao preparar impressão: ' + e);
-        }}
-      }}
-    </script>
-    """
-    st.markdown(html, unsafe_allow_html=True)
             except Exception:
                 st.warning("Não foi possível gerar o PDF agora.")
 
@@ -1648,6 +1622,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-

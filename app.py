@@ -217,7 +217,7 @@ css = f"""
 
   /* respiro no topo e largura confortável */
   .block-container{{
-      padding-top: 40px !important;
+      padding-top: 50px !important;
       max-width: 1180px !important;
       margin: 0 auto !important;
   }}
@@ -1550,4 +1550,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

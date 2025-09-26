@@ -114,11 +114,24 @@ s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 
 # >>> defaults do seu app analítico (para evitar KeyError em toggles/slider etc.)
-s.setdefault("uploader_key", 0)
-s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])
-s.setdefault("TOL_MP", 1.0)
+_uploader_key = f"uploader_{'multi' if s.get('BATCH_MODE', False) else 'single'}_{s['uploader_key']}"
 
+if s.get("BATCH_MODE", False):
+    uploaded_files = st.file_uploader(
+        "📁 PDF(s)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key=_uploader_key
+    )
+else:
+    up1 = st.file_uploader(
+        "📁 PDF (1 arquivo)",
+        type=["pdf"],
+        accept_multiple_files=False,
+        key=_uploader_key
+    )
+    uploaded_files = [up1] if up1 is not None else []
+)
 
 # Lê preferências da URL (persistentes via link)
 def _apply_query_prefs():
@@ -1527,6 +1540,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -147,7 +147,6 @@ else:
         key=_uploader_key
     )
     uploaded_files = [up1] if up1 is not None else []
-)
 
 # Lê preferências da URL (persistentes via link)
 def _apply_query_prefs():
@@ -1556,6 +1555,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -298,54 +298,41 @@ if not s["logged_in"]:
 # Barra de preferências (tema, cor da marca, url)
 # =============================================================================
 st.markdown("<h3 class='brand-title'>🏗️ Habisolute Tecnologia Analytics</h3>", unsafe_allow_html=True)
+
 with st.container():
-    c1, c2, c3, c4 = st.columns([1.1, 1.1, 2.5, 1.1])
+    st.markdown("<div class='pref-row'>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([1.3, 1.2, 2.6, 1.1])
 
     with c1:
         s["theme_mode"] = st.radio(
-            "Tema",
-            ["Escuro moderno", "Claro corporativo"],
+            "Tema", ["Escuro moderno", "Claro corporativo"],
             index=0 if s.get("theme_mode") == "Escuro moderno" else 1,
-            horizontal=True
+            horizontal=True,
         )
-
     with c2:
         s["brand"] = st.selectbox(
-            "🎨 Cor da marca",
-            ["Laranja", "Azul", "Verde", "Roxo"],
-            index=["Laranja", "Azul", "Verde", "Roxo"].index(s.get("brand", "Laranja"))
+            "🎨 Cor da marca", ["Laranja","Azul","Verde","Roxo"],
+            index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
         )
-
     with c3:
         s["qr_url"] = st.text_input(
             "URL do resumo (QR opcional na capa do PDF)",
-            value=s.get("qr_url", ""),
-            placeholder="https://exemplo.com/resumo"
+            value=s.get("qr_url",""), placeholder="https://exemplo.com/resumo"
         )
-
     with c4:
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-                save_user_prefs({
-                    "theme_mode": s["theme_mode"],
-                    "brand": s["brand"],
-                    "qr_url": s["qr_url"]
-                })
-                try:
-                    qp = st.query_params
-                    qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
-                except Exception:
-                    pass
-                st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
+            st.write("")
+            if st.button("💾 Salvar", use_container_width=True, key="k_save"):
+                save_user_prefs({"theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"]})
+                try: st.query_params.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
+                except: pass
+                st.success("Preferências salvas.")
         with col_b:
+            st.write("")
             if st.button("Sair", use_container_width=True, key="k_logout"):
-                s["logged_in"] = False
-                s["user"] = ""
-                s["user_role"] = ""
-                st.rerun()
-
+                s["logged_in"]=False; s["user"]=""; s["user_role"]=""; st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # Administração (somente admin)
@@ -1290,4 +1277,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

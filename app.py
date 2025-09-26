@@ -34,30 +34,34 @@ from reportlab.pdfgen import canvas
 
 
 # -----------------------------------------------------------------------------
-# Canvas numerado para rodapé com nº de páginas
+# Canvas numerado para rodapé com nº de páginas (FIX: sem páginas em branco)
 # -----------------------------------------------------------------------------
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
-        canvas.Canvas.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._saved_page_states = []
 
     def showPage(self):
+        # Salva o estado da página e inicia a próxima,
+        # mas NÃO chama canvas.Canvas.showPage aqui (evita páginas em branco).
         self._saved_page_states.append(dict(self.__dict__))
         self._startPage()
-        canvas.Canvas.showPage(self)
 
     def save(self):
+        # Re-renderiza todas as páginas salvas, adiciona numeração e emite.
+        num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
-            self.draw_page_number()
+            self.draw_page_number(num_pages)
             canvas.Canvas.showPage(self)
         canvas.Canvas.save(self)
 
-    def draw_page_number(self):
+    def draw_page_number(self, num_pages: int):
         page = self._pageNumber
-        text = f"{page}"
+        text = f"{page}"  # ou f"{page}/{num_pages}" se preferir
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.grey)
+        # Usa base A4; está ok mesmo se pagesize for landscape
         w, h = A4
         self.drawRightString(w - 20, 14, text)
 
@@ -494,7 +498,7 @@ def extrair_dados_certificado(uploaded_file):
                 txt = page.extract_text() or ""
                 txt = re.sub(r"[“”]", "\"", txt)
                 txt = re.sub(r"[’´`]", "'", txt)
-                linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip()])
+                linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip() ])
     except Exception:
         # erro de leitura: retorna DF vazio com cabeçalho esperado
         return (pd.DataFrame(columns=[
@@ -703,9 +707,9 @@ def _img_from_fig(_fig, w=400, h=260):
     return RLImage(tmp.name, width=w, height=h)
 
 
-import base64, json
-import streamlit as st
-
+# -----------------------------------------------------------------------------
+# Botões de Abertura/Impressão do PDF (substitui render_print_block)
+# -----------------------------------------------------------------------------
 def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
     b64_all = base64.b64encode(pdf_all).decode("ascii")
     js_b64_all = json.dumps(b64_all)
@@ -1438,8 +1442,8 @@ if uploaded_files:
                 st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
                                    file_name="Relatorio_Graficos.pdf", mime="application/pdf")
 
-                # bloco de impressão (volta o botão!)
-                render_pdf_actions(pdf_all=pdf_bytes, pdf_cp=None, brand=brand, brand600=brand600)
+                # >>> Botão de abrir/imprimir (corrigido: usa a função certa)
+                render_pdf_actions(pdf_bytes, None, brand, brand600)
 
             except Exception:
                 st.warning("Não foi possível gerar o PDF agora.")
@@ -1553,12 +1557,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-
-
-

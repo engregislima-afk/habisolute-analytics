@@ -703,91 +703,54 @@ def _img_from_fig(_fig, w=400, h=260):
     return RLImage(tmp.name, width=w, height=h)
 
 
-def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
-    # precisa de: import base64
-    b64_all = base64.b64encode(pdf_all).decode()
-    b64_cp  = base64.b64encode(pdf_cp).decode() if pdf_cp else None
+import base64, json
+import streamlit as st
+
+def render_pdf_actions(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
+    # Base64 -> strings JS seguras (json.dumps cuida das aspas/escapes)
+    b64_all = base64.b64encode(pdf_all).decode("ascii")
+    js_b64_all = json.dumps(b64_all)
+
+    btn_cp_html = ""
+    if pdf_cp:
+        b64_cp = base64.b64encode(pdf_cp).decode("ascii")
+        js_b64_cp = json.dumps(b64_cp)
+        btn_cp_html = f'<button class="h-print-btn" onclick="openPdf({js_b64_cp})">📄 Abrir PDF — CP focado</button>'
 
     html = f"""
     <style>
       :root {{ --brand:{brand}; --brand-600:{brand600}; }}
-      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:10px 0 6px 0; }}
+      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
       .h-print-btn {{
         background: linear-gradient(180deg, var(--brand), var(--brand-600));
         color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer;
         box-shadow:0 10px 20px rgba(0,0,0,.10);
       }}
-      .hint {{ font-size:12px; color:#6b7280 }}
     </style>
-
     <div class="printbar">
-      <!-- ESTÁVEL (recomendado): abre o PDF numa aba limpa; você imprime pelo botão do viewer -->
-      <button class="h-print-btn" onclick="openPdf('{b64_all}')">🖨️ Abrir PDF — Tudo</button>
-
-      <!-- OPCIONAL: imprime automaticamente (menos estável em alguns Chromes) -->
-      <button class="h-print-btn" onclick="autoPrint('{b64_all}')">⚡ Imprimir agora (modo rápido)</button>
-
-      {('<button class="h-print-btn" onclick="openPdf(\\'' + b64_cp + '\\')">🖨️ Abrir PDF — CP focado</button>') if b64_cp else ''}
-
-      <span class="hint">Dica: se o modo rápido der páginas em branco, use “Abrir PDF” e imprima pelo botão do visualizador.</span>
+      <button class="h-print-btn" onclick="openPdf({js_b64_all})">📄 Abrir PDF — Tudo</button>
+      {btn_cp_html}
+      <span style="font-size:12px;color:#6b7280">Abrirá em uma nova aba. Ative pop-ups se necessário.</span>
     </div>
-
     <script>
-      function b64ToBlobUrl(b64) {{
-        var bin = atob(b64), len = bin.length;
+    function openPdf(b64) {{
+      if (!b64) return;
+      try {{
+        var bin = atob(b64);
+        var len = bin.length;
         var bytes = new Uint8Array(len);
-        for (var i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
-        var blob = new Blob([bytes], {{type:'application/pdf'}});
-        return URL.createObjectURL(blob);
+        for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], {{ type: 'application/pdf' }});
+        var url = URL.createObjectURL(blob);
+        var w = window.open(url, '_blank');
+        if (!w) alert('Habilite pop-ups do navegador para visualizar o PDF.');
+      }} catch (e) {{
+        alert('Falha ao abrir PDF: ' + e);
       }}
-
-      // Caminho estável: abrir o PDF e deixar o viewer imprimir
-      function openPdf(b64) {{
-        try {{
-          var url = b64ToBlobUrl(b64);
-          window.open(url, '_blank');
-        }} catch(e) {{
-          alert('Falha ao abrir PDF: ' + e);
-        }}
-      }}
-
-      // Caminho rápido: auto print com <embed> e onload (pode falhar em alguns Chromes)
-      function autoPrint(b64) {{
-        try {{
-          var url = b64ToBlobUrl(b64);
-          var w = window.open('', '_blank');
-          if (!w) {{ alert('Habilite pop-ups para imprimir.'); return; }}
-          // Documento mínimo, tela cheia, sem margens
-          w.document.write(
-            '<!doctype html><html><head><title>Imprimir</title>'+
-            '<style>@page{{margin:0}} html,body{{height:100%;margin:0}} #pdf{{width:100%;height:100%;border:0;display:block}}</style>'+
-            '</head><body>'+
-              '<embed id="pdf" src="'+url+'" type="application/pdf"/>'+
-            '</body></html>'
-          );
-          w.document.close();
-
-          // imprime quando o plugin terminar de carregar o PDF
-          var tries=60; // ~30s
-          var tick=setInterval(function(){{
-            try {{
-              var emb = w.document.getElementById('pdf');
-              if (emb && emb.getAttribute('src')) {{
-                // tenta garantir renderização antes da chamada
-                w.focus();
-                w.print();
-                clearInterval(tick);
-              }}
-            }} catch(e) {{}}
-            if(--tries<=0) clearInterval(tick);
-          }}, 500);
-        }} catch(e) {{
-          alert('Falha ao preparar impressão: ' + e);
-        }}
-      }}
+    }}
     </script>
     """
-    st.components.v1.html(html, height=82)
+    st.components.v1.html(html, height=74)
 
 
 # =============================================================================
@@ -1593,6 +1556,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

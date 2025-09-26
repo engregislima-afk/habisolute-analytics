@@ -1479,7 +1479,62 @@ if uploaded_files:
 
                 # >>> Botão de abrir/imprimir (corrigido: usa a função certa)
                 render_pdf_actions(pdf_bytes, None, brand, brand600)
+                def render_print_buttons(pdf_all: bytes, pdf_cp: bytes | None, brand: str = "#3b82f6", brand600: str = "#2563eb"):
+    """Mostra botões 'Imprimir Tudo' e 'Imprimir por CP selecionado' usando iframe + Blob (sem páginas em branco)."""
+    b64_all = base64.b64encode(pdf_all).decode("ascii")
+    b64_cp = base64.b64encode(pdf_cp).decode("ascii") if pdf_cp else ""
 
+    html = f"""
+    <style>
+      :root {{ --brand:{brand}; --brand-600:{brand600}; }}
+      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:8px 0 2px 0; }}
+      .h-btn {{
+        display:inline-block; text-decoration:none;
+        background: linear-gradient(180deg, var(--brand), var(--brand-600));
+        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700;
+        box-shadow:0 10px 20px rgba(0,0,0,.10); cursor:pointer;
+      }}
+      .print-hint {{ font-size:12px;color:#6b7280; margin-left:6px }}
+      iframe#print_iframe_all, iframe#print_iframe_cp {{ width:0;height:0;border:0; position:absolute; left:-9999px; }}
+    </style>
+
+    <div class="printbar">
+      <button class="h-btn" onclick="printFromB64('{b64_all}', 'print_iframe_all')">🖨️ Imprimir — Tudo</button>
+      {"<button class='h-btn' onclick=\"printFromB64('"+b64_cp+"', 'print_iframe_cp')\">🖨️ Imprimir — CP selecionado</button>" if pdf_cp else ""}
+      <span class="print-hint">Dica: aguarde o viewer carregar; a impressão abre a caixa do navegador.</span>
+    </div>
+
+    <iframe id="print_iframe_all"></iframe>
+    <iframe id="print_iframe_cp"></iframe>
+
+    <script>
+      function printFromB64(b64, iframeId) {{
+        if (!b64) return;
+        try {{
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const blob = new Blob([bytes], {{type:'application/pdf'}});
+          const url = URL.createObjectURL(blob);
+          const iframe = document.getElementById(iframeId);
+          const done = () => {{
+            // pequeno atraso para garantir renderização antes do print
+            setTimeout(() => {{
+              try {{
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+              }} catch(e) {{
+                alert('Falha ao imprimir: ' + e);
+              }}
+            }}, 300);
+          }};
+          iframe.onload = done;
+          iframe.src = url;
+        }} catch(e) {{
+          alert('Falha ao preparar impressão: ' + e);
+        }}
+      }}
+    </script>
+    """
+    st.markdown(html, unsafe_allow_html=True)
             except Exception:
                 st.warning("Não foi possível gerar o PDF agora.")
 
@@ -1592,5 +1647,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

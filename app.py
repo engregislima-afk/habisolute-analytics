@@ -143,6 +143,32 @@ s.setdefault("OUTLIER_SIGMA", 3.0)  # (guardado para expansão futura)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterior do uploader
+# --- ler preferências da URL (persistentes via link) ---
+def _apply_query_prefs():
+    try:
+        qp = st.query_params  # API nova, sem aviso deprecat.
+
+        # helper: pega o primeiro item se vier lista, ou o próprio valor
+        def _first(x):
+            if x is None:
+                return None
+            return x[0] if isinstance(x, list) else x
+
+        # aceita nomes longos e curtos
+        theme = _first(qp.get("theme") or qp.get("t"))
+        brand = _first(qp.get("brand") or qp.get("b"))
+        qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
+
+        if theme in ("Escuro moderno", "Claro corporativo"):
+            s["theme_mode"] = theme
+        if brand in ("Laranja", "Azul", "Verde", "Roxo"):
+            s["brand"] = brand
+        if qr:
+            s["qr_url"] = qr
+
+    except Exception:
+        # sem query ou API indisponível → ignora
+        pass
 
 # =============================================================================
 # Estilo e tema
@@ -208,7 +234,57 @@ else:
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
+st.markdown(f"""
+<style>
+/* barra/área para agrupar os botões (opcional) */
+.h-toolbar {{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 6px 0 14px 0;
+}}
 
+@media (min-width: 900px) {{
+  .h-toolbar {{
+    grid-template-columns: 1fr 1fr; /* 2 colunas em telas largas */
+  }}
+}}
+
+/* PADRÃO ÚNICO: todos os botões do Streamlit + botão de imprimir */
+.stButton > button,
+.stDownloadButton > button,
+.h-print-btn {{
+  background: linear-gradient(180deg, {brand}, {brand600}) !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
+  width: 100% !important;
+  transition: transform .06s ease, filter .1s ease;
+}}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.h-print-btn:hover {{
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}}
+
+.stButton > button:active,
+.stDownloadButton > button:active,
+.h-print-btn:active {{
+  transform: translateY(0) scale(.99);
+}}
+
+/* variante cinza, se um dia quiser */
+.h-btn--secondary > button {{
+  background: #e5e7eb !important;
+  color: #111827 !important;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 # =============================================================================
 # Login minimalista
@@ -286,19 +362,42 @@ with st.container():
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         col_a, col_b = st.columns(2)
 
-        with col_a:
-            if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-                save_user_prefs({
-                    "theme_mode": s["theme_mode"],
-                    "brand": s["brand"],
-                    "qr_url": s["qr_url"]
-                })
-                st.success("Preferências salvas.")
+        # Salvar / Sair
+with c4:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    col_a, col_b = st.columns(2)
 
-        with col_b:
-            if st.button("Sair", use_container_width=True, key="k_logout"):
-                s["logged_in"] = False
-                st.rerun()
+    # --- Botão SALVAR (coluna esquerda)
+    with col_a:
+        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+            # salva localmente
+            save_user_prefs({
+                "theme_mode": s["theme_mode"],
+                "brand":      s["brand"],
+                "qr_url":     s["qr_url"],
+            })
+
+                        # grava também na URL para persistir via favorito (sem aviso deprecat.)
+            try:
+                qp = st.query_params  # novo API do Streamlit
+                qp.update({
+                    "theme": s["theme_mode"],
+                    "brand": s["brand"],
+                    "q": s["qr_url"],
+                })
+            except Exception:
+                pass
+
+            st.success(
+                "Preferências salvas! Dica: adicione esta página aos favoritos para manter suas preferências."
+            )
+
+    # --- Botão SAIR (coluna direita)
+    with col_b:
+        if st.button("Sair", use_container_width=True, key="k_logout"):
+            s["logged_in"] = False
+            st.rerun()
+
 
     st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------------------------------
@@ -1050,9 +1149,12 @@ if uploaded_files:
         sa_dp = stats_all_focus[stats_all_focus["count"] >= 2].copy()
         if not sa_dp.empty:
             ax.plot(sa_dp["Idade (dias)"], sa_dp["mean"], linewidth=2.2, marker="s", label="Média")
-            ax.fill_between(sa_dp["Idade (dias)"],
-                            sa_dp["mean"] - sa_dp["std"],
-                            sa_dp["mean"] + sa_dp["std"],
+        # preenchimento ±1DP só se houver DP disponível
+        _sdp = sa_dp.dropna(subset=["std"]).copy()
+        if not _sdp.empty:
+            ax.fill_between(_sdp["Idade (dias)"],
+                            _sdp["mean"] - _sdp["std"],
+                            _sdp["mean"] + _sdp["std"],
                             alpha=0.2, label="±1 DP")
 
         if fck_active is not None:
@@ -1241,7 +1343,7 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível parear os pontos do Gráfico 1 com o Gráfico 2 (Gráfico 4).")
 
-        # ===== Verificação do fck de Projeto
+        # ===== Verificação do fck de Projeto — RESUMO + DETALHADO =====
         st.write("#### ✅ Verificação do fck de Projeto")
 
         origem_fck = "conjunto filtrado" if not fck_series_focus.empty else ("todos os dados" if not fck_series_all_g.empty else "—")
@@ -1280,6 +1382,7 @@ if uploaded_files:
 
         st.markdown("<div style='display:flex;flex-wrap:wrap;gap:10px'>"+ "".join(linhas) +"</div>", unsafe_allow_html=True)
 
+        # Tabela resumo por idade (com emoji de cor)
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [
@@ -1293,131 +1396,203 @@ if uploaded_files:
                 (fck_active if fck_active is not None else float("nan")),
             ],
         })
-        _status_list = ["Informativo"]
-        if pd.isna(verif_fck_df.loc[1, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[1, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[1,"Média Real (MPa)"] >= verif_fck_df.loc[1,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        if pd.isna(verif_fck_df.loc[2, "Média Real (MPa)"]) or pd.isna(verif_fck_df.loc[2, "fck Projeto (MPa)"]):
-            _status_list.append("Sem dados / fck não identificado")
-        else:
-            _status_list.append("Atingiu fck" if verif_fck_df.loc[2,"Média Real (MPa)"] >= verif_fck_df.loc[2,"fck Projeto (MPa)"]
-                                else "Não atingiu fck")
-        verif_fck_df["Status"] = _status_list
+
+        resumo_status = []
+        for idade, media, fckp in verif_fck_df.itertuples(index=False):
+            if idade == 7:
+                resumo_status.append("🟡 Informativo (7d)")
+            else:
+                if pd.isna(media) or pd.isna(fckp):
+                    resumo_status.append("⚪ Sem dados")
+                else:
+                    resumo_status.append("🟢 Atingiu fck" if media >= fckp else "🔴 Não atingiu fck")
+        verif_fck_df["Status"] = resumo_status
 
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== PDF / Impressão
-        if "gerar_pdf" in globals():
-            try:
-                pdf_bytes = gerar_pdf(
-                    df_view,
-                    df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                           .agg(Média="mean", Desvio_Padrão="std", n="count")
-                           .reset_index(),
-                    fig1, fig2, fig3, fig4,
-                    str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                    str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-                    str(fck_active) if fck_active is not None else "—",
-                    verif_fck_df, cond_df, pareamento_df
-                )
-                _nome_pdf = "Relatorio_Graficos.pdf"
-                st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                                   file_name=_nome_pdf, mime="application/pdf")
-            except Exception as e:
-                st.info(f"PDF não gerado: {e}")
+        # ===== Verificação detalhada por CP (7/28/63 dias) =====
+st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
 
-        if "render_print_block" in globals() and "pdf_bytes" in locals():
+if ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty):
+    # precisa dessas colunas
+    if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
+        st.info("Sem colunas necessárias para a verificação (Idade/Resistência).")
+    else:
+        tmp = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
+        if tmp.empty:
+            st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+        else:
+            tmp["MPa"] = pd.to_numeric(tmp["Resistência (MPa)"], errors="coerce")
+
+            # Pivot por CP x idade
+            pv = tmp.pivot_table(index="CP", columns="Idade (dias)", values="MPa", aggfunc="mean")
+
+            # Garante as três idades (mesmo se faltarem no PDF)
+            pv = pv.reindex(columns=[7, 28, 63])
+
+            # Renomeia para os nomes usados na UI
+            pv = pv.rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"}).reset_index()
+
+            # Para versões de pandas antigas, reforce a existência das colunas
+            for c in ["7d (MPa)", "28d (MPa)", "63d (MPa)"]:
+                if c not in pv.columns:
+                    pv[c] = pd.NA
+
+            # Ordena CPs numericamente quando possível
             try:
-                render_print_block(pdf_bytes, None,
-                                   locals().get("brand", "#3b82f6"),
-                                   locals().get("brand600", "#2563eb"))
+                pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+            except Exception:
+                pv["__cp_sort__"] = range(len(pv))
+            pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
+
+            # fck ativo (do foco ou geral)
+            fck_series_focus = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+            fck_active = float(fck_series_focus.mode().iloc[0]) if not fck_series_focus.empty else None
+
+            def _status_text(val, age, fckp):
+                if pd.isna(val) or (fckp is None) or pd.isna(fckp):
+                    return "⚪ Sem dados"
+                if age == 7:
+                    return "🟡 Informativo (7d)"
+                return "🟢 Atingiu fck" if float(val) >= float(fckp) else "🔴 Não atingiu fck"
+
+            # Status coloridos
+            pv["Status 7d"]  = pv["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
+            pv["Status 28d"] = pv["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
+            pv["Status 63d"] = pv["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
+
+            st.dataframe(pv, use_container_width=True)
+else:
+    st.info("Envie um PDF para visualizar a verificação detalhada por CP.")
+
+# ===== PDF / Impressão =====
+has_df = ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty)
+# ===== PDF / Impressão (só quando houver dados) =====
+if has_df:
+    if "gerar_pdf" in globals():
+        try:
+            pdf_bytes = gerar_pdf(
+                df_view,
+                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index(),
+                fig1, fig2, fig3, fig4,
+                str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
+                str(fck_active) if fck_active is not None else "—",
+                verif_fck_df, cond_df, pareamento_df
+            )
+            _nome_pdf = "Relatorio_Graficos.pdf"
+            st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                               file_name=_nome_pdf, mime="application/pdf")
+        except Exception:
+            pass  # não mostra mensagem quando não for relevante
+
+    if "render_print_block" in globals() and "pdf_bytes" in locals():
+        try:
+            render_print_block(pdf_bytes, None,
+                               locals().get("brand", "#3b82f6"),
+                               locals().get("brand600", "#2563eb"))
+        except:
+            pass
+
+    # ===== Exportação: Excel (XLSX) e CSV (ZIP) (só quando houver dados) =====
+    try:
+        stats_all_full = (
+            df_view.groupby("Idade (dias)")["Resistência (MPa)"]
+                  .agg(mean="mean", std="std", count="count")
+                  .reset_index()
+        )
+
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+            df_view.to_excel(writer, sheet_name="Individuais", index=False)
+
+            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"] \
+                   .agg(Média="mean", Desvio_Padrão="std", n="count") \
+                   .reset_index() \
+                   .to_excel(writer, sheet_name="Médias_DP", index=False)
+
+            comp_df = stats_all_full.rename(
+                columns={"mean": "Média Real", "std": "DP Real", "count": "n"}
+            )
+            _est_df = locals().get("est_df")
+            if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                comp_df = comp_df.merge(
+                    _est_df.rename(columns={"Resistência (MPa)": "Estimado"}),
+                    on="Idade (dias)", how="outer"
+                ).sort_values("Idade (dias)")
+                comp_df.to_excel(writer, sheet_name="Comparação", index=False)
+
+            try:
+                ws_md = writer.sheets.get("Médias_DP")
+                if ws_md is not None and "fig1" in locals() and fig1 is not None:
+                    img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
+                    ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
             except:
                 pass
 
-        # ===== Excel/CSV
-        try:
-            stats_all_full = df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index()
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-                df_view.to_excel(writer, sheet_name="Individuais", index=False)
-                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"] \
-                       .agg(Média="mean", Desvio_Padrão="std", n="count") \
-                       .reset_index().to_excel(writer, sheet_name="Médias_DP", index=False)
+            try:
+                ws_comp = writer.sheets.get("Comparação")
+                if ws_comp is not None and "fig2" in locals() and fig2 is not None:
+                    img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
+                    ws_comp.insert_image("H20", img2.name, {"x_scale": 0.7, "y_scale": 0.7})
+                if ws_comp is not None and "fig3" in locals() and fig3 is not None:
+                    img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                    fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
+                    ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
+            except:
+                pass
 
-                comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
-                if est_df is not None:
-                    comp_df = comp_df.merge(est_df.rename(columns={"Resistência (MPa)": "Estimado"}),
-                                            on="Idade (dias)", how="outer").sort_values("Idade (dias)")
-                    comp_df.to_excel(writer, sheet_name="Comparação", index=False)
+        st.download_button(
+            "📊 Baixar Excel (XLSX)",
+            data=excel_buffer.getvalue(),
+            file_name="Relatorio_Graficos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
-                try:
-                    img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
-                    ws = writer.sheets["Médias_DP"]; ws.insert_image("H2", img1.name, {"x_scale":0.7, "y_scale":0.7})
-                except: pass
-                try:
-                    if fig2 is not None:
-                        img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
-                        ws2 = writer.sheets.get("Comparação") or writer.sheets.get("Individuais")
-                        if ws2: ws2.insert_image("H20", img2.name, {"x_scale":0.7, "y_scale":0.7})
-                except: pass
-                try:
-                    if fig3 is not None:
-                        img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
-                        ws3 = writer.sheets.get("Comparação") or writer.sheets.get("Individuais")
-                        if ws3: ws3.insert_image("H38", img3.name, {"x_scale":0.7, "y_scale":0.7})
-                except: pass
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
+            z.writestr(
+                "Medias_DP.csv",
+                df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index()
+                       .to_csv(index=False, sep=";")
+            )
+            if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
+            if "comp_df" in locals():
+                z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
 
-            _xlsx_name = "Relatorio_Graficos.xlsx"
-            st.download_button("📊 Baixar Excel (XLSX)", data=excel_buffer.getvalue(),
-                               file_name=_xlsx_name,
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "🗃️ Baixar CSVs (ZIP)",
+            data=zip_buf.getvalue(),
+            file_name="Relatorio_Graficos_CSVs.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+    except Exception:
+        pass  # silêncio quando não há dados
+else:
+    # (opcional) mensagem enxuta enquanto não há upload
+    st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
-                z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
-                z.writestr("Medias_DP.csv",
-                           df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                                  .agg(Média="mean", Desvio_Padrão="std", n="count")
-                                  .reset_index().to_csv(index=False, sep=";"))
-                if est_df is not None:
-                    z.writestr("Estimativas.csv", est_df.to_csv(index=False, sep=";"))
-                if "comp_df" in locals():
-                    z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
-            st.download_button("🗃️ Baixar CSVs (ZIP)", data=zip_buf.getvalue(),
-                               file_name="Relatorio_Graficos_CSVs.zip", mime="application/zip")
-        except Exception as e:
-            st.info(f"Exportação para Excel/CSV não realizada: {e}")
-
-        # ===== Painel por CP
-        st.markdown("---")
-        st.write("### Informações adicionais por CP")
-        for cp, subset in df_view.groupby("CP"):
-            nfs = ", ".join(sorted({str(x) for x in subset["Nota Fiscal"].dropna()})) or "—"
-            local_val = next((x for x in subset["Local"] if isinstance(x, str) and x.strip()),
-                             "—") if "Local" in subset.columns else "—"
-            with st.expander(f"📌 CP {cp}"):
-                st.write(
-                    f"<span class='pill'>NF(s): {nfs}</span> &nbsp; "
-                    f"<span class='pill'>Local/Peças: {local_val}</span>",
-                    unsafe_allow_html=True
-                )
-                cols_show = [c for c in ["Arquivo","Obra","Data Certificado","Relatório","Idade (dias)","Resistência (MPa)",
-                                         "Nota Fiscal","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"] if c in subset.columns]
-                st.dataframe(
-                    subset[cols_show].sort_values([c for c in ["Arquivo","Relatório","Idade (dias)"] if c in cols_show]),
-                    use_container_width=True
-                )
-
-# Botão para novo upload
-st.markdown("---")
-if st.button("📂 Ler Novo(s) Certificado(s)", type="primary"):
+# 5) Ler Novo(s) Certificado(s)
+if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
     s["uploader_key"] += 1  # força um widget novo
     st.rerun()
 
-# Rodapé: Normas
+st.markdown("</div>", unsafe_allow_html=True)
+
+# (opcional) separador antes do rodapé
 st.markdown("---")
+
+# ===== Rodapé: Normas =====
 st.subheader("📘 Normas de Referência")
 st.markdown("""
 - **NBR 5738** – Concreto: Procedimento para moldagem e cura de corpos de prova  
@@ -1433,4 +1608,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

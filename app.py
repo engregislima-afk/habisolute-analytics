@@ -1,5 +1,5 @@
 # app.py — base com login + cadastro (admin) + preferências
-# Requisitos básicos: streamlit
+# Requisitos: streamlit
 
 from __future__ import annotations
 
@@ -113,10 +113,17 @@ s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativ
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 
+# >>> defaults do seu app analítico (para evitar KeyError em toggles/slider etc.)
+s.setdefault("uploader_key", 0)
+s.setdefault("BATCH_MODE", False)
+s.setdefault("_prev_batch", s["BATCH_MODE"])
+s.setdefault("TOL_MP", 1.0)
+
+
 # Lê preferências da URL (persistentes via link)
 def _apply_query_prefs():
     try:
-        qp = st.query_params  # API nova (sem aviso)
+        qp = st.query_params  # API nova
         # aceita nomes longos e curtos
         def _first(x):
             if x is None:
@@ -270,7 +277,7 @@ with st.container():
                     "brand": s["brand"],
                     "qr_url": s["qr_url"]
                 })
-                # grava também na URL (sem aviso deprecat)
+                # grava também na URL
                 try:
                     qp = st.query_params
                     qp.update({
@@ -318,29 +325,24 @@ if s.get("logged_in") and s.get("user_role") == "admin":
     st.sidebar.markdown("---")
     st.sidebar.caption(f"Logado como: **{s.get('user','')}** — perfil **{s.get('user_role','user')}**")
 
-
 # =============================================================================
 # === A partir daqui entra seu app analítico (upload, gráficos, pdf, etc.) ===
 # =============================================================================
 
-st.info("Base de login/cadastro e preferências carregada. Agora cole aqui embaixo o restante do app (upload, leitura dos PDFs, análises, gráficos, PDF, etc.).")
-
-# =============================================================================
-# Sidebar
-# =============================================================================
+# EXEMPLO de sidebar do seu app analítico (opcional):
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
-    s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
-    # >>> FIX 400: se o modo do uploader mudou, trocamos a key para forçar um widget novo
+    s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s.get("BATCH_MODE", False)))
     if s["BATCH_MODE"] != s["_prev_batch"]:
         s["_prev_batch"] = s["BATCH_MODE"]
-        s["uploader_key"] += 1
-    s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
+        s["uploader_key"] += 1  # força recriar uploader quando muda modo
+    s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s.get("TOL_MP", 1.0)), 0.1)
     st.markdown("---")
-    st.caption("Logado como: Administrador")
+    st.caption(f"Logado como: **{s.get('user','')}** — perfil **{s.get('user_role','user')}**")
 
-TOL_MP = float(s["TOL_MP"])
-BATCH_MODE = bool(s["BATCH_MODE"])
+# >>>>>> COLE AQUI o restante do seu app (uploader, parsing, KPIs, gráficos, PDF, Excel/CSV...)
+# Removi a faixa de info para não “empurrar” a tela.
+
 
 
 # =============================================================================
@@ -1530,6 +1532,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

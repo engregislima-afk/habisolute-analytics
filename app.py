@@ -17,6 +17,10 @@ import pdfplumber
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
+# ==================== Config Página ====================
+if HAS_ST:
+    st.set_page_config(page_title="Painel — Habisolute", layout="wide", page_icon="🧪")
+
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import (
@@ -1608,3 +1612,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

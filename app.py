@@ -1510,13 +1510,37 @@ else:
 
             pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
 
-            # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
-            cols_ini = ["CP"]
+            # --- Organização por idade com status ao lado de cada grupo ---
+            # Fica: CP | 7d (...réplicas...) | Status 7d | 28d (...réplicas...) | Status 28d | 63d (...réplicas...) | Status 63d
+            cols_cp = ["CP"]
             cols_7   = [c for c in pv.columns if c.startswith("7d")]
             cols_28  = [c for c in pv.columns if c.startswith("28d")]
             cols_63  = [c for c in pv.columns if c.startswith("63d")]
-            cols_status = ["Status 7d", "Status 28d", "Status 63d"]
-            pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+
+            ordered_cols = (
+                cols_cp
+                + cols_7  + (["Status 7d"]  if "Status 7d"  in pv.columns else [])
+                + cols_28 + (["Status 28d"] if "Status 28d" in pv.columns else [])
+                + cols_63 + (["Status 63d"] if "Status 63d" in pv.columns else [])
+            )
+            ordered_cols = [c for c in ordered_cols if c in pv.columns]  # defensivo
+
+            # (opcional) renomeia os cabeçalhos dos status para ficar mais claro
+            pv = pv.rename(columns={
+                "Status 7d": "7 dias — Status",
+                "Status 28d": "28 dias — Status",
+                "Status 63d": "63 dias — Status",
+            })
+
+            # substitui pelos nomes renomeados, se aplicável
+            ordered_cols = [
+                "7 dias — Status" if c == "Status 7d" else
+                "28 dias — Status" if c == "Status 28d" else
+                "63 dias — Status" if c == "Status 63d" else c
+                for c in ordered_cols
+            ]
+
+            pv = pv[ordered_cols]
 
             st.dataframe(pv, use_container_width=True)
 

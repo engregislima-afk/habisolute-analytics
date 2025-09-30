@@ -1426,20 +1426,20 @@ else:
         # NOVO: enumera réplicas por CP+Idade (para separar 28d #1 e 28d #2)
         tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
 
-        # pivot mantendo as réplicas em colunas
+        # Pivot mantendo as réplicas em colunas
         pv_multi = tmp_v.pivot_table(
             index="CP",
             columns=["Idade (dias)", "rep"],
             values="MPa",
-            aggfunc="first"   # mantém cada réplica na sua coluna
+            aggfunc="first"  # mantém cada réplica na sua coluna
         ).sort_index(axis=1)
 
-        # garante os níveis 7/28/63 existindo
+        # Garante os níveis 7/28/63 existindo
         for age in [7, 28, 63]:
             if age not in pv_multi.columns.get_level_values(0):
                 pv_multi[(age, 1)] = pd.NA
 
-        # reordena colunas por idade e réplica
+        # Reordena colunas por idade e réplica
         ordered = []
         for age in [7, 28, 63]:
             reps = sorted([r for (a, r) in pv_multi.columns if a == age])
@@ -1447,7 +1447,7 @@ else:
                 ordered.append((age, r))
         pv_multi = pv_multi.reindex(columns=ordered)
 
-        # nomes achatados: "28d (MPa)" para rep=1; "28d #2 (MPa)" para rep>1
+        # Nomes “achatados”: "28d (MPa)" para rep=1; "28d #2 (MPa)" para rep>1
         def _flat(age, rep):
             base = f"{age}d"
             return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
@@ -1476,7 +1476,7 @@ else:
                 return "🟡 Informativo (7d)"
             return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
-        # médias por idade, alinhadas ao índice de pv_multi (CP)
+        # Médias por idade (alinhadas ao índice de pv_multi -> CP)
         media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
         media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
 
@@ -1497,57 +1497,56 @@ else:
                 return "⚪ Sem dados"
             return "🟢 Atingiu fck" if ok else "🔴 Não atingiu fck"
 
-        # monta um df de status indexado por CP
+        # Monta um df de status indexado por CP e junta no pv
         status_df = pd.DataFrame({
             "Status 7d":  [ _status_text_media(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index) ],
             "Status 28d": [ _status_from_ok(v) for v in ok28.reindex(pv_multi.index) ],
             "Status 63d": [ _status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ],
         }, index=pv_multi.index)
 
-        # junta os status ao pv já ordenado por CP
         pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
 
         # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
-cols_ini = ["CP"]
-cols_7   = [c for c in pv.columns if c.startswith("7d")]
-cols_28  = [c for c in pv.columns if c.startswith("28d")]
-cols_63  = [c for c in pv.columns if c.startswith("63d")]
-cols_status = ["Status 7d", "Status 28d", "Status 63d"]
-pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+        cols_ini = ["CP"]
+        cols_7   = [c for c in pv.columns if c.startswith("7d")]
+        cols_28  = [c for c in pv.columns if c.startswith("28d")]
+        cols_63  = [c for c in pv.columns if c.startswith("63d")]
+        cols_status = ["Status 7d", "Status 28d", "Status 63d"]
+        pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
 
-st.dataframe(pv, use_container_width=True)
+        st.dataframe(pv, use_container_width=True)
 
-        # ===== PDF / Impressão =====
-        has_df = True  # estamos no ramo com dados
+# ===== PDF / Impressão =====
+has_df = ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty)
 
-        # ===== PDF / Impressão (só quando houver dados) =====
-        if has_df:
-            if "gerar_pdf" in globals():
-                try:
-                    pdf_bytes = gerar_pdf(
-                        df_view,
-                        df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                               .agg(Média="mean", Desvio_Padrão="std", n="count")
-                               .reset_index(),
-                        fig1, fig2, fig3, fig4,
-                        str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                        str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-                        str(fck_active) if fck_active is not None else "—",
-                        verif_fck_df, cond_df, pareamento_df
-                    )
-                    _nome_pdf = "Relatorio_Graficos.pdf"
-                    st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                                       file_name=_nome_pdf, mime="application/pdf")
-                except Exception:
-                    pass  # não mostra mensagem quando não for relevante
+# ===== PDF / Impressão (só quando houver dados) =====
+if has_df:
+    if "gerar_pdf" in globals():
+        try:
+            pdf_bytes = gerar_pdf(
+                df_view,
+                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index(),
+                fig1, fig2, fig3, fig4,
+                str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
+                str(fck_active) if fck_active is not None else "—",
+                verif_fck_df, cond_df, pareamento_df
+            )
+            _nome_pdf = "Relatorio_Graficos.pdf"
+            st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                               file_name=_nome_pdf, mime="application/pdf")
+        except Exception:
+            pass  # silêncio se não conseguir gerar PDF
 
-            if "render_print_block" in globals() and "pdf_bytes" in locals():
-                try:
-                    render_print_block(pdf_bytes, None,
-                                       locals().get("brand", "#3b82f6"),
-                                       locals().get("brand600", "#2563eb"))
-                except:
-                    pass
+    if "render_print_block" in globals() and "pdf_bytes" in locals():
+        try:
+            render_print_block(pdf_bytes, None,
+                               locals().get("brand", "#3b82f6"),
+                               locals().get("brand600", "#2563eb"))
+        except Exception:
+            pass
 
     # ===== Exportação: Excel (XLSX) e CSV (ZIP) (só quando houver dados) =====
     try:
@@ -1559,13 +1558,16 @@ st.dataframe(pv, use_container_width=True)
 
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+            # Aba 1 — Individuais
             df_view.to_excel(writer, sheet_name="Individuais", index=False)
 
+            # Aba 2 — Médias e DP por CP×Idade
             df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"] \
                    .agg(Média="mean", Desvio_Padrão="std", n="count") \
                    .reset_index() \
                    .to_excel(writer, sheet_name="Médias_DP", index=False)
 
+            # Aba 3 — Comparação (Real x Estimado), se existir est_df
             comp_df = stats_all_full.rename(
                 columns={"mean": "Média Real", "std": "DP Real", "count": "n"}
             )
@@ -1577,13 +1579,14 @@ st.dataframe(pv, use_container_width=True)
                 ).sort_values("Idade (dias)")
                 comp_df.to_excel(writer, sheet_name="Comparação", index=False)
 
+            # Inserção de imagens (opcional)
             try:
                 ws_md = writer.sheets.get("Médias_DP")
                 if ws_md is not None and "fig1" in locals() and fig1 is not None:
                     img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
                     fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
                     ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
-            except:
+            except Exception:
                 pass
 
             try:
@@ -1596,7 +1599,7 @@ st.dataframe(pv, use_container_width=True)
                     img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
                     fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
                     ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
-            except:
+            except Exception:
                 pass
 
         st.download_button(
@@ -1632,7 +1635,7 @@ st.dataframe(pv, use_container_width=True)
     except Exception:
         pass  # silêncio quando não há dados
 else:
-    # (opcional) mensagem enxuta enquanto não há upload
+    # (opcional) mensagem enquanto não há upload
     st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
 # 5) Ler Novo(s) Certificado(s)
@@ -1661,6 +1664,8 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+
 
 
 

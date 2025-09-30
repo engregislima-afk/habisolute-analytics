@@ -1508,14 +1508,14 @@ else:
         pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
 
         # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
-        cols_ini = ["CP"]
-        cols_7   = [c for c in pv.columns if c.startswith("7d")]
-        cols_28  = [c for c in pv.columns if c.startswith("28d")]
-        cols_63  = [c for c in pv.columns if c.startswith("63d")]
-        cols_status = ["Status 7d", "Status 28d", "Status 63d"]
-        pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+cols_ini = ["CP"]
+cols_7   = [c for c in pv.columns if c.startswith("7d")]
+cols_28  = [c for c in pv.columns if c.startswith("28d")]
+cols_63  = [c for c in pv.columns if c.startswith("63d")]
+cols_status = ["Status 7d", "Status 28d", "Status 63d"]
+pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
 
-        st.dataframe(pv, use_container_width=True)
+st.dataframe(pv, use_container_width=True)
 
         # ===== PDF / Impressão =====
         has_df = True  # estamos no ramo com dados
@@ -1661,6 +1661,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

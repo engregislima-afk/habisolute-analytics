@@ -930,7 +930,7 @@ def gerar_pdf(
 # =============================================================================
 # Cabeçalho e uploader
 # =============================================================================
-st.markdown("<h3 class='brand-title'>🏗️ Habisolute IA</h3>", unsafe_allow_html=True)
+st.markdown("<h3 class='brand-title'>🏗️ Habisolute IA🤖</h3>", unsafe_allow_html=True)
 st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
 
 up_help = "Carregue 1 PDF (ou vários em modo lote)."
@@ -1692,4 +1692,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

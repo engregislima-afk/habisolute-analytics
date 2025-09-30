@@ -1414,107 +1414,111 @@ if uploaded_files:
         # ===== Verificação detalhada por CP (7/28/63 dias) — ***MELHORADO: inclui réplicas*** =====
 st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
 
-if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
-    st.info("Sem colunas necessárias para a verificação (Idade/Resistência).")
+# 🚧 GUARDA: só prossegue se df_view existir e for um DataFrame
+if ("df_view" not in locals()) or (not isinstance(df_view, pd.DataFrame)) or df_view.empty:
+    st.info("Envie um PDF para visualizar a verificação detalhada.")
 else:
-    tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
-    if tmp_v.empty:
-        st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+    if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
+        st.info("Sem colunas necessárias para a verificação (Idade/Resistência).")
     else:
-        tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
-
-        # NOVO: enumera réplicas por CP+Idade (para separar 28d #1 e 28d #2)
-        tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
-
-        # Pivot mantendo as réplicas em colunas
-        pv_multi = tmp_v.pivot_table(
-            index="CP",
-            columns=["Idade (dias)", "rep"],
-            values="MPa",
-            aggfunc="first"  # mantém cada réplica na sua coluna
-        ).sort_index(axis=1)
-
-        # Garante os níveis 7/28/63 existindo
-        for age in [7, 28, 63]:
-            if age not in pv_multi.columns.get_level_values(0):
-                pv_multi[(age, 1)] = pd.NA
-
-        # Reordena colunas por idade e réplica
-        ordered = []
-        for age in [7, 28, 63]:
-            reps = sorted([r for (a, r) in pv_multi.columns if a == age])
-            for r in reps:
-                ordered.append((age, r))
-        pv_multi = pv_multi.reindex(columns=ordered)
-
-        # Nomes “achatados”: "28d (MPa)" para rep=1; "28d #2 (MPa)" para rep>1
-        def _flat(age, rep):
-            base = f"{age}d"
-            return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
-
-        pv = pv_multi.copy()
-        pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
-        pv = pv.reset_index()
-
-        # Ordena CPs numericamente quando possível
-        try:
-            pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
-        except Exception:
-            pv["__cp_sort__"] = range(len(pv))
-        pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
-
-        # fck ativo (do conjunto filtrado)
-        fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-        fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
-
-        # ===== Status por idade
-        # 7d e 63d por MÉDIA; 28d por TODAS AS RÉPLICAS ≥ fck
-        def _status_text_media(media_idade, age, fckp):
-            if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
-                return "⚪ Sem dados"
-            if age == 7:
-                return "🟡 Informativo (7d)"
-            return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
-
-        # Médias por idade (alinhadas ao índice de pv_multi -> CP)
-        media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
-        media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
-
-        # 28d: todas as réplicas do CP devem ser ≥ fck para "Atingiu"
-        if 28 in pv_multi.columns.get_level_values(0) and (fck_active2 is not None) and not pd.isna(fck_active2):
-            cols28 = pv_multi[28]  # todas as colunas de réplicas 28d (#1, #2, ...)
-            def _all_reps_ok(row):
-                vals = row.dropna().astype(float)
-                if vals.empty:
-                    return None  # sem dados
-                return bool((vals >= float(fck_active2)).all())
-            ok28 = cols28.apply(_all_reps_ok, axis=1)
+        tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
+        if tmp_v.empty:
+            st.info("Sem CPs de 7/28/63 dias no filtro atual.")
         else:
-            ok28 = pd.Series([None] * pv_multi.shape[0], index=pv_multi.index)
+            tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
 
-        def _status_from_ok(ok):
-            if ok is None:
-                return "⚪ Sem dados"
-            return "🟢 Atingiu fck" if ok else "🔴 Não atingiu fck"
+            # NOVO: enumera réplicas por CP+Idade (para separar 28d #1 e 28d #2)
+            tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
 
-        # Monta um df de status indexado por CP e junta no pv
-        status_df = pd.DataFrame({
-            "Status 7d":  [ _status_text_media(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index) ],
-            "Status 28d": [ _status_from_ok(v) for v in ok28.reindex(pv_multi.index) ],
-            "Status 63d": [ _status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ],
-        }, index=pv_multi.index)
+            # Pivot mantendo as réplicas em colunas
+            pv_multi = tmp_v.pivot_table(
+                index="CP",
+                columns=["Idade (dias)", "rep"],
+                values="MPa",
+                aggfunc="first"  # mantém cada réplica na sua coluna
+            ).sort_index(axis=1)
 
-        pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
+            # Garante os níveis 7/28/63 existindo
+            for age in [7, 28, 63]:
+                if age not in pv_multi.columns.get_level_values(0):
+                    pv_multi[(age, 1)] = pd.NA
 
-        # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
-        cols_ini = ["CP"]
-        cols_7   = [c for c in pv.columns if c.startswith("7d")]
-        cols_28  = [c for c in pv.columns if c.startswith("28d")]
-        cols_63  = [c for c in pv.columns if c.startswith("63d")]
-        cols_status = ["Status 7d", "Status 28d", "Status 63d"]
-        pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+            # Reordena colunas por idade e réplica
+            ordered = []
+            for age in [7, 28, 63]:
+                reps = sorted([r for (a, r) in pv_multi.columns if a == age])
+                for r in reps:
+                    ordered.append((age, r))
+            pv_multi = pv_multi.reindex(columns=ordered)
 
-        st.dataframe(pv, use_container_width=True)
+            # Nomes “achatados”: "28d (MPa)" para rep=1; "28d #2 (MPa)" para rep>1
+            def _flat(age, rep):
+                base = f"{age}d"
+                return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
+
+            pv = pv_multi.copy()
+            pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
+            pv = pv.reset_index()
+
+            # Ordena CPs numericamente quando possível
+            try:
+                pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+            except Exception:
+                pv["__cp_sort__"] = range(len(pv))
+            pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
+
+            # fck ativo (do conjunto filtrado)
+            fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+            fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
+
+            # ===== Status por idade
+            # 7d e 63d por MÉDIA; 28d por TODAS AS RÉPLICAS ≥ fck
+            def _status_text_media(media_idade, age, fckp):
+                if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
+                    return "⚪ Sem dados"
+                if age == 7:
+                    return "🟡 Informativo (7d)"
+                return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
+
+            # Médias por idade (alinhadas ao índice de pv_multi -> CP)
+            media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+            media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+
+            # 28d: todas as réplicas do CP devem ser ≥ fck para "Atingiu"
+            if 28 in pv_multi.columns.get_level_values(0) and (fck_active2 is not None) and not pd.isna(fck_active2):
+                cols28 = pv_multi[28]  # todas as colunas de réplicas 28d (#1, #2, ...)
+                def _all_reps_ok(row):
+                    vals = row.dropna().astype(float)
+                    if vals.empty:
+                        return None  # sem dados
+                    return bool((vals >= float(fck_active2)).all())
+                ok28 = cols28.apply(_all_reps_ok, axis=1)
+            else:
+                ok28 = pd.Series([None] * pv_multi.shape[0], index=pv_multi.index)
+
+            def _status_from_ok(ok):
+                if ok is None:
+                    return "⚪ Sem dados"
+                return "🟢 Atingiu fck" if ok else "🔴 Não atingiu fck"
+
+            # Monta um df de status indexado por CP e junta no pv
+            status_df = pd.DataFrame({
+                "Status 7d":  [ _status_text_media(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index) ],
+                "Status 28d": [ _status_from_ok(v) for v in ok28.reindex(pv_multi.index) ],
+                "Status 63d": [ _status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ],
+            }, index=pv_multi.index)
+
+            pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
+
+            # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
+            cols_ini = ["CP"]
+            cols_7   = [c for c in pv.columns if c.startswith("7d")]
+            cols_28  = [c for c in pv.columns if c.startswith("28d")]
+            cols_63  = [c for c in pv.columns if c.startswith("63d")]
+            cols_status = ["Status 7d", "Status 28d", "Status 63d"]
+            pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+
+            st.dataframe(pv, use_container_width=True)
 
 # ===== PDF / Impressão =====
 has_df = ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty)
@@ -1664,10 +1668,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-

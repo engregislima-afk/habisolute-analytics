@@ -143,6 +143,7 @@ s.setdefault("OUTLIER_SIGMA", 3.0)  # (guardado para expansão futura)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])  # >>> FIX 400: guarda modo anterior do uploader
+
 # --- ler preferências da URL (persistentes via link) ---
 def _apply_query_prefs():
     try:
@@ -377,7 +378,7 @@ with c4:
                 "qr_url":     s["qr_url"],
             })
 
-                        # grava também na URL para persistir via favorito (sem aviso deprecat.)
+            # grava também na URL para persistir via favorito (sem aviso deprecat.)
             try:
                 qp = st.query_params  # novo API do Streamlit
                 qp.update({
@@ -1410,91 +1411,119 @@ if uploaded_files:
 
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (7/28/63 dias) =====
-st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
+        # ===== Verificação detalhada por CP (7/28/63 dias) — ***MELHORADO: inclui réplicas*** =====
+        st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
 
-if ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty):
-    # precisa dessas colunas
-    if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
-        st.info("Sem colunas necessárias para a verificação (Idade/Resistência).")
-    else:
-        tmp = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
-        if tmp.empty:
-            st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+        if ("Idade (dias)" not in df_view.columns) or ("Resistência (MPa)" not in df_view.columns):
+            st.info("Sem colunas necessárias para a verificação (Idade/Resistência).")
         else:
-            tmp["MPa"] = pd.to_numeric(tmp["Resistência (MPa)"], errors="coerce")
+            tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
+            if tmp_v.empty:
+                st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+            else:
+                tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
 
-            # Pivot por CP x idade
-            pv = tmp.pivot_table(index="CP", columns="Idade (dias)", values="MPa", aggfunc="mean")
+                # NOVO: enumera réplicas por CP+Idade (para separar 28d #1 e 28d #2)
+                tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
 
-            # Garante as três idades (mesmo se faltarem no PDF)
-            pv = pv.reindex(columns=[7, 28, 63])
+                # pivot mantendo as réplicas em colunas
+                pv_multi = tmp_v.pivot_table(
+                    index="CP",
+                    columns=["Idade (dias)", "rep"],
+                    values="MPa",
+                    aggfunc="first"   # mantém cada réplica na sua coluna
+                ).sort_index(axis=1)
 
-            # Renomeia para os nomes usados na UI
-            pv = pv.rename(columns={7: "7d (MPa)", 28: "28d (MPa)", 63: "63d (MPa)"}).reset_index()
+                # garante os níveis 7/28/63 existindo
+                for age in [7, 28, 63]:
+                    if age not in pv_multi.columns.get_level_values(0):
+                        pv_multi[(age, 1)] = pd.NA
 
-            # Para versões de pandas antigas, reforce a existência das colunas
-            for c in ["7d (MPa)", "28d (MPa)", "63d (MPa)"]:
-                if c not in pv.columns:
-                    pv[c] = pd.NA
+                # reordena colunas por idade e réplica
+                ordered = []
+                for age in [7, 28, 63]:
+                    reps = sorted([r for (a, r) in pv_multi.columns if a == age])
+                    for r in reps:
+                        ordered.append((age, r))
+                pv_multi = pv_multi.reindex(columns=ordered)
 
-            # Ordena CPs numericamente quando possível
-            try:
-                pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
-            except Exception:
-                pv["__cp_sort__"] = range(len(pv))
-            pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
+                # nomes achatados: "28d (MPa)" para rep=1; "28d #2 (MPa)" para rep>1
+                def _flat(age, rep):
+                    base = f"{age}d"
+                    return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
 
-            # fck ativo (do foco ou geral)
-            fck_series_focus = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-            fck_active = float(fck_series_focus.mode().iloc[0]) if not fck_series_focus.empty else None
+                pv = pv_multi.copy()
+                pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
+                pv = pv.reset_index()
 
-            def _status_text(val, age, fckp):
-                if pd.isna(val) or (fckp is None) or pd.isna(fckp):
-                    return "⚪ Sem dados"
-                if age == 7:
-                    return "🟡 Informativo (7d)"
-                return "🟢 Atingiu fck" if float(val) >= float(fckp) else "🔴 Não atingiu fck"
+                # Ordena CPs numericamente quando possível
+                try:
+                    pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+                except Exception:
+                    pv["__cp_sort__"] = range(len(pv))
+                pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-            # Status coloridos
-            pv["Status 7d"]  = pv["7d (MPa)"].apply(lambda v: _status_text(v, 7,  fck_active))
-            pv["Status 28d"] = pv["28d (MPa)"].apply(lambda v: _status_text(v, 28, fck_active))
-            pv["Status 63d"] = pv["63d (MPa)"].apply(lambda v: _status_text(v, 63, fck_active))
+                # fck ativo (do conjunto filtrado)
+                fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+                fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
 
-            st.dataframe(pv, use_container_width=True)
-else:
-    st.info("Envie um PDF para visualizar a verificação detalhada por CP.")
+                # Status por idade baseado na MÉDIA das réplicas (mantém seu critério atual)
+                def _status_text(media_idade, age, fckp):
+                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
+                        return "⚪ Sem dados"
+                    if age == 7:
+                        return "🟡 Informativo (7d)"
+                    return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
-# ===== PDF / Impressão =====
-has_df = ("df_view" in locals()) and isinstance(df_view, pd.DataFrame) and (not df_view.empty)
-# ===== PDF / Impressão (só quando houver dados) =====
-if has_df:
-    if "gerar_pdf" in globals():
-        try:
-            pdf_bytes = gerar_pdf(
-                df_view,
-                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                       .agg(Média="mean", Desvio_Padrão="std", n="count")
-                       .reset_index(),
-                fig1, fig2, fig3, fig4,
-                str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-                str(fck_active) if fck_active is not None else "—",
-                verif_fck_df, cond_df, pareamento_df
-            )
-            _nome_pdf = "Relatorio_Graficos.pdf"
-            st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                               file_name=_nome_pdf, mime="application/pdf")
-        except Exception:
-            pass  # não mostra mensagem quando não for relevante
+                media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+                media_28 = pv_multi[28].mean(axis=1) if 28 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+                media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
 
-    if "render_print_block" in globals() and "pdf_bytes" in locals():
-        try:
-            render_print_block(pdf_bytes, None,
-                               locals().get("brand", "#3b82f6"),
-                               locals().get("brand600", "#2563eb"))
-        except:
-            pass
+                pv["Status 7d"]  = [ _status_text(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index) ]
+                pv["Status 28d"] = [ _status_text(v, 28, fck_active2) for v in media_28.reindex(pv_multi.index) ]
+                pv["Status 63d"] = [ _status_text(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ]
+
+                # Colunas ordenadas: CP | 7d... | 28d... | 63d... | Status...
+                cols_ini = ["CP"]
+                cols_7   = [c for c in pv.columns if c.startswith("7d")]
+                cols_28  = [c for c in pv.columns if c.startswith("28d")]
+                cols_63  = [c for c in pv.columns if c.startswith("63d")]
+                cols_status = ["Status 7d", "Status 28d", "Status 63d"]
+                pv = pv[cols_ini + cols_7 + cols_28 + cols_63 + cols_status]
+
+                st.dataframe(pv, use_container_width=True)
+
+        # ===== PDF / Impressão =====
+        has_df = True  # estamos no ramo com dados
+
+        # ===== PDF / Impressão (só quando houver dados) =====
+        if has_df:
+            if "gerar_pdf" in globals():
+                try:
+                    pdf_bytes = gerar_pdf(
+                        df_view,
+                        df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
+                               .agg(Média="mean", Desvio_Padrão="std", n="count")
+                               .reset_index(),
+                        fig1, fig2, fig3, fig4,
+                        str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                        str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
+                        str(fck_active) if fck_active is not None else "—",
+                        verif_fck_df, cond_df, pareamento_df
+                    )
+                    _nome_pdf = "Relatorio_Graficos.pdf"
+                    st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                                       file_name=_nome_pdf, mime="application/pdf")
+                except Exception:
+                    pass  # não mostra mensagem quando não for relevante
+
+            if "render_print_block" in globals() and "pdf_bytes" in locals():
+                try:
+                    render_print_block(pdf_bytes, None,
+                                       locals().get("brand", "#3b82f6"),
+                                       locals().get("brand600", "#2563eb"))
+                except:
+                    pass
 
     # ===== Exportação: Excel (XLSX) e CSV (ZIP) (só quando houver dados) =====
     try:
@@ -1608,5 +1637,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

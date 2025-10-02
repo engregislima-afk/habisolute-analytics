@@ -345,7 +345,7 @@ with st.container():
     # Cor da marca
     with c2:
         s["brand"] = st.selectbox(
-            "🎨 Cor da marca",
+            "🎨 Cor do Sistema",
             ["Laranja", "Azul", "Verde", "Roxo"],
             index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
         )
@@ -1692,5 +1692,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

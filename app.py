@@ -524,6 +524,16 @@ def _format_float_label(value: Optional[float]) -> str:
     label = f"{num:.2f}".rstrip("0").rstrip(".")
     return label or f"{num:.2f}"
 
+def _normalize_fck_label(value: Any) -> str:
+    """Normaliza valores de fck para um rótulo amigável."""
+    normalized = _to_float_or_none(value)
+    if normalized is not None:
+        return _format_float_label(normalized)
+    raw = str(value).strip()
+    if not raw or raw.lower() == 'nan':
+        return "—"
+    return raw
+
 
 def extrair_dados_certificado(uploaded_file):
     """
@@ -1030,16 +1040,36 @@ if uploaded_files:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
+        df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
+        fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
+        if len(fck_labels) > 1:
+            st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
+            selected_fck_label = st.selectbox(
+                "fck para análise",
+                fck_labels,
+                format_func=lambda lbl: lbl if lbl != "—" else "Não informado"
+            )
+            df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
+        else:
+            selected_fck_label = fck_labels[0] if fck_labels else "—"
+
+        if df_view.empty:
+            st.info("Nenhum dado disponível para o fck selecionado.")
+            st.stop()
+
+        df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
+
         stats_cp_idade = (
             df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
                    .agg(Média="mean", Desvio_Padrão="std", n="count")
                    .reset_index()
         )
+
         # ---------------- Visão Geral + KPIs
         st.markdown("#### Visão Geral")
         obra_label = "—"
         data_label = "—"
-        fck_label = "—"
+        fck_label = selected_fck_label or "—"
         if not df_view.empty:
             ob = sorted(set(df_view["Obra"].astype(str)))
             obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"

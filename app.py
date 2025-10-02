@@ -171,6 +171,8 @@ def _apply_query_prefs():
         # sem query ou API indisponível → ignora
         pass
 
+_apply_query_prefs()
+
 # =============================================================================
 # Estilo e tema
 # =============================================================================
@@ -345,7 +347,7 @@ with st.container():
     # Cor da marca
     with c2:
         s["brand"] = st.selectbox(
-            "🎨 Cor do Sistema",
+            "🎨 Cor da marca",
             ["Laranja", "Azul", "Verde", "Roxo"],
             index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
         )
@@ -503,6 +505,24 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
             except Exception:
                 pass
     return abat_nf, abat_obra
+
+
+def _to_float_or_none(value: Any) -> Optional[float]:
+    """Converte valores em float ou retorna None quando não numéricos."""
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if pd.isna(val) else val
+
+
+def _format_float_label(value: Optional[float]) -> str:
+    """Formata valores float removendo zeros desnecessários."""
+    if value is None or pd.isna(value):
+        return "—"
+    num = float(value)
+    label = f"{num:.2f}".rstrip("0").rstrip(".")
+    return label or f"{num:.2f}"
 
 
 def extrair_dados_certificado(uploaded_file):
@@ -931,7 +951,7 @@ def gerar_pdf(
 # Cabeçalho e uploader
 # =============================================================================
 st.markdown("<h3 class='brand-title'>🏗️ Habisolute IA 🤖</h3>", unsafe_allow_html=True)
-st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final.")
+st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
 
 up_help = "Carregue 1 PDF (ou vários em modo lote)."
 
@@ -1010,6 +1030,11 @@ if uploaded_files:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
+        stats_cp_idade = (
+            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+                   .agg(Média="mean", Desvio_Padrão="std", n="count")
+                   .reset_index()
+        )
         # ---------------- Visão Geral + KPIs
         st.markdown("#### Visão Geral")
         obra_label = "—"
@@ -1018,18 +1043,33 @@ if uploaded_files:
         if not df_view.empty:
             ob = sorted(set(df_view["Obra"].astype(str)))
             obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
-            fcks = sorted({str(x) for x in df_view["Fck Projeto"].unique()})
-            fck_label = ", ".join(fcks) if fcks else "—"
+            fck_candidates: List[str] = []
+            for raw in df_view["Fck Projeto"].tolist():
+                normalized = _to_float_or_none(raw)
+                if normalized is not None:
+                    formatted = _format_float_label(normalized)
+                    if formatted != "—":
+                        fck_candidates.append(formatted)
+                else:
+                    raw_str = str(raw).strip()
+                    if raw_str and raw_str.lower() != "nan":
+                        fck_candidates.append(raw_str)
+            if fck_candidates:
+                fck_label = ", ".join(dict.fromkeys(fck_candidates))
 
             datas_validas = [to_date(x) for x in df_view["Data Certificado"].unique()]
             datas_validas = [d for d in datas_validas if d is not None]
             if datas_validas:
                 di, df_ = min(datas_validas), max(datas_validas)
-                data_label = di.strftime("%d/%m/%Y") if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
+                data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
 
         def fmt_pct(v):
             return "--" if v is None else f"{v:.0f}%"
 
+        fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce")
+        fck_series_all = fck_series_all.dropna()
+        fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+        KPIs = compute_exec_kpis(df_view, fck_val)
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
         fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
         KPIs = compute_exec_kpis(df_view, fck_val)
@@ -1115,8 +1155,7 @@ if uploaded_files:
         st.dataframe(df_view, use_container_width=True)
 
         st.write("#### Estatísticas por CP")
-        stats = df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"].agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
-        st.dataframe(stats, use_container_width=True)
+        st.dataframe(stats_cp_idade, use_container_width=True)
 
         # ---------------- Gráficos
         st.markdown("---")
@@ -1553,13 +1592,11 @@ if has_df:
         try:
             pdf_bytes = gerar_pdf(
                 df_view,
-                df_view.groupby(["CP","Idade (dias)"])["Resistência (MPa)"]
-                       .agg(Média="mean", Desvio_Padrão="std", n="count")
-                       .reset_index(),
+                stats_cp_idade,
                 fig1, fig2, fig3, fig4,
                 str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
                 str(df_view["Data Certificado"].mode().iat[0]) if "Data Certificado" in df_view.columns and not df_view["Data Certificado"].dropna().empty else "—",
-                str(fck_active) if fck_active is not None else "—",
+                _format_float_label(fck_active),
                 verif_fck_df, cond_df, pareamento_df
             )
             _nome_pdf = "Relatorio_Graficos.pdf"
@@ -1590,10 +1627,7 @@ if has_df:
             df_view.to_excel(writer, sheet_name="Individuais", index=False)
 
             # Aba 2 — Médias e DP por CP×Idade
-            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"] \
-                   .agg(Média="mean", Desvio_Padrão="std", n="count") \
-                   .reset_index() \
-                   .to_excel(writer, sheet_name="Médias_DP", index=False)
+            stats_cp_idade.to_excel(writer, sheet_name="Médias_DP", index=False)
 
             # Aba 3 — Comparação (Real x Estimado), se existir est_df
             comp_df = stats_all_full.rename(
@@ -1643,10 +1677,7 @@ if has_df:
             z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
             z.writestr(
                 "Medias_DP.csv",
-                df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                       .agg(Média="mean", Desvio_Padrão="std", n="count")
-                       .reset_index()
-                       .to_csv(index=False, sep=";")
+                stats_cp_idade.to_csv(index=False, sep=";")
             )
             if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
                 z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
@@ -1692,7 +1723,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
 
 

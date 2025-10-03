@@ -507,6 +507,67 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
     return abat_nf, abat_obra
 
 
+
+
+def _extract_fck_values(line: str) -> List[float]:
+    """Extrai valores de fck presentes em uma linha."""
+    if not line or "fck" not in line.lower():
+        return []
+    sanitized = line.replace(",", ".")
+    parts = re.split(r"(?i)fck", sanitized)[1:]
+    if not parts:
+        return []
+
+    values: List[float] = []
+    age_with_suffix = re.compile(r"^(\d{1,3})(?:\s*(?:dias?|d))\s*[:=]?", re.I)
+    age_plain = re.compile(r"^(\d{1,3})\s*[:=]?", re.I)
+    age_tokens = {3, 7, 14, 21, 28, 56, 63, 90}
+    cut_keywords = (
+        "mpa", "abatimento", "slump", "nota", "usina", "relatório", "relatorio",
+        "consumo", "traço", "traco", "cimento", "dosagem"
+    )
+
+    for segment in parts:
+        starts_immediate = bool(segment) and not segment[0].isspace()
+        seg = segment.lstrip(" :=;-()[]")
+
+        changed = True
+        while changed:
+            changed = False
+            m = age_with_suffix.match(seg)
+            if m:
+                age_val = int(m.group(1))
+                if age_val in age_tokens:
+                    seg = seg[m.end():].lstrip(" :=;-()[]")
+                    changed = True
+                    continue
+            if starts_immediate:
+                m2 = age_plain.match(seg)
+                if m2:
+                    age_val = int(m2.group(1))
+                    if age_val in age_tokens:
+                        seg = seg[m2.end():].lstrip(" :=;-()[]")
+                        changed = True
+                        continue
+
+        lower_seg = seg.lower()
+        cut_at = len(seg)
+        for kw in cut_keywords:
+            idx = lower_seg.find(kw)
+            if idx != -1:
+                cut_at = min(cut_at, idx)
+        seg = seg[:cut_at]
+
+        for num in re.findall(r"\d+(?:\.\d+)?", seg):
+            try:
+                val = float(num)
+            except ValueError:
+                continue
+            if 3 <= val <= 120 and val not in values:
+                values.append(val)
+
+    return values
+
 def _to_float_or_none(value: Any) -> Optional[float]:
     """Converte valores em float ou retorna None quando não numéricos."""
     try:
@@ -577,6 +638,8 @@ def extrair_dados_certificado(uploaded_file):
     fck_projeto = "NÃO IDENTIFICADO"
     local_por_relatorio: Dict[str, str] = {}
     relatorio_atual = None
+    fck_por_relatorio: Dict[str, List[float]] = {}
+    fck_valores_globais: List[float] = []
 
     # varre cabeçalhos
     for sline in linhas_todas:
@@ -593,12 +656,18 @@ def extrair_dados_certificado(uploaded_file):
         if m_pecas and relatorio_atual:
             local_por_relatorio[relatorio_atual] = m_pecas.group(1).strip().rstrip(".")
         if "fck" in sline.lower():
-            m_fck = re.search(r"(\d+[.,]?\d*)", sline.lower())
-            if m_fck:
-                try:
-                    fck_projeto = float(m_fck.group(1).replace(",", "."))
-                except Exception:
-                    pass
+            valores_fck = _extract_fck_values(sline)
+            if valores_fck:
+                if relatorio_atual:
+                    bucket = fck_por_relatorio.setdefault(relatorio_atual, [])
+                    bucket.extend(valores_fck)
+                else:
+                    fck_valores_globais.extend(valores_fck)
+                if not isinstance(fck_projeto, (int, float)):
+                    try:
+                        fck_projeto = float(valores_fck[0])
+                    except Exception:
+                        pass
 
     usina_nome = _limpa_usina_extra(_detecta_usina(linhas_todas))
     abat_nf_pdf, abat_obra_pdf = _detecta_abatimentos(linhas_todas)
@@ -698,6 +767,43 @@ def extrair_dados_certificado(uploaded_file):
         "Relatório", "CP", "Idade (dias)", "Resistência (MPa)", "Nota Fiscal", "Local",
         "Usina", "Abatimento NF (mm)", "Abatimento NF tol (mm)", "Abatimento Obra (mm)"
     ])
+    if not df.empty:
+        rel_map = {}
+        for rel, valores in fck_por_relatorio.items():
+            uniques = []
+            for valor in valores:
+                try:
+                    val_f = float(valor)
+                except Exception:
+                    continue
+                if val_f not in uniques:
+                    uniques.append(val_f)
+            if uniques:
+                rel_map[rel] = uniques[0]
+
+        fallback_fck = None
+        if isinstance(fck_projeto, (int, float)):
+            fallback_fck = float(fck_projeto)
+        else:
+            candidatos = []
+            for valores in fck_por_relatorio.values():
+                candidatos.extend(valores)
+            candidatos.extend(fck_valores_globais)
+            for cand in candidatos:
+                try:
+                    fallback_fck = float(cand)
+                    break
+                except Exception:
+                    continue
+            if fallback_fck is not None:
+                fck_projeto = fallback_fck
+
+        if rel_map or fallback_fck is not None:
+            df["Relatório"] = df["Relatório"].astype(str)
+            df["Fck Projeto"] = df["Relatório"].map(rel_map)
+            if fallback_fck is not None:
+                df["Fck Projeto"] = df["Fck Projeto"].fillna(fallback_fck)
+
     return df, obra, data_relatorio, fck_projeto
 
 
@@ -999,7 +1105,12 @@ if uploaded_files:
         if not df_i.empty:
             df_i["Data Certificado"] = data_i
             df_i["Obra"] = obra_i
-            df_i["Fck Projeto"] = fck_i
+            if "Fck Projeto" in df_i.columns:
+                scalar_fck = _to_float_or_none(fck_i)
+                if scalar_fck is not None:
+                    df_i["Fck Projeto"] = pd.to_numeric(df_i["Fck Projeto"], errors="coerce").fillna(float(scalar_fck))
+            else:
+                df_i["Fck Projeto"] = fck_i
             df_i["Arquivo"] = getattr(f, "name", "arquivo.pdf")
             frames.append(df_i)
 

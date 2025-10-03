@@ -1153,7 +1153,8 @@ if uploaded_files:
 
         df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
         fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
-        if len(fck_labels) > 1:
+        multiple_fck_detected = len(fck_labels) > 1
+        if multiple_fck_detected:
             st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
             selected_fck_label = st.selectbox(
                 "fck para análise",
@@ -1250,6 +1251,9 @@ if uploaded_files:
                 else:
                     abat_nf_label = f"{v:.0f} mm"
             st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+
+        if multiple_fck_detected:
+            st.markdown("<div class='pill' style='background:rgba(250,204,21,.16); color:#b45309; font-weight:700;'>⚠️ FCK Análise = Atenção — Certificado com 02 Fck</div>", unsafe_allow_html=True)
 
         # Semáforo + explicação
         p28 = KPIs.get("pct28")
@@ -1864,4 +1868,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

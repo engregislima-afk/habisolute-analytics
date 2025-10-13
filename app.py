@@ -1,5 +1,5 @@
 # ============================ PARTE 1/4 ============================
-# Cabeçalho, paths, preferências e segurança/usuários
+# Cabeçalho, paths, preferências, segurança/usuários e tela de login
 # ================================================================
 
 import io
@@ -260,6 +260,35 @@ s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])  # guarda modo anterior do uploader
+
+# ---------------------------- Tela de Login ----------------------------
+def show_login() -> None:
+    """Tela de login minimalista (sem dica), usando authenticate()."""
+    st.markdown("<div class='login-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns([1.3, 1.3, 0.7])
+    with c1:
+        user_login = st.text_input("Usuário", key="login_user",
+                                   label_visibility="collapsed", placeholder="Usuário")
+    with c2:
+        user_pwd = st.text_input("Senha", key="login_pass", type="password",
+                                 label_visibility="collapsed", placeholder="Senha")
+    with c3:
+        st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+        if st.button("Acessar", use_container_width=True, key="k_login"):
+            ok, u, msg = authenticate(user_login, user_pwd)
+            if ok and u:
+                s["logged_in"]  = True
+                s["user_login"] = u.get("login")
+                s["user_role"]  = u.get("role", "user")
+                s["force_reset"] = bool(u.get("force_reset", False))
+                st.rerun()
+            else:
+                st.error(msg or "Usuário ou senha inválidos.")
+
+    # sem dica de login
+    st.markdown("</div>", unsafe_allow_html=True)
 # =============================== PARTE 2 — Login, Preferências, Upload, Parsing ===============================
 
 # Preferências via URL
@@ -1511,4 +1540,5 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ======================================= FIM DO APP =======================================
+
 

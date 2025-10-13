@@ -1,5 +1,4 @@
-# app.py — 🏗️ Habisolute Analytics (completo + login com gestão de usuários + PDF cabeçalho completo)
-# Requisitos: streamlit, pandas, pdfplumber, matplotlib, reportlab, xlsxwriter
+# app.py — Habisolute Analytics (trecho até login + painel de usuários)
 
 import io
 import re
@@ -7,8 +6,6 @@ import json
 import base64
 import tempfile
 import zipfile
-import os
-import secrets
 import hashlib
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +24,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.pdfgen import canvas as pdfcanvas  # ⬅️ numeração/rodapé
+from reportlab.pdfgen import canvas as pdfcanvas  # numeração/rodapé
 
 # ===== Rodapé e numeração do PDF =====
 FOOTER_TEXT = (
@@ -38,7 +35,7 @@ FOOTER_TEXT = (
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
 class NumberedCanvas(pdfcanvas.Canvas):
-    """Canvas com 'Página X de Y' e rodapé legal."""
+    """Canvas que adiciona 'Página X de Y' e o rodapé legal em todas as páginas."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -56,8 +53,9 @@ class NumberedCanvas(pdfcanvas.Canvas):
         super().save()
 
     def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
+        """Quebra simples de linha para o rodapé."""
         if max_width is None:
-            max_width = self._pagesize[0] - 36 - 120
+            max_width = self._pagesize[0] - 36 - 120  # margem esq 18 + dir 18, reserva p/ nº de página
         words = text.split()
         lines, line = [], ""
         for w in words:
@@ -106,7 +104,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
-# Configuração básica e PREFERÊNCIAS / USUÁRIOS
+# Configuração básica
 # =============================================================================
 st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 
@@ -114,90 +112,14 @@ PREFS_DIR = Path.home() / ".habisolute"
 PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"
 
-USERS_DB = PREFS_DIR / "users.json"   # ⬅️ arquivo de usuários
+# === Base de Usuários (novo) ===
+USERS_DB = PREFS_DIR / "users.json"
 
-# ====== Gestão de usuários (hash + store JSON) ======
-PBKDF2_ITER = 130_000
+def _save_all_prefs(data: Dict[str, Any]) -> None:
+    tmp = PREFS_DIR / "prefs.tmp"
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(PREFS_PATH)
 
-def _hash_password(pw: str, salt: Optional[bytes] = None) -> Dict[str, str]:
-    if salt is None:
-        salt = secrets.token_bytes(16)
-    dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, PBKDF2_ITER)
-    return {"salt": salt.hex(), "hash": dk.hex(), "iter": PBKDF2_ITER}
-
-def _verify_password(pw: str, rec: Dict[str, Any]) -> bool:
-    try:
-        salt = bytes.fromhex(rec["salt"])
-        it = int(rec.get("iter", PBKDF2_ITER))
-        dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, it)
-        return dk.hex() == rec["hash"]
-    except Exception:
-        return False
-
-def _load_users() -> Dict[str, Any]:
-    if USERS_DB.exists():
-        try:
-            return json.loads(USERS_DB.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    # se não existir: cria admin padrão (forçar troca)
-    default = {
-        "users": {
-            "admin": {
-                "password": _hash_password("1234"),
-                "is_admin": True,
-                "active": True,
-                "must_change": True,
-                "created_at": datetime.now().isoformat(timespec="seconds")
-            }
-        }
-    }
-    USERS_DB.write_text(json.dumps(default, ensure_ascii=False, indent=2), encoding="utf-8")
-    return default
-
-def _save_users(db: Dict[str, Any]) -> None:
-    tmp = USERS_DB.with_suffix(".tmp")
-    tmp.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(USERS_DB)
-
-def users_list() -> List[Tuple[str, Dict[str, Any]]]:
-    db = _load_users()
-    return sorted(db.get("users", {}).items(), key=lambda kv: kv[0].lower())
-
-def user_get(username: str) -> Optional[Dict[str, Any]]:
-    return _load_users().get("users", {}).get(username)
-
-def user_upsert(username: str, *, password: Optional[str] = None,
-                is_admin: Optional[bool] = None, active: Optional[bool] = None,
-                must_change: Optional[bool] = None) -> None:
-    db = _load_users()
-    users = db.setdefault("users", {})
-    u = users.get(username, {})
-    if password is not None:
-        u["password"] = _hash_password(password)
-        u["must_change"] = True  # ao definir/resetar senha, força troca
-    if is_admin is not None:
-        u["is_admin"] = bool(is_admin)
-    if active is not None:
-        u["active"] = bool(active)
-    if "created_at" not in u:
-        u["created_at"] = datetime.now().isoformat(timespec="seconds")
-    if must_change is not None:
-        u["must_change"] = bool(must_change)
-    users[username] = u
-    _save_users(db)
-
-def user_disable(username: str, disabled: bool = True):
-    user_upsert(username, active=not disabled)
-
-def user_delete(username: str):
-    db = _load_users()
-    users = db.setdefault("users", {})
-    if username in users:
-        del users[username]
-    _save_users(db)
-
-# ===== Preferências do app =====
 def _load_all_prefs() -> Dict[str, Any]:
     try:
         if PREFS_PATH.exists():
@@ -205,11 +127,6 @@ def _load_all_prefs() -> Dict[str, Any]:
     except Exception:
         pass
     return {}
-
-def _save_all_prefs(data: Dict[str, Any]) -> None:
-    tmp = PREFS_DIR / "prefs.tmp"
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(PREFS_PATH)
 
 def load_user_prefs(user_key: str = "default") -> Dict[str, Any]:
     return _load_all_prefs().get(user_key, {})
@@ -219,13 +136,11 @@ def save_user_prefs(prefs: Dict[str, Any], user_key: str = "default") -> None:
     data[user_key] = prefs
     _save_all_prefs(data)
 
-# ===== Estado
+# Estado
 s = st.session_state
 s.setdefault("logged_in", False)
-s.setdefault("current_user", None)        # ⬅️ usuário logado
+s.setdefault("username", None)
 s.setdefault("is_admin", False)
-s.setdefault("must_change", False)
-
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
@@ -235,7 +150,7 @@ s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])
 
-# --- ler preferências via URL ---
+# --- preferências via URL ---
 def _apply_query_prefs():
     try:
         qp = st.query_params
@@ -320,35 +235,126 @@ else:
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
-st.markdown(f"""
-<style>
-.h-toolbar {{
-  display: grid; grid-template-columns: 1fr; gap: 10px; margin: 6px 0 14px 0;
-}}
-@media (min-width: 900px) {{
-  .h-toolbar {{ grid-template-columns: 1fr 1fr; }}
-}}
-.stButton > button,
-.stDownloadButton > button,
-.h-print-btn {{
-  background: linear-gradient(180deg, {brand}, {brand600}) !important;
-  color: #fff !important; border: 0 !important; border-radius: 12px !important;
-  padding: 12px 16px !important; font-weight: 800 !important; box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
-  width: 100% !important; transition: transform .06s ease, filter .1s ease;
-}}
-.stButton > button:hover,
-.stDownloadButton > button:hover,
-.h-print-btn:hover {{ filter: brightness(1.06); transform: translateY(-1px); }}
-.stButton > button:active,
-.stDownloadButton > button:active,
-.h-print-btn:active {{ transform: translateY(0) scale(.99); }}
-</style>
-""", unsafe_allow_html=True)
 
 # =============================================================================
-# LOGIN + Painel de Usuários
+# Autenticação & gerenciamento de usuários
 # =============================================================================
-def _auth_login_ui() -> None:
+
+def _hash_password(pw: str) -> str:
+    return hashlib.sha256(("habisolute|" + pw).encode("utf-8")).hexdigest()
+
+def _verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return _hash_password(pw) == hashed
+    except Exception:
+        return False
+
+def _save_users(data: Dict[str, Any]) -> None:
+    tmp = USERS_DB.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(USERS_DB)
+
+def _load_users() -> Dict[str, Any]:
+    """
+    Garante schema {"users": {username: {...}}}. Conserta/migra formatos inválidos.
+    """
+    try:
+        if USERS_DB.exists():
+            raw = USERS_DB.read_text(encoding="utf-8").strip()
+            if raw:
+                data = json.loads(raw)
+
+                # Correto
+                if isinstance(data, dict) and isinstance(data.get("users"), dict):
+                    return data
+
+                # Dict direto de usuários
+                if isinstance(data, dict):
+                    fixed = {"users": data}
+                    _save_users(fixed)
+                    return fixed
+
+                # Lista (ex.: ["admin","joao"] ou [{"username":...}])
+                if isinstance(data, list):
+                    users_map: Dict[str, Any] = {}
+                    for item in data:
+                        if isinstance(item, str):
+                            uname = item.strip()
+                            if not uname:
+                                continue
+                            users_map[uname] = {
+                                "password": _hash_password("1234"),
+                                "is_admin": (uname == "admin"),
+                                "active": True,
+                                "must_change": True,
+                                "created_at": datetime.now().isoformat(timespec="seconds")
+                            }
+                        elif isinstance(item, dict) and item.get("username"):
+                            uname = str(item["username"]).strip()
+                            if not uname:
+                                continue
+                            users_map[uname] = {
+                                "password": _hash_password("1234"),
+                                "is_admin": bool(item.get("is_admin", uname == "admin")),
+                                "active": bool(item.get("active", True)),
+                                "must_change": True,
+                                "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))
+                            }
+                    fixed = {"users": users_map}
+                    _save_users(fixed)
+                    return fixed
+    except Exception:
+        pass
+
+    # Default com admin
+    default = {
+        "users": {
+            "admin": {
+                "password": _hash_password("1234"),
+                "is_admin": True,
+                "active": True,
+                "must_change": True,
+                "created_at": datetime.now().isoformat(timespec="seconds")
+            }
+        }
+    }
+    _save_users(default)
+    return default
+
+def user_get(username: str) -> Optional[Dict[str, Any]]:
+    db = _load_users()
+    users = db.get("users", {}) if isinstance(db, dict) else {}
+    return users.get(username)
+
+def user_set(username: str, record: Dict[str, Any]) -> None:
+    db = _load_users()
+    db.setdefault("users", {})[username] = record
+    _save_users(db)
+
+def user_exists(username: str) -> bool:
+    rec = user_get(username)
+    return rec is not None
+
+def user_list() -> List[Dict[str, Any]]:
+    db = _load_users()
+    out = []
+    for uname, rec in db.get("users", {}).items():
+        r = dict(rec)
+        r["username"] = uname
+        out.append(r)
+    out.sort(key=lambda r: (not r.get("is_admin", False), r["username"]))
+    return out
+
+def user_delete(username: str) -> None:
+    db = _load_users()
+    if username in db.get("users", {}):
+        if username == "admin":
+            return
+        db["users"].pop(username, None)
+        _save_users(db)
+
+# --- Login UI + mudança de senha obrigatória
+def _auth_login_ui():
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1.3, 1.3, 0.7])
@@ -360,112 +366,54 @@ def _auth_login_ui() -> None:
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
-            rec = user_get(user)
-            if not rec:
-                st.error("Usuário ou senha inválidos.")
-            elif not rec.get("active", True):
-                st.error("Usuário desativado.")
-            elif not _verify_password(pwd, rec["password"]):
-                st.error("Usuário ou senha inválidos.")
+            rec = user_get(user.strip())
+            if not rec or not rec.get("active", True):
+                st.error("Usuário inexistente ou inativo.")
+            elif not _verify_password(pwd, rec.get("password", "")):
+                st.error("Senha incorreta.")
             else:
                 s["logged_in"] = True
-                s["current_user"] = user
+                s["username"] = user.strip()
                 s["is_admin"] = bool(rec.get("is_admin", False))
                 s["must_change"] = bool(rec.get("must_change", False))
                 st.rerun()
-    st.caption("Dica inicial: **admin / 1234** (será exigida troca de senha).")
+
+    st.caption("Primeiro acesso padrão: **admin / 1234**")
     st.markdown("</div>", unsafe_allow_html=True)
 
-def _auth_force_change_ui():
-    st.warning("É necessário definir uma nova senha antes de continuar.")
-    with st.form("force_change_pwd"):
-        p1 = st.text_input("Nova senha", type="password")
-        p2 = st.text_input("Confirmar nova senha", type="password")
-        ok = st.form_submit_button("Salvar nova senha")
-        if ok:
-            if not p1 or len(p1) < 4:
-                st.error("A senha deve ter pelo menos 4 caracteres.")
-            elif p1 != p2:
-                st.error("As senhas não conferem.")
-            else:
-                user_upsert(s["current_user"], password=p1, must_change=False)
-                s["must_change"] = False
-                st.success("Senha alterada com sucesso!"); st.rerun()
+def _force_change_password_ui(username: str):
+    st.markdown("<div class='login-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='login-title'>🔑 Definir nova senha</div>", unsafe_allow_html=True)
+    p1 = st.text_input("Nova senha", type="password")
+    p2 = st.text_input("Confirmar nova senha", type="password")
+    if st.button("Salvar nova senha", use_container_width=True):
+        if len(p1) < 4:
+            st.error("Use ao menos 4 caracteres.")
+        elif p1 != p2:
+            st.error("As senhas não conferem.")
+        else:
+            rec = user_get(username) or {}
+            rec["password"] = _hash_password(p1)
+            rec["must_change"] = False
+            user_set(username, rec)
+            st.success("Senha atualizada! Redirecionando…")
+            s["must_change"] = False
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-def _users_admin_panel():
-    st.subheader("👤 Painel de Usuários (somente administradores)")
-    st.caption("Cadastre, ative/desative, redefina senhas e promova administradores.")
-
-    # --- Cadastro rápido
-    with st.expander("➕ Cadastrar novo usuário", expanded=False):
-        with st.form("new_user"):
-            c1, c2, c3 = st.columns([1.4, 1.0, 1.0])
-            with c1:
-                nu = st.text_input("Usuário (login)", placeholder="ex.: carlos.silva")
-            with c2:
-                adm = st.checkbox("Administrador?", value=False)
-            with c3:
-                atv = st.checkbox("Ativo?", value=True)
-            p1 = st.text_input("Senha inicial", type="password")
-            p2 = st.text_input("Confirmar senha", type="password")
-            ok = st.form_submit_button("Criar")
-            if ok:
-                if not nu.strip():
-                    st.error("Informe um nome de usuário.")
-                elif p1 != p2 or not p1:
-                    st.error("Senha inválida ou não confere.")
-                elif user_get(nu) is not None:
-                    st.error("Usuário já existe.")
-                else:
-                    user_upsert(nu, password=p1, is_admin=adm, active=atv, must_change=True)
-                    st.success(f"Usuário '{nu}' criado (exigirá troca de senha no primeiro acesso).")
-
-    # --- Lista e ações
-    db_list = users_list()
-    if not db_list:
-        st.info("Nenhum usuário encontrado.")
-        return
-
-    for uname, rec in db_list:
-        with st.container(border=True):
-            c1, c2, c3, c4, c5 = st.columns([1.5, 1, 1, 1.2, 2])
-            c1.markdown(f"**{uname}**")
-            c2.write("Admin" if rec.get("is_admin") else "Usuário")
-            c3.write("Ativo" if rec.get("active", True) else "Desativado")
-            c4.write("Troca pendente" if rec.get("must_change") else "OK")
-            with c5:
-                cc1, cc2, cc3, cc4 = st.columns(4)
-                with cc1:
-                    if st.button("🔑 Reset", key=f"bt_reset_{uname}"):
-                        user_upsert(uname, password="1234")  # define 1234 + must_change
-                        st.toast(f"Senha de '{uname}' redefinida p/ 1234 (forçar troca).")
-                        st.rerun()
-                with cc2:
-                    if st.button("🛑 Toggle", key=f"bt_toggle_{uname}"):
-                        user_disable(uname, disabled=rec.get("active", True))
-                        st.rerun()
-                with cc3:
-                    if st.button("⭐ Admin", key=f"bt_admin_{uname}"):
-                        user_upsert(uname, is_admin=not rec.get("is_admin"))
-                        st.rerun()
-                with cc4:
-                    if uname != s.get("current_user", "") and uname != "admin":
-                        if st.button("🗑️ Excluir", key=f"bt_del_{uname}"):
-                            user_delete(uname); st.rerun()
-                    else:
-                        st.button("🗑️ Excluir", key=f"bt_del_{uname}", disabled=True)
-
-# ===== Fluxo de autenticação
+# =============================================================================
+# Tela de login
+# =============================================================================
 if not s["logged_in"]:
     _auth_login_ui()
     st.stop()
 
-# Se precisa trocar a senha, exige agora
-if s.get("must_change"):
-    _auth_force_change_ui()
+# Se precisa trocar a senha, obriga antes de entrar no sistema
+if s.get("must_change", False):
+    _force_change_password_ui(s["username"])
     st.stop()
 
-# -------------------- Barra de preferências + usuário --------------------
+# -------------------- Barra de preferências --------------------
 st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
 c1, c2, c3, c4 = st.columns([1.1, 1.1, 2.5, 1.1])
 with c1:
@@ -503,30 +451,73 @@ with c4:
     with col_b:
         if st.button("Sair", use_container_width=True, key="k_logout"):
             s["logged_in"] = False
-            s["current_user"] = None
+            s["username"] = None
             s["is_admin"] = False
-            s["must_change"] = False
             st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== Toolbar topo: título + acesso ao painel de usuários (somente admin)
-top_l, top_r = st.columns([3,1])
-with top_l:
-    st.markdown("<h3 class='brand-title'>🏗️ Habisolute IA 🤖</h3>", unsafe_allow_html=True)
-    st.caption(f"Logado como: **{s.get('current_user','?')}** {'(Admin)' if s.get('is_admin') else ''}")
-with top_r:
-    if s.get("is_admin"):
-        if st.button("👤 Painel de Usuários", use_container_width=True):
-            st.session_state["_show_user_panel"] = True
-    else:
-        st.button("👤 Painel de Usuários", use_container_width=True, disabled=True)
+# =============================================================================
+# Painel de Usuários (somente admin)
+# =============================================================================
+if s.get("is_admin", False):
+    with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
+        st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
 
-# Render Painel de Usuários (modal simples)
-if s.get("_show_user_panel") and s.get("is_admin"):
-    with st.expander("⚙️ Administração de Usuários", expanded=True):
-        _users_admin_panel()
-    if st.button("Fechar Administração", key="close_admin_users"):
-        s["_show_user_panel"] = False
+        tab1, tab2 = st.tabs(["Usuários", "Novo usuário"])
+
+        with tab1:
+            users = user_list()
+            if not users:
+                st.info("Nenhum usuário cadastrado.")
+            else:
+                for u in users:
+                    colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA.write(f"**{u['username']}**")
+                    colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
+                    colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
+                    colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
+                    with colE:
+                        if u["username"] != "admin":
+                            act = not u.get("active", True)
+                            if st.button(("Reativar" if act else "Desativar"), key=f"act_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["active"] = not rec.get("active", True)
+                                user_set(u["username"], rec)
+                                st.rerun()
+                            if st.button("Redefinir", key=f"rst_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["password"] = _hash_password("1234")
+                                rec["must_change"] = True
+                                user_set(u["username"], rec)
+                                st.rerun()
+                            if st.button("Excluir", key=f"del_{u['username']}"):
+                                user_delete(u["username"])
+                                st.rerun()
+
+        with tab2:
+            nu_col1, nu_col2, nu_col3 = st.columns([2,1,1])
+            with nu_col1:
+                new_user = st.text_input("Usuário (login)", key="new_user")
+            with nu_col2:
+                is_admin = st.checkbox("Administrador", value=False)
+            with nu_col3:
+                active = st.checkbox("Ativo", value=True)
+            if st.button("Cadastrar usuário"):
+                uname = (new_user or "").strip()
+                if not uname:
+                    st.error("Informe o login do usuário.")
+                elif user_exists(uname):
+                    st.error("Usuário já existe.")
+                else:
+                    user_set(uname, {
+                        "password": _hash_password("1234"),
+                        "is_admin": bool(is_admin),
+                        "active": bool(active),
+                        "must_change": True,
+                        "created_at": datetime.now().isoformat(timespec="seconds")
+                    })
+                    st.success(f"Usuário **{uname}** criado com senha inicial **1234** (exigirá troca).")
+                    st.rerun()
 
 # =============================================================================
 # Sidebar (opções de relatório)
@@ -1892,3 +1883,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

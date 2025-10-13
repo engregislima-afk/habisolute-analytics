@@ -30,7 +30,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.pdfgen import canvas as pdfcanvas  # para numeração/rodapé
+from reportlab.pdfgen import canvas as pdfcanvas
 
 # ---------------------- Arquivos e preferências ----------------------
 st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
@@ -106,11 +106,6 @@ def _load_users() -> List[Dict[str, Any]]:
             if not raw:
                 return []
             data = json.loads(raw)
-
-            # Migração/normalização:
-            # - {"users":[...]} -> usa a lista
-            # - dict com "login" -> vira [dict]
-            # - lista -> filtra dicts válidos
             if isinstance(data, dict):
                 if "users" in data and isinstance(data["users"], list):
                     return [u for u in data["users"] if isinstance(u, dict)]
@@ -143,10 +138,7 @@ def _get_user_by_login(login: Optional[str]) -> Optional[Dict[str, Any]]:
     return None
 
 def _seed_default_admin_if_missing():
-    """
-    Cria 'admin/admin' (force_reset=True) se NÃO houver usuários válidos.
-    Normaliza arquivo se já existir.
-    """
+    """Cria admin/admin (force_reset=True) se não houver usuários."""
     users = _load_users()
     valid = [u for u in users if isinstance(u, dict) and u.get("login")]
     if not valid:
@@ -156,19 +148,18 @@ def _seed_default_admin_if_missing():
             "login": "admin",
             "role": "admin",
             "salt": salt,
-            "password_hash": _hash_password("admin", salt),  # senha inicial: admin
-            "force_reset": True,   # obriga trocar no primeiro acesso
+            "password_hash": _hash_password("admin", salt),
+            "force_reset": True,
             "created_at": _now_iso(),
             "active": True
         }
         _save_users([admin_user])
         _audit("seed_admin", {"login": "admin"})
     else:
-        _save_users(valid)  # normaliza formato
+        _save_users(valid)
 _seed_default_admin_if_missing()
 
 def create_user(name: str, login: str, password: str, role: str = "user", active: bool = True) -> bool:
-    """Cria usuário. Não permite logins duplicados."""
     login = (login or "").strip()
     if not login or not password:
         return False
@@ -192,7 +183,6 @@ def create_user(name: str, login: str, password: str, role: str = "user", active
     return True
 
 def update_user_password(login: str, new_password: str, clear_force_reset: bool = True) -> bool:
-    """Atualiza senha do usuário. Pode limpar 'force_reset'."""
     users = _load_users()
     changed = False
     for u in users:
@@ -210,7 +200,6 @@ def update_user_password(login: str, new_password: str, clear_force_reset: bool 
     return changed
 
 def set_user_active(login: str, active: bool) -> bool:
-    """Ativa/Desativa usuário."""
     users = _load_users()
     changed = False
     for u in users:
@@ -224,15 +213,10 @@ def set_user_active(login: str, active: bool) -> bool:
     return changed
 
 def list_users() -> List[Dict[str, Any]]:
-    """Lista usuários (hash/salt ficam apenas no arquivo)."""
     return _load_users()
 
 def authenticate(login: str, password: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
-    """
-    Autentica e retorna (ok, user|None, msg).
-    - Obriga ativo=True
-    - Respeita force_reset (tratado na UI após login)
-    """
+    """Autentica e retorna (ok, user|None, msg)."""
     u = _get_user_by_login(login)
     if not u:
         _audit("login_fail", {"login": login, "reason": "not_found"})
@@ -250,8 +234,8 @@ def authenticate(login: str, password: str) -> Tuple[bool, Optional[Dict[str, An
 s = st.session_state
 s.setdefault("logged_in", False)
 s.setdefault("user_login", None)
-s.setdefault("user_role", None)        # "admin" | "user"
-s.setdefault("force_reset", False)     # forçar troca de senha pós-login inicial
+s.setdefault("user_role", None)
+s.setdefault("force_reset", False)
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
@@ -259,38 +243,11 @@ s.setdefault("uploader_key", 0)
 s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])  # guarda modo anterior do uploader
+s.setdefault("_prev_batch", s["BATCH_MODE"])
 
-# ---------------------------- Tela de Login ----------------------------
-def show_login() -> None:
-    """Tela de login minimalista (sem dica), usando authenticate()."""
-    st.markdown("<div class='login-card'>", unsafe_allow_html=True)
-    st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
-
-    c1, c2, c3 = st.columns([1.3, 1.3, 0.7])
-    with c1:
-        user_login = st.text_input("Usuário", key="login_user",
-                                   label_visibility="collapsed", placeholder="Usuário")
-    with c2:
-        user_pwd = st.text_input("Senha", key="login_pass", type="password",
-                                 label_visibility="collapsed", placeholder="Senha")
-    with c3:
-        st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
-        if st.button("Acessar", use_container_width=True, key="k_login"):
-            ok, u, msg = authenticate(user_login, user_pwd)  # único caminho válido
-            if ok and u:
-                s["logged_in"]  = True
-                s["user_login"] = u.get("login")
-                s["user_role"]  = u.get("role", "user")
-                s["force_reset"] = bool(u.get("force_reset", False))
-                st.rerun()
-            else:
-                st.error(msg or "Usuário ou senha inválidos.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    # ===== HOTFIX LOGIN SEGURO (substitui qualquer versão antiga) =====
+# ---------------------------- TELA DE LOGIN ----------------------------
 def show_login_secure() -> None:
-    """Tela de login usando authenticate(); sem dica; sem chamadas legacy."""
+    """Tela de login usando authenticate(); sem versão legacy."""
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
 
@@ -314,7 +271,11 @@ def show_login_secure() -> None:
             else:
                 st.error(msg or "Usuário ou senha inválidos.")
     st.markdown("</div>", unsafe_allow_html=True)
-# ===== FIM HOTFIX =====
+
+# ===== CHAMADA DE GUARDA (use esta e remova qualquer uso de show_login antigo) =====
+if not s["logged_in"]:
+    show_login_secure()
+    st.stop()
 # =============================== PARTE 2 — Login, Preferências, Upload, Parsing ===============================
 
 # Preferências via URL
@@ -1566,6 +1527,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ======================================= FIM DO APP =======================================
+
 
 
 

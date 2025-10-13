@@ -70,38 +70,83 @@ class NumberedCanvas(pdfcanvas.Canvas):
             lines.append(line)
         return lines
 
+    # ===== Rodapé e numeração do PDF =====
+FOOTER_TEXT = (
+    "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
+    "Este documento poderá ser reproduzido somente na íntegra. "
+    "Resultados apresentados sem considerar a incerteza de medição."
+)
+FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
+
+class NumberedCanvas(pdfcanvas.Canvas):
+    """Canvas que adiciona 'Página X de Y' e o rodapé legal em todas as páginas."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._draw_footer_and_pagenum(total_pages)
+            super().showPage()
+        super().save()
+
+    def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
+        """Quebra simples de linha para o rodapé."""
+        if max_width is None:
+            max_width = self._pagesize[0] - 36 - 120  # margem esq 18 + dir 18, reserva p/ nº de página
+        words = text.split()
+        lines, line = [], ""
+        for w in words:
+            test = (line + " " + w).strip()
+            if self.stringWidth(test, font_name, font_size) <= max_width:
+                line = test
+            else:
+                if line:
+                    lines.append(line)
+                line = w
+        if line:
+            lines.append(line)
+        return lines
+
     def _draw_footer_and_pagenum(self, total_pages: int):
-    w, h = self._pagesize
+        """Desenha o texto legal, assinatura da empresa e numeração de página."""
+        w, h = self._pagesize
 
-    # ——— Texto legal (esquerda) ———
-    text_font = "Helvetica"
-    text_size = 7
-    leading   = text_size + 1
-    right_reserve = 100
+        # ——— Texto legal (esquerda) ———
+        text_font = "Helvetica"
+        text_size = 7
+        leading = text_size + 1
+        right_reserve = 100
 
-    self.setFont(text_font, text_size)
-    lines = self._wrap_footer(
-        FOOTER_TEXT,
-        font_name=text_font,
-        font_size=text_size,
-        max_width=w - 36 - right_reserve
-    )
+        self.setFont(text_font, text_size)
+        lines = self._wrap_footer(
+            FOOTER_TEXT,
+            font_name=text_font,
+            font_size=text_size,
+            max_width=w - 36 - right_reserve
+        )
 
-    base_y = 10
-    for i, ln in enumerate(lines):
-        y = base_y + i * leading
-        # não subir além da margem inferior (28 pt)
-        if y > 28 - leading:
-            break
-        self.drawString(18, y, ln)
+        base_y = 10
+        for i, ln in enumerate(lines):
+            y = base_y + i * leading
+            # não subir além da margem inferior (≈28 pt do doc)
+            if y > 28 - leading:
+                break
+            self.drawString(18, y, ln)
 
-    # ——— Assinatura da empresa (centralizado, acima do número da página) ———
-    self.setFont("Helvetica-Oblique", 8)
-    self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
+        # ——— Assinatura da empresa (centralizado) ———
+        self.setFont("Helvetica-Oblique", 8)
+        self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
 
-    # ——— Número de página (direita) ———
-    self.setFont("Helvetica", 8)
-    self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
+        # ——— Número de página (direita) ———
+        self.setFont("Helvetica", 8)
+        self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
@@ -1677,6 +1722,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

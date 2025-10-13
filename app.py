@@ -1,4 +1,4 @@
-# app.py — Habisolute Analytics (até login/painel/toolbar corrigidos)
+# app.py — Habisolute Analytics (login + painel + título/tema + toolbar + GUARDS prontos)
 
 import io
 import re
@@ -23,7 +23,6 @@ from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
 )
 from reportlab.lib import colors
-    # styles
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas
 
@@ -40,8 +39,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
     def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
+        self._saved_page_states.append(dict(self.__dict__)); self._startPage()
     def save(self):
         total_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
@@ -50,20 +48,15 @@ class NumberedCanvas(pdfcanvas.Canvas):
             super().showPage()
         super().save()
     def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
-        if max_width is None:
-            max_width = self._pagesize[0] - 36 - 120
-        words = text.split()
-        lines, line = [], ""
+        if max_width is None: max_width = self._pagesize[0] - 36 - 120
+        words = text.split(); lines, line = [], ""
         for w in words:
             test = (line + " " + w).strip()
-            if self.stringWidth(test, font_name, font_size) <= max_width:
-                line = test
+            if self.stringWidth(test, font_name, font_size) <= max_width: line = test
             else:
-                if line:
-                    lines.append(line)
+                if line: lines.append(line)
                 line = w
-        if line:
-            lines.append(line)
+        if line: lines.append(line)
         return lines
     def _draw_footer_and_pagenum(self, total_pages: int):
         w, h = self._pagesize
@@ -72,8 +65,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
         base_y = 10
         for i, ln in enumerate(lines):
             y = base_y + i * 8
-            if y > 28 - 8:
-                break
+            if y > 28 - 8: break
             self.drawString(18, y, ln)
         self.setFont("Helvetica-Oblique", 8)
         self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
@@ -105,9 +97,7 @@ def _load_all_prefs() -> Dict[str, Any]:
 def load_user_prefs(user_key: str = "default") -> Dict[str, Any]:
     return _load_all_prefs().get(user_key, {})
 def save_user_prefs(prefs: Dict[str, Any], user_key: str = "default") -> None:
-    data = _load_all_prefs()
-    data[user_key] = prefs
-    _save_all_prefs(data)
+    data = _load_all_prefs(); data[user_key] = prefs; _save_all_prefs(data)
 
 # ===== Estado =====
 s = st.session_state
@@ -140,14 +130,10 @@ def _apply_query_prefs():
         theme = _first(qp.get("theme") or qp.get("t"))
         brand = _first(qp.get("brand") or qp.get("b"))
         qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
-        if theme in ("Escuro moderno", "Claro corporativo"):
-            s["theme_mode"] = theme
-        if brand in ("Laranja", "Azul", "Verde", "Roxo"):
-            s["brand"] = brand
-        if qr:
-            s["qr_url"] = qr
-    except Exception:
-        pass
+        if theme in ("Escuro moderno", "Claro corporativo"): s["theme_mode"] = theme
+        if brand in ("Laranja", "Azul", "Verde", "Roxo"):     s["brand"] = brand
+        if qr: s["qr_url"] = qr
+    except Exception: pass
 _apply_query_prefs()
 
 # =============================================================================
@@ -269,10 +255,8 @@ st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relat�
 def _hash_password(pw: str) -> str:
     return hashlib.sha256(("habisolute|" + pw).encode("utf-8")).hexdigest()
 def _verify_password(pw: str, hashed: str) -> bool:
-    try:
-        return _hash_password(pw) == hashed
-    except Exception:
-        return False
+    try: return _hash_password(pw) == hashed
+    except Exception: return False
 
 def _save_users(data: Dict[str, Any]) -> None:
     tmp = USERS_DB.with_suffix(".tmp")
@@ -285,9 +269,7 @@ def _load_users() -> Dict[str, Any]:
         if "admin" not in db["users"]:
             db["users"]["admin"] = {
                 "password": _hash_password("1234"),
-                "is_admin": True,
-                "active": True,
-                "must_change": True,
+                "is_admin": True, "active": True, "must_change": True,
                 "created_at": datetime.now().isoformat(timespec="seconds")
             }
         return db
@@ -297,32 +279,26 @@ def _load_users() -> Dict[str, Any]:
             if raw:
                 data = json.loads(raw)
                 if isinstance(data, dict) and isinstance(data.get("users"), dict):
-                    fixed = _bootstrap_admin(data)
-                    if fixed is not data:
-                        _save_users(fixed)
+                    fixed = _bootstrap_admin(data); 
+                    if fixed is not data: _save_users(fixed)
                     return fixed
                 if isinstance(data, dict):
-                    fixed = _bootstrap_admin({"users": data})
-                    _save_users(fixed)
-                    return fixed
+                    fixed = _bootstrap_admin({"users": data}); _save_users(fixed); return fixed
                 if isinstance(data, list):
                     users_map: Dict[str, Any] = {}
                     for item in data:
                         if isinstance(item, str):
                             uname = item.strip()
-                            if not uname:
-                                continue
+                            if not uname: continue
                             users_map[uname] = {
                                 "password": _hash_password("1234"),
                                 "is_admin": (uname == "admin"),
-                                "active": True,
-                                "must_change": True,
+                                "active": True, "must_change": True,
                                 "created_at": datetime.now().isoformat(timespec="seconds")
                             }
                         elif isinstance(item, dict) and item.get("username"):
                             uname = str(item["username"]).strip()
-                            if not uname:
-                                continue
+                            if not uname: continue
                             users_map[uname] = {
                                 "password": _hash_password("1234"),
                                 "is_admin": bool(item.get("is_admin", uname == "admin")),
@@ -330,40 +306,26 @@ def _load_users() -> Dict[str, Any]:
                                 "must_change": True,
                                 "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))
                             }
-                    fixed = _bootstrap_admin({"users": users_map})
-                    _save_users(fixed)
-                    return fixed
-    except Exception:
-        pass
-    default = _bootstrap_admin({"users": {}})
-    _save_users(default)
-    return default
+                    fixed = _bootstrap_admin({"users": users_map}); _save_users(fixed); return fixed
+    except Exception: pass
+    default = _bootstrap_admin({"users": {}}); _save_users(default); return default
 
 def user_get(username: str) -> Optional[Dict[str, Any]]:
-    db = _load_users()
-    return db.get("users", {}).get(username)
+    db = _load_users(); return db.get("users", {}).get(username)
 def user_set(username: str, record: Dict[str, Any]) -> None:
-    db = _load_users()
-    db.setdefault("users", {})[username] = record
-    _save_users(db)
-def user_exists(username: str) -> bool:
-    return user_get(username) is not None
+    db = _load_users(); db.setdefault("users", {})[username] = record; _save_users(db)
+def user_exists(username: str) -> bool: return user_get(username) is not None
 def user_list() -> List[Dict[str, Any]]:
-    db = _load_users()
-    out = []
+    db = _load_users(); out=[]
     for uname, rec in db.get("users", {}).items():
-        r = dict(rec); r["username"] = uname; out.append(r)
-    out.sort(key=lambda r: (not r.get("is_admin", False), r["username"]))
-    return out
+        r = dict(rec); r["username"]=uname; out.append(r)
+    out.sort(key=lambda r: (not r.get("is_admin", False), r["username"])); return out
 def user_delete(username: str) -> None:
     db = _load_users()
     if username in db.get("users", {}):
-        if username == "admin":
-            return
-        db["users"].pop(username, None)
-        _save_users(db)
+        if username == "admin": return
+        db["users"].pop(username, None); _save_users(db)
 
-# --- Login UI + mudança de senha obrigatória
 def _auth_login_ui():
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
@@ -382,10 +344,10 @@ def _auth_login_ui():
             elif not _verify_password(pwd, rec.get("password", "")):
                 st.error("Senha incorreta.")
             else:
-                s["logged_in"] = True
-                s["username"] = (user or "").strip()
-                s["is_admin"] = bool(rec.get("is_admin", False))
-                s["must_change"] = bool(rec.get("must_change", False))
+                s["logged_in"]  = True
+                s["username"]   = (user or "").strip()
+                s["is_admin"]   = bool(rec.get("is_admin", False))
+                s["must_change"]= bool(rec.get("must_change", False))
 
                 # salva quem logou para recuperar após refresh
                 prefs = load_user_prefs()
@@ -402,10 +364,8 @@ def _force_change_password_ui(username: str):
     p1 = st.text_input("Nova senha", type="password")
     p2 = st.text_input("Confirmar nova senha", type="password")
     if st.button("Salvar nova senha", use_container_width=True):
-        if len(p1) < 4:
-            st.error("Use ao menos 4 caracteres.")
-        elif p1 != p2:
-            st.error("As senhas não conferem.")
+        if len(p1) < 4: st.error("Use ao menos 4 caracteres.")
+        elif p1 != p2: st.error("As senhas não conferem.")
         else:
             rec = user_get(username) or {}
             rec["password"] = _hash_password(p1)
@@ -420,13 +380,11 @@ def _force_change_password_ui(username: str):
 # Tela de login
 # =============================================================================
 if not s["logged_in"]:
-    _auth_login_ui()
-    st.stop()
+    _auth_login_ui(); st.stop()
 
 # Troca obrigatória de senha
 if s.get("must_change", False):
-    _force_change_password_ui(s["username"])
-    st.stop()
+    _force_change_password_ui(s["username"]); st.stop()
 
 # =============================================================================
 # Toolbar de preferências + identificação do usuário
@@ -440,8 +398,7 @@ with c1:
     )
 with c2:
     s["brand"] = st.selectbox(
-        "🎨 Cor da marca",
-        ["Laranja", "Azul", "Verde", "Roxo"],
+        "🎨 Cor da marca", ["Laranja", "Azul", "Verde", "Roxo"],
         index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
     )
 with c3:
@@ -468,8 +425,7 @@ with c4:
             st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
     with col_b:
         if st.button("Sair", use_container_width=True, key="k_logout"):
-            s["logged_in"] = False
-            st.rerun()
+            s["logged_in"] = False; st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
 # Identificação do usuário atual
@@ -487,8 +443,7 @@ if s.get("is_admin", False):
 
         with tab1:
             users = user_list()
-            if not users:
-                st.info("Nenhum usuário cadastrado.")
+            if not users: st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
                     colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
@@ -512,18 +467,13 @@ if s.get("is_admin", False):
 
         with tab2:
             nu_col1, nu_col2, nu_col3 = st.columns([2,1,1])
-            with nu_col1:
-                new_user = st.text_input("Usuário (login)", key="new_user")
-            with nu_col2:
-                is_admin = st.checkbox("Administrador", value=False)
-            with nu_col3:
-                active = st.checkbox("Ativo", value=True)
+            with nu_col1: new_user = st.text_input("Usuário (login)", key="new_user")
+            with nu_col2: is_admin  = st.checkbox("Administrador", value=False)
+            with nu_col3: active    = st.checkbox("Ativo", value=True)
             if st.button("Cadastrar usuário"):
                 uname = (new_user or "").strip()
-                if not uname:
-                    st.error("Informe o login do usuário.")
-                elif user_exists(uname):
-                    st.error("Usuário já existe.")
+                if not uname: st.error("Informe o login do usuário.")
+                elif user_exists(uname): st.error("Usuário já existe.")
                 else:
                     user_set(uname, {
                         "password": _hash_password("1234"),
@@ -534,6 +484,19 @@ if s.get("is_admin", False):
                     })
                     st.success(f"Usuário **{uname}** criado com senha inicial **1234** (exigirá troca).")
                     st.rerun()
+
+# =============================================================================
+# >>> DAQUI PRA BAIXO (SEU PIPELINE): uploader, parsing, gráficos, PDF, exportações, etc.
+# =============================================================================
+
+# --- GUARDS (evitam NameError ao usar variáveis do session_state no pipeline) ---
+TOL_MP   = float(s.get("TOL_MP", 1.0))
+BATCH_MODE = bool(s.get("BATCH_MODE", False))
+
+# (a partir daqui, seu código original continua normalmente)
+# Exemplo de primeira linha típica do seu bloco:
+# _uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
+
 # =============================================================================
 # Sidebar (opções de relatório)
 # =============================================================================
@@ -1898,6 +1861,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

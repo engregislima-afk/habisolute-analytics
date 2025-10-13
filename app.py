@@ -1,5 +1,18 @@
-# =============================== PARTE 1 — Imports, Tema, AUTH, Canvas PDF ===============================
-import io, re, json, base64, tempfile, zipfile, hashlib, secrets
+# ============================ PARTE 1/4 ============================
+# Cabeçalho, paths, preferências e segurança/usuários
+# ================================================================
+
+import io
+import re
+import os
+import hmac
+import json
+import time
+import base64
+import tempfile
+import zipfile
+import secrets
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -12,82 +25,24 @@ from matplotlib.ticker import MaxNLocator
 
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+)
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.pdfgen import canvas as pdfcanvas
+from reportlab.pdfgen import canvas as pdfcanvas  # para numeração/rodapé
 
-# ===== Rodapé e numeração do PDF =====
-FOOTER_TEXT = (
-    "Estes resultados referem-se exclusivamente às amostras ensaiadas, portanto esse documento poderá ser "
-    "reproduzido somente na íntegra. Resultados sem considerar a incerteza da medição."
-)
-CREDIT_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
-
-class NumberedCanvas(pdfcanvas.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        total_pages = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer_and_pagenum(total_pages)
-            super().showPage()
-        super().save()
-
-    def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
-        if max_width is None:
-            max_width = self._pagesize[0] - 36 - 140
-        words = text.split()
-        lines, line = [], ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if self.stringWidth(test, font_name, font_size) <= max_width:
-                line = test
-            else:
-                if line:
-                    lines.append(line)
-                line = w
-        if line:
-            lines.append(line)
-        return lines
-
-    def _draw_footer_and_pagenum(self, total_pages: int):
-        w, h = self._pagesize
-
-        # texto legal
-        self.setFont("Helvetica", 7)
-        lines = self._wrap_footer(FOOTER_TEXT, font_name="Helvetica", font_size=7, max_width=w - 36 - 120)
-        base_y = 10
-        for i, ln in enumerate(lines):
-            y = base_y + i * 8
-            if y > 28 - 8:
-                break
-            self.drawString(18, y, ln)
-
-        # crédito da empresa (alinhado centro inferior)
-        self.setFont("Helvetica-Oblique", 7.5)
-        self.drawCentredString(w / 2, 28, CREDIT_TEXT)
-
-        # número da página
-        self.setFont("Helvetica", 8)
-        self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
-
-# =============================================================================
-# Configuração básica
-# =============================================================================
+# ---------------------- Arquivos e preferências ----------------------
 st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 
 PREFS_DIR = Path.home() / ".habisolute"
 PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"
 USERS_PATH = PREFS_DIR / "users.json"
+AUDIT_LOG  = PREFS_DIR / "audit.log"
+
+def _now_iso() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def _load_all_prefs() -> Dict[str, Any]:
     try:
@@ -110,10 +65,193 @@ def save_user_prefs(prefs: Dict[str, Any], user_key: str = "default") -> None:
     data[user_key] = prefs
     _save_all_prefs(data)
 
-# ===== Estado
+# ------------------------- Segurança / Usuários -------------------------
+PBKDF_ITER = 120_000
+HASH_ALG   = "sha256"
+
+def _hash_password(password: str, salt: str) -> str:
+    """Gera hash PBKDF2-HMAC(hex) para senha+salt."""
+    if not isinstance(password, str):
+        password = str(password or "")
+    dk = hashlib.pbkdf2_hmac(
+        HASH_ALG,
+        password.encode("utf-8"),
+        bytes.fromhex(salt),
+        PBKDF_ITER,
+    )
+    return dk.hex()
+
+def _verify_password(password: str, salt: str, password_hash: str) -> bool:
+    """Verifica senha (tempo constante)."""
+    try:
+        calc = _hash_password(password, salt)
+        return hmac.compare_digest(calc, password_hash)
+    except Exception:
+        return False
+
+def _audit(event: str, detail: Dict[str, Any]):
+    """Log simples (append) de eventos de segurança."""
+    try:
+        rec = {"ts": _now_iso(), "event": event, "detail": detail}
+        with AUDIT_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+def _load_users() -> List[Dict[str, Any]]:
+    """Carrega usuários e NORMALIZA para lista de dicts (tolerante a formatos antigos)."""
+    try:
+        if USERS_PATH.exists():
+            raw = USERS_PATH.read_text(encoding="utf-8").strip()
+            if not raw:
+                return []
+            data = json.loads(raw)
+
+            # Migração/normalização:
+            # - Se vier {"users":[...]} -> usa a lista
+            # - Se vier um dict com "login" -> vira [dict]
+            # - Se vier lista -> filtra apenas dicts
+            if isinstance(data, dict):
+                if "users" in data and isinstance(data["users"], list):
+                    return [u for u in data["users"] if isinstance(u, dict)]
+                if "login" in data:  # arquivo antigo com um único usuário
+                    return [data]
+                return []
+            if isinstance(data, list):
+                return [u for u in data if isinstance(u, dict)]
+    except Exception:
+        pass
+    return []
+
+def _save_users(users: List[Dict[str, Any]]):
+    """Salva SEMPRE como lista de dicts normalizada."""
+    users_norm = [u for u in users if isinstance(u, dict)]
+    tmp = PREFS_DIR / "users.tmp"
+    tmp.write_text(json.dumps(users_norm, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(USERS_PATH)
+
+def _get_user_by_login(login: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Busca usuário por login (case-insensitive) com segurança."""
+    login_lc = (login or "").strip().lower()
+    if not login_lc:
+        return None
+    for u in _load_users():
+        if not isinstance(u, dict):
+            continue
+        if (u.get("login", "").strip().lower() == login_lc):
+            return u
+    return None
+
+def _seed_default_admin_if_missing():
+    """
+    Cria 'admin/admin' (force_reset=True) se NÃO houver usuários válidos.
+    Normaliza arquivo se já existir.
+    """
+    users = _load_users()
+    valid = [u for u in users if isinstance(u, dict) and u.get("login")]
+    if not valid:
+        salt = secrets.token_hex(16)
+        admin_user = {
+            "name": "Administrador",
+            "login": "admin",
+            "role": "admin",
+            "salt": salt,
+            "password_hash": _hash_password("admin", salt),  # senha inicial: admin
+            "force_reset": True,   # obriga trocar no primeiro acesso
+            "created_at": _now_iso(),
+            "active": True
+        }
+        _save_users([admin_user])
+        _audit("seed_admin", {"login": "admin"})
+    else:
+        _save_users(valid)  # normaliza formato
+_seed_default_admin_if_missing()
+
+def create_user(name: str, login: str, password: str, role: str = "user", active: bool = True) -> bool:
+    """Cria usuário (retorna True/False). Não permite logins duplicados."""
+    login = (login or "").strip()
+    if not login or not password:
+        return False
+    if _get_user_by_login(login):
+        return False
+    users = _load_users()
+    salt = secrets.token_hex(16)
+    user = {
+        "name": name.strip() or login,
+        "login": login,
+        "role": role if role in ("admin", "user") else "user",
+        "salt": salt,
+        "password_hash": _hash_password(password, salt),
+        "force_reset": False,
+        "created_at": _now_iso(),
+        "active": bool(active)
+    }
+    users.append(user)
+    _save_users(users)
+    _audit("create_user", {"login": login, "role": user["role"]})
+    return True
+
+def update_user_password(login: str, new_password: str, clear_force_reset: bool = True) -> bool:
+    """Atualiza senha do usuário. Pode limpar 'force_reset'."""
+    users = _load_users()
+    changed = False
+    for u in users:
+        if isinstance(u, dict) and u.get("login", "").strip().lower() == (login or "").strip().lower():
+            salt = u.get("salt") or secrets.token_hex(16)
+            u["salt"] = salt
+            u["password_hash"] = _hash_password(new_password, salt)
+            if clear_force_reset:
+                u["force_reset"] = False
+            changed = True
+            break
+    if changed:
+        _save_users(users)
+        _audit("update_password", {"login": login})
+    return changed
+
+def set_user_active(login: str, active: bool) -> bool:
+    """Ativa/Desativa usuário."""
+    users = _load_users()
+    changed = False
+    for u in users:
+        if isinstance(u, dict) and u.get("login", "").strip().lower() == (login or "").strip().lower():
+            u["active"] = bool(active)
+            changed = True
+            break
+    if changed:
+        _save_users(users)
+        _audit("set_active", {"login": login, "active": bool(active)})
+    return changed
+
+def list_users() -> List[Dict[str, Any]]:
+    """Lista usuários (sem expor hash/salt na UI; a filtragem fica para a camada de apresentação)."""
+    return _load_users()
+
+def authenticate(login: str, password: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    """
+    Autentica e retorna (ok, user|None, msg).
+    - Obriga ativo=True
+    - Respeita force_reset (tratado na UI após login)
+    """
+    u = _get_user_by_login(login)
+    if not u:
+        _audit("login_fail", {"login": login, "reason": "not_found"})
+        return (False, None, "Usuário ou senha inválidos.")
+    if not u.get("active", True):
+        _audit("login_fail", {"login": login, "reason": "inactive"})
+        return (False, None, "Usuário desativado.")
+    if not _verify_password(password, u.get("salt", ""), u.get("password_hash", "")):
+        _audit("login_fail", {"login": login, "reason": "bad_password"})
+        return (False, None, "Usuário ou senha inválidos.")
+    _audit("login_ok", {"login": login})
+    return (True, u, "OK")
+
+# --------------------- Estado base da sessão (auth) ---------------------
 s = st.session_state
 s.setdefault("logged_in", False)
-s.setdefault("current_user", None)
+s.setdefault("user_login", None)
+s.setdefault("user_role", None)        # "admin" | "user"
+s.setdefault("force_reset", False)     # forçar troca de senha pós-login inicial
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
@@ -121,143 +259,7 @@ s.setdefault("uploader_key", 0)
 s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])
-
-# ===== Helpers AUTH (hash + salt) e semente admin/admin =====
-def _now_iso():
-    return datetime.utcnow().isoformat() + "Z"
-
-def _load_users():
-    try:
-        if USERS_PATH.exists():
-            return json.loads(USERS_PATH.read_text(encoding="utf-8")) or []
-    except Exception:
-        pass
-    return []
-
-def _save_users(users: List[Dict[str, Any]]):
-    tmp = PREFS_DIR / "users.tmp"
-    tmp.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(USERS_PATH)
-
-def _hash_password(password: str, salt: str) -> str:
-    return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-
-def _verify_password(user: Dict[str, Any], password: str) -> bool:
-    salt = user.get("salt", "")
-    return _hash_password(password, salt) == user.get("password_hash", "")
-
-def _get_user_by_login(login: str) -> Optional[Dict[str, Any]]:
-    login_lc = (login or "").strip().lower()
-    for u in _load_users():
-        if (u.get("login","").lower() == login_lc):
-            return u
-    return None
-
-def _upsert_user(user: Dict[str, Any]):
-    users = _load_users()
-    logins = [u.get("login","").lower() for u in users]
-    if user["login"].lower() in logins:
-        users = [user if u.get("login","").lower()==user["login"].lower() else u for u in users]
-    else:
-        users.append(user)
-    _save_users(users)
-
-def _update_user_fields(login: str, **fields):
-    users = _load_users()
-    new_users = []
-    login_lc = login.lower()
-    for u in users:
-        if u.get("login","").lower() == login_lc:
-            u = {**u, **fields}
-        new_users.append(u)
-    _save_users(new_users)
-
-def _delete_user(login: str):
-    users = _load_users()
-    login_lc = login.lower()
-    users = [u for u in users if u.get("login","").lower() != login_lc]
-    _save_users(users)
-
-def _seed_default_admin_if_missing():
-    users = _load_users()
-    if not users:
-        salt = secrets.token_hex(16)
-        _upsert_user({
-            "name": "Administrador",
-            "login": "admin",
-            "role": "admin",
-            "salt": salt,
-            "password_hash": _hash_password("admin", salt),  # senha inicial: admin
-            "force_reset": True,  # obriga trocar a senha no primeiro login
-            "created_at": _now_iso(),
-            "active": True
-        })
-
-_seed_default_admin_if_missing()
-
-# ===== Tema (cores e CSS)
-BRAND_MAP = {
-    "Laranja": ("#f97316", "#ea580c", "#c2410c"),
-    "Azul":    ("#3b82f6", "#2563eb", "#1d4ed8"),
-    "Verde":   ("#22c55e", "#16a34a", "#15803d"),
-    "Roxo":    ("#a855f7", "#9333ea", "#7e22ce"),
-}
-brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
-
-plt.rcParams.update({
-    "font.size": 10,
-    "axes.titlesize": 12,
-    "axes.labelsize": 10,
-    "axes.titleweight": "semibold",
-    "figure.autolayout": False,
-})
-
-if s["theme_mode"] == "Escuro moderno":
-    plt.style.use("dark_background")
-    css = f"""
-    <style>
-    :root {{
-      --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#0b0f19; --panel:#0f172a; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
-    }}
-    .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 12px; max-width: 1300px; }}
-    .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
-    .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-           border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-    .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                 -webkit-background-clip:text; background-clip:text; color:transparent}}
-    .login-card{{max-width:520px;margin:36px auto;background:var(--panel);border:1px solid var(--line);
-                 border-radius:16px;padding:16px}}
-    .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
-    </style>
-    """
-else:
-    plt.style.use("default")
-    css = f"""
-    <style>
-    :root {{
-      --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#f8fafc; --surface:#ffffff; --text:#0f172a; --muted:#64748b; --line:rgba(2,6,23,.08);
-    }}
-    .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 12px; max-width: 1300px; }}
-    .h-card{{ background: var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
-    .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-           border:1px solid var(--line); background:#ffffff; font-size:12.5px; }}
-    .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                 -webkit-background-clip:text; background-clip:text; color:transparent}}
-    .login-card{{max-width:520px;margin:36px auto;background:var(--surface);border:1px solid var(--line);
-                 border-radius:16px;padding:16px}}
-    .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
-    </style>
-    """
-st.markdown(css, unsafe_allow_html=True)
+s.setdefault("_prev_batch", s["BATCH_MODE"])  # guarda modo anterior do uploader
 # =============================== PARTE 2 — Login, Preferências, Upload, Parsing ===============================
 
 # Preferências via URL
@@ -1509,3 +1511,4 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ======================================= FIM DO APP =======================================
+

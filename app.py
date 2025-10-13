@@ -30,7 +30,7 @@ from reportlab.pdfgen import canvas as pdfcanvas  # ⬅️ numeração/rodapé
 FOOTER_TEXT = (
     "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
     "Este documento poderá ser reproduzido somente na íntegra. "
-    "Resultados apresentados sem considerar a incerteza de medição."
+    "Resultados apresentados sem considerar a incerteza de medição +ou- 0,90mpd - SISTEMA DESENVOLVIDO PELA HABSIOLUTE ENGENHARIA."
 )
 
 class NumberedCanvas(pdfcanvas.Canvas):
@@ -1667,5 +1667,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

@@ -185,9 +185,9 @@ if s["theme_mode"] == "Escuro moderno":
       --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 18px; max-width: 1300px; }}
+    .block-container{{ padding-top: 56px; max-width: 1300px; }}
 
-    .app-header{{ margin: 6px 0 10px 0; }}
+    .app-header{{ margin: 0 0 12px 0; padding-top: 6px; }}
     .brand-title{{ display:inline-block; font-weight:800; font-size:20px;
       background:linear-gradient(90deg,var(--brand),var(--brand-700));
       -webkit-background-clip:text; background-clip:text; color:transparent }}
@@ -228,9 +228,9 @@ else:
       --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 18px; max-width: 1300px; }}
+    .block-container{{ padding-top: 56px; max-width: 1300px; }}
 
-    .app-header{{ margin: 8px 0 12px 0; }}
+    .app-header{{ margin: 0 0 12px 0; padding-top: 6px; }}
     .brand-title{{ display:inline-block; font-weight:800; font-size:20px;
       background:linear-gradient(90deg,var(--brand),var(--brand-700));
       -webkit-background-clip:text; background-clip:text; color:transparent }}
@@ -270,7 +270,8 @@ else:
     """
 st.markdown(css, unsafe_allow_html=True)
 
-# Cabeçalho / título (reposicionado)
+# Spacer de segurança + Cabeçalho / título
+st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 st.markdown("<div class='app-header'><span class='brand-title'>🏗️ Habisolute IA 🤖</span></div>", unsafe_allow_html=True)
 st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
 
@@ -444,7 +445,7 @@ if s.get("must_change", False):
     st.stop()
 
 # =============================================================================
-# Painel de Usuários (somente admin) — pode ficar aqui ou logo após a barra de preferências
+# Painel de Usuários (somente admin)
 # =============================================================================
 if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
@@ -1865,6 +1866,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

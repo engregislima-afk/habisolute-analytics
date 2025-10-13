@@ -1,12 +1,6 @@
-# app.py — Habisolute Analytics (login + painel + título/tema + toolbar + GUARDS prontos)
+# app.py — Habisolute Analytics (login + painel + tema + header pós-login + boas-vindas + guards)
 
-import io
-import re
-import json
-import base64
-import tempfile
-import zipfile
-import hashlib
+import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -19,9 +13,7 @@ from matplotlib.ticker import MaxNLocator
 
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
-)
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas
@@ -30,16 +22,14 @@ from reportlab.pdfgen import canvas as pdfcanvas
 FOOTER_TEXT = (
     "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
     "Este documento poderá ser reproduzido somente na íntegra. "
-    "Resultados apresentados sem considerar a incerteza de medição +ou-90Mpa."
+    "Resultados apresentados sem considerar a incerteza de medição."
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
 class NumberedCanvas(pdfcanvas.Canvas):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__)); self._startPage()
+        super().__init__(*args, **kwargs); self._saved_page_states = []
+    def showPage(self): self._saved_page_states.append(dict(self.__dict__)); self._startPage()
     def save(self):
         total_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
@@ -61,83 +51,67 @@ class NumberedCanvas(pdfcanvas.Canvas):
     def _draw_footer_and_pagenum(self, total_pages: int):
         w, h = self._pagesize
         self.setFont("Helvetica", 7)
-        lines = self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)
-        base_y = 10
-        for i, ln in enumerate(lines):
-            y = base_y + i * 8
-            if y > 28 - 8: break
+        for i, ln in enumerate(self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)):
+            y = 10 + i * 8
+            if y > 20: break
             self.drawString(18, y, ln)
-        self.setFont("Helvetica-Oblique", 8)
-        self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
-        self.setFont("Helvetica", 8)
-        self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
+        self.setFont("Helvetica-Oblique", 8); self.drawCentredString(w/2.0, 26, FOOTER_BRAND_TEXT)
+        self.setFont("Helvetica", 8); self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
 # =============================================================================
 st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 
-PREFS_DIR = Path.home() / ".habisolute"
-PREFS_DIR.mkdir(parents=True, exist_ok=True)
-PREFS_PATH = PREFS_DIR / "prefs.json"
-USERS_DB = PREFS_DIR / "users.json"
+PREFS_DIR = Path.home() / ".habisolute"; PREFS_DIR.mkdir(parents=True, exist_ok=True)
+PREFS_PATH = PREFS_DIR / "prefs.json"; USERS_DB = PREFS_DIR / "users.json"
 
 # ----- prefs util -----
 def _save_all_prefs(data: Dict[str, Any]) -> None:
     tmp = PREFS_DIR / "prefs.tmp"
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(PREFS_PATH)
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(PREFS_PATH)
 def _load_all_prefs() -> Dict[str, Any]:
     try:
-        if PREFS_PATH.exists():
-            return json.loads(PREFS_PATH.read_text(encoding="utf-8")) or {}
-    except Exception:
-        pass
+        if PREFS_PATH.exists(): return json.loads(PREFS_PATH.read_text(encoding="utf-8")) or {}
+    except Exception: pass
     return {}
-def load_user_prefs(user_key: str = "default") -> Dict[str, Any]:
-    return _load_all_prefs().get(user_key, {})
-def save_user_prefs(prefs: Dict[str, Any], user_key: str = "default") -> None:
-    data = _load_all_prefs(); data[user_key] = prefs; _save_all_prefs(data)
+def load_user_prefs(key: str = "default") -> Dict[str, Any]: return _load_all_prefs().get(key, {})
+def save_user_prefs(prefs: Dict[str, Any], key: str = "default") -> None:
+    data = _load_all_prefs(); data[key] = prefs; _save_all_prefs(data)
 
 # ===== Estado =====
 s = st.session_state
-s.setdefault("logged_in", False)
-s.setdefault("username", None)
-s.setdefault("is_admin", False)
+s.setdefault("logged_in", False); s.setdefault("username", None); s.setdefault("is_admin", False)
 s.setdefault("must_change", False)
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
-s.setdefault("uploader_key", 0)
-s.setdefault("OUTLIER_SIGMA", 3.0)
-s.setdefault("TOL_MP", 1.0)
-s.setdefault("BATCH_MODE", False)
-s.setdefault("_prev_batch", s["BATCH_MODE"])
+s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
+s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
 
-# >>> Recupera usuário após refresh se necessário
+# Recupera usuário após refresh se necessário
 if s.get("logged_in") and not s.get("username"):
     _p = load_user_prefs()
-    if _p.get("last_user"):
-        s["username"] = _p["last_user"]
+    if _p.get("last_user"): s["username"] = _p["last_user"]
 
 # --- preferências via URL ---
 def _apply_query_prefs():
     try:
         qp = st.query_params
-        def _first(x):
+        def _first(x): 
             if x is None: return None
             return x[0] if isinstance(x, list) else x
         theme = _first(qp.get("theme") or qp.get("t"))
         brand = _first(qp.get("brand") or qp.get("b"))
         qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
-        if theme in ("Escuro moderno", "Claro corporativo"): s["theme_mode"] = theme
-        if brand in ("Laranja", "Azul", "Verde", "Roxo"):     s["brand"] = brand
+        if theme in ("Escuro moderno","Claro corporativo"): s["theme_mode"] = theme
+        if brand in ("Laranja","Azul","Verde","Roxo"): s["brand"] = brand
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
 
 # =============================================================================
-# Estilo e tema (patch de contraste + título neutro)
+# Estilo e tema
 # =============================================================================
 BRAND_MAP = {
     "Laranja": ("#f97316", "#ea580c", "#c2410c"),
@@ -147,13 +121,7 @@ BRAND_MAP = {
 }
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
-plt.rcParams.update({
-    "font.size": 10,
-    "axes.titlesize": 12,
-    "axes.labelsize": 10,
-    "axes.titleweight": "semibold",
-    "figure.autolayout": False,
-})
+plt.rcParams.update({"font.size":10,"axes.titlesize":12,"axes.labelsize":10,"axes.titleweight":"semibold","figure.autolayout":False})
 
 if s["theme_mode"] == "Escuro moderno":
     plt.style.use("dark_background")
@@ -161,38 +129,21 @@ if s["theme_mode"] == "Escuro moderno":
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#0b0f19; --panel:#0f172a; --surface:#111827;
-      --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
+      --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
     .block-container{{ padding-top: 56px; max-width: 1300px; }}
-
-    .app-header{{ margin: 0 0 12px 0; padding-top: 6px; }}
-    .brand-title{{ display:inline-block; font-weight:800; font-size:22px; color: var(--text); }}
-
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
-
-    .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-           border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-
-    .stButton > button, .stDownloadButton > button, .h-print-btn {{
-      background: linear-gradient(180deg, {brand}, {brand600}) !important;
-      color: #fff !important; border: 0 !important; border-radius: 12px !important;
-      padding: 12px 16px !important; font-weight: 800 !important; box-shadow: 0 8px 20px rgba(0,0,0,.18) !important;
+    .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
+    .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
+    .stButton > button, .stDownloadButton > button {{
+      background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
+      padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.18) !important;
     }}
-
-    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div,
-    .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
+    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
       background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important;
     }}
-    .stExpander > details > summary {{
-      background: var(--panel) !important; color: var(--text) !important;
-      border:1px solid var(--line); border-radius:10px; padding:8px 12px;
-    }}
-    .stTabs [data-baseweb="tab"] {{ color: var(--text) !important; }}
-    .stTabs [aria-selected="true"] {{ border-color: var(--brand) !important; color: #fff !important; }}
+    .stExpander > details > summary {{ background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
     </style>
     """
 else:
@@ -201,75 +152,47 @@ else:
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff;
-      --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
+      --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff; --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
     .block-container{{ padding-top: 56px; max-width: 1300px; }}
-
-    .app-header{{ margin: 0 0 12px 0; padding-top: 6px; }}
-    .brand-title{{ display:inline-block; font-weight:800; font-size:22px; color: var(--text); }}
-
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }}
-    .h-kpi{{ font-size:22px; font-weight:800; }}
-
-    .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-           border:1px solid var(--line); background:#ffffff; color:var(--text); font-size:12.5px; }}
-
-    .stButton > button, .stDownloadButton > button, .h-print-btn {{
-      background: linear-gradient(180deg, {brand}, {brand600}) !important;
-      color: #fff !important; border: 0 !important; border-radius: 12px !important;
-      padding: 12px 16px !important; font-weight: 800 !important; box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
+    .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
+    .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text); font-size:12.5px; }}
+    .stButton > button, .stDownloadButton > button {{
+      background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
+      padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.08) !important;
     }}
-
-    label, .stMarkdown, .stCaption, .stText, .stAlert, .stExpander, .stRadio, .stCheckbox, .stSelectbox, .stMultiSelect {{
-      color: var(--text) !important;
-    }}
-    .stTextInput input, .stNumberInput input, .stDateInput input {{
-      background: #ffffff !important; color: var(--text) !important; border:1px solid var(--line) !important;
-    }}
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stMultiSelect div[data-baseweb="select"] > div {{
-      background:#ffffff !important; color: var(--text) !important; border:1px solid var(--line) !important;
-    }}
-    .stExpander > details > summary {{
-      background: #ffffff !important; color: var(--text) !important;
-      border:1px solid var(--line); border-radius:10px; padding:8px 12px;
-    }}
-    .stTabs [data-baseweb="tab"] {{ color: var(--muted) !important; }}
-    .stTabs [aria-selected="true"] {{ color: var(--text) !important; border-color: var(--brand) !important; }}
-    .stTooltipIcon svg {{ fill: var(--muted) !important; }}
+    .stTextInput input, .stNumberInput input, .stDateInput input {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line) !important; }}
+    .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line) !important; }}
+    .stExpander > details > summary {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
 
-# Spacer + Título neutro (emoji natural)
-st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-st.markdown("<div class='app-header'><span class='brand-title'>🏗️ Habisolute IA</span></div>", unsafe_allow_html=True)
-st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
+# -------- Cabeçalho (será mostrado só depois do login) ----------
+def _render_header():
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='app-header'><span class='brand-title' style='font-weight:800; font-size:22px; color: var(--text)'>🏗️ Habisolute IA</span></div>", unsafe_allow_html=True)
+    st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
 
 # =============================================================================
 # Autenticação & gerenciamento de usuários
 # =============================================================================
-def _hash_password(pw: str) -> str:
-    return hashlib.sha256(("habisolute|" + pw).encode("utf-8")).hexdigest()
+def _hash_password(pw: str) -> str: return hashlib.sha256(("habisolute|" + pw).encode("utf-8")).hexdigest()
 def _verify_password(pw: str, hashed: str) -> bool:
     try: return _hash_password(pw) == hashed
     except Exception: return False
 
 def _save_users(data: Dict[str, Any]) -> None:
     tmp = USERS_DB.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(USERS_DB)
-
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(USERS_DB)
 def _load_users() -> Dict[str, Any]:
     def _bootstrap_admin(db: Dict[str, Any]) -> Dict[str, Any]:
         db.setdefault("users", {})
         if "admin" not in db["users"]:
             db["users"]["admin"] = {
-                "password": _hash_password("1234"),
-                "is_admin": True, "active": True, "must_change": True,
+                "password": _hash_password("1234"), "is_admin": True, "active": True, "must_change": True,
                 "created_at": datetime.now().isoformat(timespec="seconds")
             }
         return db
@@ -290,28 +213,22 @@ def _load_users() -> Dict[str, Any]:
                         if isinstance(item, str):
                             uname = item.strip()
                             if not uname: continue
-                            users_map[uname] = {
-                                "password": _hash_password("1234"),
-                                "is_admin": (uname == "admin"),
-                                "active": True, "must_change": True,
-                                "created_at": datetime.now().isoformat(timespec="seconds")
-                            }
+                            users_map[uname] = {"password": _hash_password("1234"), "is_admin": (uname=="admin"),
+                                                "active": True, "must_change": True,
+                                                "created_at": datetime.now().isoformat(timespec="seconds")}
                         elif isinstance(item, dict) and item.get("username"):
                             uname = str(item["username"]).strip()
                             if not uname: continue
-                            users_map[uname] = {
-                                "password": _hash_password("1234"),
-                                "is_admin": bool(item.get("is_admin", uname == "admin")),
-                                "active": bool(item.get("active", True)),
-                                "must_change": True,
-                                "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))
-                            }
+                            users_map[uname] = {"password": _hash_password("1234"),
+                                                "is_admin": bool(item.get("is_admin", uname=="admin")),
+                                                "active": bool(item.get("active", True)),
+                                                "must_change": True,
+                                                "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))}
                     fixed = _bootstrap_admin({"users": users_map}); _save_users(fixed); return fixed
     except Exception: pass
     default = _bootstrap_admin({"users": {}}); _save_users(default); return default
 
-def user_get(username: str) -> Optional[Dict[str, Any]]:
-    db = _load_users(); return db.get("users", {}).get(username)
+def user_get(username: str) -> Optional[Dict[str, Any]]: return _load_users().get("users", {}).get(username)
 def user_set(username: str, record: Dict[str, Any]) -> None:
     db = _load_users(); db.setdefault("users", {})[username] = record; _save_users(db)
 def user_exists(username: str) -> bool: return user_get(username) is not None
@@ -319,7 +236,7 @@ def user_list() -> List[Dict[str, Any]]:
     db = _load_users(); out=[]
     for uname, rec in db.get("users", {}).items():
         r = dict(rec); r["username"]=uname; out.append(r)
-    out.sort(key=lambda r: (not r.get("is_admin", False), r["username"])); return out
+    out.sort(key=lambda r:(not r.get("is_admin",False), r["username"])); return out
 def user_delete(username: str) -> None:
     db = _load_users()
     if username in db.get("users", {}):
@@ -329,7 +246,7 @@ def user_delete(username: str) -> None:
 def _auth_login_ui():
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔐 Entrar - 🏗️ Habisolute Analytics</div>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1.3, 1.3, 0.7])
+    c1,c2,c3 = st.columns([1.3,1.3,0.7])
     with c1:
         user = st.text_input("Usuário", key="login_user", label_visibility="collapsed", placeholder="Usuário")
     with c2:
@@ -339,21 +256,12 @@ def _auth_login_ui():
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
             rec = user_get((user or "").strip())
-            if not rec or not rec.get("active", True):
-                st.error("Usuário inexistente ou inativo.")
-            elif not _verify_password(pwd, rec.get("password", "")):
-                st.error("Senha incorreta.")
+            if not rec or not rec.get("active", True): st.error("Usuário inexistente ou inativo.")
+            elif not _verify_password(pwd, rec.get("password","")): st.error("Senha incorreta.")
             else:
-                s["logged_in"]  = True
-                s["username"]   = (user or "").strip()
-                s["is_admin"]   = bool(rec.get("is_admin", False))
-                s["must_change"]= bool(rec.get("must_change", False))
-
-                # salva quem logou para recuperar após refresh
-                prefs = load_user_prefs()
-                prefs["last_user"] = s["username"]
-                save_user_prefs(prefs)
-
+                s["logged_in"]=True; s["username"]=(user or "").strip()
+                s["is_admin"]=bool(rec.get("is_admin",False)); s["must_change"]=bool(rec.get("must_change",False))
+                prefs = load_user_prefs(); prefs["last_user"]=s["username"]; save_user_prefs(prefs)
                 st.rerun()
     st.caption("Primeiro acesso: **admin / 1234** (será exigida troca de senha).")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -361,77 +269,75 @@ def _auth_login_ui():
 def _force_change_password_ui(username: str):
     st.markdown("<div class='login-card'>", unsafe_allow_html=True)
     st.markdown("<div class='login-title'>🔑 Definir nova senha</div>", unsafe_allow_html=True)
-    p1 = st.text_input("Nova senha", type="password")
-    p2 = st.text_input("Confirmar nova senha", type="password")
+    p1 = st.text_input("Nova senha", type="password"); p2 = st.text_input("Confirmar nova senha", type="password")
     if st.button("Salvar nova senha", use_container_width=True):
-        if len(p1) < 4: st.error("Use ao menos 4 caracteres.")
-        elif p1 != p2: st.error("As senhas não conferem.")
+        if len(p1)<4: st.error("Use ao menos 4 caracteres.")
+        elif p1!=p2: st.error("As senhas não conferem.")
         else:
             rec = user_get(username) or {}
-            rec["password"] = _hash_password(p1)
-            rec["must_change"] = False
-            user_set(username, rec)
-            st.success("Senha atualizada! Redirecionando…")
-            s["must_change"] = False
-            st.rerun()
+            rec["password"]=_hash_password(p1); rec["must_change"]=False; user_set(username, rec)
+            st.success("Senha atualizada! Redirecionando…"); s["must_change"]=False; st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # Tela de login
 # =============================================================================
 if not s["logged_in"]:
-    _auth_login_ui(); st.stop()
+    _auth_login_ui()
+    st.stop()
 
 # Troca obrigatória de senha
 if s.get("must_change", False):
-    _force_change_password_ui(s["username"]); st.stop()
+    _force_change_password_ui(s["username"])
+    st.stop()
+
+# >>> Cabeçalho apenas para quem está logado
+_render_header()
 
 # =============================================================================
-# Toolbar de preferências + identificação do usuário
+# Toolbar de preferências
 # =============================================================================
 st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns([1.1, 1.1, 2.5, 1.1])
+c1,c2,c3,c4 = st.columns([1.1,1.1,2.5,1.1])
 with c1:
-    s["theme_mode"] = st.radio(
-        "Tema", ["Escuro moderno", "Claro corporativo"],
-        index=0 if s.get("theme_mode") == "Escuro moderno" else 1, horizontal=True
-    )
+    s["theme_mode"] = st.radio("Tema", ["Escuro moderno","Claro corporativo"],
+                               index=0 if s.get("theme_mode")=="Escuro moderno" else 1, horizontal=True)
 with c2:
-    s["brand"] = st.selectbox(
-        "🎨 Cor da marca", ["Laranja", "Azul", "Verde", "Roxo"],
-        index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
-    )
+    s["brand"] = st.selectbox("🎨 Cor da marca", ["Laranja","Azul","Verde","Roxo"],
+                              index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja")))
 with c3:
-    s["qr_url"] = st.text_input(
-        "URL do resumo (QR opcional na capa do PDF)",
-        value=s.get("qr_url",""), placeholder="https://exemplo.com/resumo"
-    )
+    s["qr_url"] = st.text_input("URL do resumo (QR opcional na capa do PDF)", value=s.get("qr_url",""),
+                                placeholder="https://exemplo.com/resumo")
 with c4:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
             save_user_prefs({
-                "theme_mode": s["theme_mode"],
-                "brand":      s["brand"],
-                "qr_url":     s["qr_url"],
-                "last_user":  s.get("username") or load_user_prefs().get("last_user", "")
+                "theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"],
+                "last_user": s.get("username") or load_user_prefs().get("last_user","")
             })
             try:
-                qp = st.query_params
-                qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
-            except Exception:
-                pass
+                qp = st.query_params; qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
+            except Exception: pass
             st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
     with col_b:
         if st.button("Sair", use_container_width=True, key="k_logout"):
             s["logged_in"] = False; st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Identificação do usuário atual
+# ---- Boas-vindas do usuário (substitui 'Logado como ...')
 nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
-st.caption(f"Usuário: **{nome_login}** ({papel})")
+st.markdown(
+    f"""
+    <div style="margin:10px 0 4px 0; padding:10px 12px; border-radius:12px;
+                border:1px solid var(--line); background:rgba(148,163,184,.10); font-weight:600;">
+      👋 Olá, <b>{nome_login}</b> — <span style="opacity:.85">{papel}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # =============================================================================
 # Painel de Usuários (somente admin)
@@ -440,13 +346,12 @@ if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2 = st.tabs(["Usuários", "Novo usuário"])
-
         with tab1:
             users = user_list()
             if not users: st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
-                    colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
                     colA.write(f"**{u['username']}**")
                     colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
                     colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
@@ -454,47 +359,37 @@ if s.get("is_admin", False):
                     with colE:
                         if u["username"] != "admin":
                             if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
-                                rec = user_get(u["username"]) or {}
-                                rec["active"] = not rec.get("active", True)
+                                rec = user_get(u["username"]) or {}; rec["active"] = not rec.get("active", True)
                                 user_set(u["username"], rec); st.rerun()
                             if st.button("Redefinir", key=f"rst_{u['username']}"):
-                                rec = user_get(u["username"]) or {}
-                                rec["password"] = _hash_password("1234")
-                                rec["must_change"] = True
+                                rec = user_get(u["username"]) or {}; rec["password"] = _hash_password("1234"); rec["must_change"]=True
                                 user_set(u["username"], rec); st.rerun()
                             if st.button("Excluir", key=f"del_{u['username']}"):
                                 user_delete(u["username"]); st.rerun()
-
         with tab2:
-            nu_col1, nu_col2, nu_col3 = st.columns([2,1,1])
-            with nu_col1: new_user = st.text_input("Usuário (login)", key="new_user")
-            with nu_col2: is_admin  = st.checkbox("Administrador", value=False)
-            with nu_col3: active    = st.checkbox("Ativo", value=True)
+            nu1,nu2,nu3 = st.columns([2,1,1])
+            with nu1: new_user = st.text_input("Usuário (login)", key="new_user")
+            with nu2: is_admin = st.checkbox("Administrador", value=False)
+            with nu3: active = st.checkbox("Ativo", value=True)
             if st.button("Cadastrar usuário"):
                 uname = (new_user or "").strip()
                 if not uname: st.error("Informe o login do usuário.")
                 elif user_exists(uname): st.error("Usuário já existe.")
                 else:
-                    user_set(uname, {
-                        "password": _hash_password("1234"),
-                        "is_admin": bool(is_admin),
-                        "active": bool(active),
-                        "must_change": True,
-                        "created_at": datetime.now().isoformat(timespec="seconds")
-                    })
-                    st.success(f"Usuário **{uname}** criado com senha inicial **1234** (exigirá troca).")
-                    st.rerun()
+                    user_set(uname, {"password": _hash_password("1234"), "is_admin": bool(is_admin),
+                                     "active": bool(active), "must_change": True,
+                                     "created_at": datetime.now().isoformat(timespec="seconds")})
+                    st.success(f"Usuário **{uname}** criado com senha inicial **1234** (exigirá troca)."); st.rerun()
 
 # =============================================================================
-# >>> DAQUI PRA BAIXO (SEU PIPELINE): uploader, parsing, gráficos, PDF, exportações, etc.
+# >>> DAQUI PRA BAIXO (SEU PIPELINE): uploader, parsing, gráficos, PDF, etc.
 # =============================================================================
 
-# --- GUARDS (evitam NameError ao usar variáveis do session_state no pipeline) ---
-TOL_MP   = float(s.get("TOL_MP", 1.0))
+# --- GUARDS (para evitar NameError no pipeline) ---
+TOL_MP    = float(s.get("TOL_MP", 1.0))
 BATCH_MODE = bool(s.get("BATCH_MODE", False))
 
-# (a partir daqui, seu código original continua normalmente)
-# Exemplo de primeira linha típica do seu bloco:
+# (ex.: sua próxima linha)
 # _uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
 
 # =============================================================================
@@ -1861,6 +1756,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

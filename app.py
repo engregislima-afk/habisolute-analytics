@@ -681,7 +681,8 @@ def _normalize_fck_label(value: Any) -> str:
     + metadados: obra, data_relatorio, fck_projeto
     """
     try:
-        raw = uploaded_file.read(); uploaded_file.seek(0)
+        raw = uploaded_file.read()
+        uploaded_file.seek(0)
     except Exception:
         raw = uploaded_file.getvalue()
 
@@ -723,7 +724,8 @@ def _normalize_fck_label(value: Any) -> str:
             data_relatorio = m_data.group()
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel: relatorio_atual = m_rel.group(1)
+            if m_rel:
+                relatorio_atual = m_rel.group(1)
         m_pecas = pecas_regex.search(sline)
         if m_pecas and relatorio_atual:
             local_por_relatorio[relatorio_atual] = m_pecas.group(1).strip().rstrip(".")
@@ -735,8 +737,10 @@ def _normalize_fck_label(value: Any) -> str:
                 else:
                     fck_valores_globais.extend(valores_fck)
                 if not isinstance(fck_projeto, (int, float)):
-                    try: fck_projeto = float(valores_fck[0])
-                    except Exception: pass
+                    try:
+                        fck_projeto = float(valores_fck[0])
+                    except Exception:
+                        pass
 
     usina_nome = _limpa_usina_extra(_detecta_usina(linhas_todas))
     abat_nf_pdf, abat_obra_pdf = _detecta_abatimentos(linhas_todas)
@@ -746,15 +750,18 @@ def _normalize_fck_label(value: Any) -> str:
 
     for sline in linhas_todas:
         partes = sline.split()
+
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel: relatorio_cabecalho = m_rel.group(1)
+            if m_rel:
+                relatorio_cabecalho = m_rel.group(1)
             continue
 
         if len(partes) >= 5 and cp_regex.match(partes[0]):
             try:
                 cp = partes[0]
                 relatorio = relatorio_cabecalho or "NÃO IDENTIFICADO"
+
                 i_data = next((i for i, t in enumerate(partes) if data_token.match(t)), None)
                 if i_data is not None:
                     i_tipo = next((i for i in range(i_data + 1, len(partes)) if tipo_token.match(partes[i])), None)
@@ -768,22 +775,29 @@ def _normalize_fck_label(value: Any) -> str:
                     if t.isdigit():
                         v = int(t)
                         if 1 <= v <= 120:
-                            idade = v; idade_idx = j; break
+                            idade = v
+                            idade_idx = j
+                            break
 
                 resistencia, res_idx = None, None
                 if idade_idx is not None:
                     for j in range(idade_idx + 1, len(partes)):
                         t = partes[j]
                         if float_token.match(t):
-                            resistencia = float(t.replace(",", ".")); res_idx = j; break
-                if idade is None or resistencia is None: continue
+                            resistencia = float(t.replace(",", "."))
+                            res_idx = j
+                            break
+                if idade is None or resistencia is None:
+                    continue
 
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
                     tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
+                        nf = tok
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -792,7 +806,8 @@ def _normalize_fck_label(value: Any) -> str:
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
                             if 20 <= v <= 250:
-                                abat_obra_val = float(v); break
+                                abat_obra_val = float(v)
+                                break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
@@ -805,7 +820,8 @@ def _normalize_fck_label(value: Any) -> str:
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
-                    relatorio, cp, idade, resistencia, nf, local, usina_nome,
+                    relatorio, cp, idade, resistencia, nf, local,
+                    usina_nome,
                     (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
                     abat_nf_tol,
                     (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
@@ -814,9 +830,10 @@ def _normalize_fck_label(value: Any) -> str:
                 pass
 
     df = pd.DataFrame(dados, columns=[
-        "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-        "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
+        "Relatório", "CP", "Idade (dias)", "Resistência (MPa)", "Nota Fiscal", "Local",
+        "Usina", "Abatimento NF (mm)", "Abatimento NF tol (mm)", "Abatimento Obra (mm)"
     ])
+
     if not df.empty:
         rel_map = {}
         for rel, valores in fck_por_relatorio.items():
@@ -828,7 +845,8 @@ def _normalize_fck_label(value: Any) -> str:
                     continue
                 if val_f not in uniques:
                     uniques.append(val_f)
-            if uniques: rel_map[rel] = uniques[0]
+            if uniques:
+                rel_map[rel] = uniques[0]
 
         fallback_fck = None
         if isinstance(fck_projeto, (int, float)):
@@ -839,8 +857,11 @@ def _normalize_fck_label(value: Any) -> str:
                 candidatos.extend(valores)
             candidatos.extend(fck_valores_globais)
             for cand in candidatos:
-                try: fallback_fck = float(cand); break
-                except Exception: continue
+                try:
+                    fallback_fck = float(cand)
+                    break
+                except Exception:
+                    continue
             if fallback_fck is not None:
                 fck_projeto = fallback_fck
 
@@ -906,19 +927,24 @@ def gerar_pdf(
     verif_fck_df: Optional[pd.DataFrame],
     cond_df: Optional[pd.DataFrame],
     pareamento_df: Optional[pd.DataFrame],
-    pv_detalhe: Optional[pd.DataFrame]
+    pv_detalhe: Optional[pd.DataFrame],
 ) -> bytes:
     use_landscape = (len(df.columns) >= 8)
     pagesize = landscape(A4) if use_landscape else A4
 
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=pagesize, leftMargin=18, rightMargin=18, topMargin=34, bottomMargin=54)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=pagesize,
+        leftMargin=18, rightMargin=18,
+        topMargin=34, bottomMargin=54
+    )
 
     styles = getSampleStyleSheet()
-    styles["Title"].fontName = "Helvetica-Bold"; styles["Title"].fontSize = 18
+    styles["Title"].fontName = "Helvetica-Bold";  styles["Title"].fontSize = 18
     styles["Heading2"].fontName = "Helvetica-Bold"; styles["Heading2"].fontSize = 14
     styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
-    styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
+    styles["Normal"].fontName = "Helvetica";       styles["Normal"].fontSize = 9
 
     story = []
     # ===== Cabeçalho completo =====
@@ -927,13 +953,12 @@ def gerar_pdf(
     if s.get("qr_url"):
         story.append(Paragraph(f"<b>Resumo/QR:</b> {s['qr_url']}", styles['Normal']))
     story.append(Paragraph(f"<b>Obra:</b> {obra_label}", styles['Normal']))
-    story.append(P
-aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
+    story.append(Paragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))  # << corrigido
     story.append(Paragraph(f"<b>fck de projeto:</b> {fck_label} MPa", styles['Normal']))
     story.append(Paragraph(f"<b>Abatimento de NF:</b> {_abat_nf_label(df)}", styles['Normal']))
     story.append(Spacer(1, 8))
 
-    # Tabela principal
+    # ===== Tabela principal =====
     headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"]
     rows = df[headers].values.tolist()
     table = Table([headers] + rows, repeatRows=1)
@@ -950,7 +975,7 @@ aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
     story.append(table)
     story.append(Spacer(1, 10))
 
-    # Resumo estatístico
+    # ===== Resumo estatístico =====
     if not stats.empty:
         story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
         stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
@@ -964,13 +989,13 @@ aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
         ]))
         story.append(t2); story.append(Spacer(1, 10))
 
-    # Gráficos (MAIORES)
+    # ===== Gráficos (MAIORES no PDF) =====
     if fig1: story.append(_img_from_fig(fig1)); story.append(Spacer(1, 8))
     if fig2: story.append(_img_from_fig(fig2)); story.append(Spacer(1, 8))
     if fig3: story.append(_img_from_fig(fig3)); story.append(Spacer(1, 8))
     if fig4: story.append(_img_from_fig(fig4)); story.append(Spacer(1, 8))
 
-    # Verificação do fck (tabela)
+    # ===== Verificação do fck =====
     if verif_fck_df is not None and not verif_fck_df.empty:
         story.append(PageBreak())
         story.append(Paragraph("Verificação do fck de Projeto (média por idade)", styles["Heading3"]))
@@ -993,7 +1018,7 @@ aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
         ]))
         story.append(tv); story.append(Spacer(1, 10))
 
-    # Condição Real × Estimado (médias)
+    # ===== Condição Real × Estimado =====
     if cond_df is not None and not cond_df.empty:
         story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
         rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
@@ -1016,7 +1041,7 @@ aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
         ]))
         story.append(tc); story.append(Spacer(1, 10))
 
-    # >>> Verificação detalhada por CP (7/28/63) COMPLETA no PDF
+    # ===== Verificação detalhada por CP (completa) =====
     if pv_detalhe is not None and not pv_detalhe.empty:
         story.append(PageBreak())
         story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
@@ -1032,6 +1057,7 @@ aragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
         ]))
         story.append(tp)
 
+    # Canvas com rodapé/numeração
     doc.build(story, canvasmaker=NumberedCanvas)
     pdf = buffer.getvalue()
     buffer.close()
@@ -1537,3 +1563,4 @@ st.markdown(
 )
 
     
+

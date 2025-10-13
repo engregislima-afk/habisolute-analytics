@@ -929,19 +929,10 @@ def gerar_pdf(
     pareamento_df: Optional[pd.DataFrame],
     pv_detalhe: Optional[pd.DataFrame],
 ) -> bytes:
-    """
-    Gera o relatório em PDF com:
-      - Cabeçalho completo (empresa, obra, data, fck e abatimento NF)
-      - Tabela principal dos resultados
-      - Resumo estatístico
-      - Gráficos em tamanho aumentado
-      - Verificação do fck por idade
-      - Condição Real × Estimado (médias)
-      - Verificação detalhada por CP (7/28/63 dias)
-      - Rodapé com numeração de páginas e texto legal + crédito da Habisolute
-    """
+    """Gera o relatório em PDF com cabeçalho completo, gráficos grandes,
+    verificação do fck, condição Real×Estimado e a verificação detalhada por CP."""
 
-    # --- helper interno: rótulo "Abatimento NF (valor ± tol)":
+    # --- helper interno: rótulo "Abatimento NF (valor ± tol)" ---
     def _abat_nf_label(df_: pd.DataFrame) -> str:
         snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
         stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
@@ -1604,5 +1595,6 @@ st.markdown(
 )
 
     
+
 
 

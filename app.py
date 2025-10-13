@@ -181,20 +181,42 @@ if s["theme_mode"] == "Escuro moderno":
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#0b0f19; --panel:#0f172a; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
+      --bg:#0b0f19; --panel:#0f172a; --surface:#111827;
+      --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
+
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 12px; max-width: 1300px; }}
+    .block-container{{ padding-top: 18px; max-width: 1300px; }}
+
+    /* Header / título */
+    .app-header{{ margin: 6px 0 10px 0; }}
+    .brand-title{{ display:inline-block; font-weight:800; font-size:20px;
+      background:linear-gradient(90deg,var(--brand),var(--brand-700));
+      -webkit-background-clip:text; background-clip:text; color:transparent }}
+
+    /* Cards/contêineres */
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }}
     .h-kpi{{ font-size:22px; font-weight:800; }}
+
+    /* Pills e botões */
     .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
            border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-    .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                 -webkit-background-clip:text; background-clip:text; color:transparent}}
-    .login-card{{max-width:520px;margin:36px auto;background:var(--panel);border:1px solid var(--line);
-                 border-radius:16px;padding:16px}}
-    .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
+    .stButton > button, .stDownloadButton > button, .h-print-btn {{
+      background: linear-gradient(180deg, {brand}, {brand600}) !important;
+      color: #fff !important; border: 0 !important; border-radius: 12px !important;
+      padding: 12px 16px !important; font-weight: 800 !important; box-shadow: 0 8px 20px rgba(0,0,0,.18) !important;
+    }}
+
+    /* Inputs/expansores/tabs – alto contraste no escuro */
+    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div,
+    .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
+      background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important;
+    }}
+    .stExpander > details > summary {{ background: var(--panel) !important; color: var(--text) !important;
+      border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
+    .stTabs [data-baseweb="tab"] {{ color: var(--text) !important; }}
+    .stTabs [aria-selected="true"] {{ border-color: var(--brand) !important; color: #fff !important; }}
     </style>
     """
 else:
@@ -203,20 +225,55 @@ else:
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#f8fafc; --surface:#ffffff; --text:#0f172a; --muted:#64748b; --line:rgba(2,6,23,.08);
+      --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff;
+      --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
+
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 12px; max-width: 1300px; }}
-    .h-card{{ background: var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
+    .block-container{{ padding-top: 18px; max-width: 1300px; }}
+
+    /* Header / título – dá um respiro pra não “colar” no topo */
+    .app-header{{ margin: 8px 0 12px 0; }}
+    .brand-title{{ display:inline-block; font-weight:800; font-size:20px;
+      background:linear-gradient(90deg,var(--brand),var(--brand-700));
+      -webkit-background-clip:text; background-clip:text; color:transparent }}
+
+    /* Cards/contêineres */
+    .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }}
     .h-kpi{{ font-size:22px; font-weight:800; }}
+
+    /* Pills e botões */
     .pill{{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-           border:1px solid var(--line); background:#ffffff; font-size:12.5px; }}
-    .brand-title{{font-weight:800; background:linear-gradient(90deg,var(--brand),var(--brand-700));
-                 -webkit-background-clip:text; background-clip:text; color:transparent}}
-    .login-card{{max-width:520px;margin:36px auto;background:var(--surface);border:1px solid var(--line);
-                 border-radius:16px;padding:16px}}
-    .login-title{{font-size:18px;font-weight:800;margin-bottom:8px}}
+           border:1px solid var(--line); background:#ffffff; color:var(--text); font-size:12.5px; }}
+    .stButton > button, .stDownloadButton > button, .h-print-btn {{
+      background: linear-gradient(180deg, {brand}, {brand600}) !important;
+      color: #fff !important; border: 0 !important; border-radius: 12px !important;
+      padding: 12px 16px !important; font-weight: 800 !important; box-shadow: 0 8px 20px rgba(0,0,0,.08) !important;
+    }}
+
+    /* *** FIX de legibilidade no tema claro *** */
+    /* Labels e textos dos inputs */
+    label, .stMarkdown, .stCaption, .stText, .stAlert, .stExpander, .stRadio, .stCheckbox, .stSelectbox, .stMultiSelect {{
+      color: var(--text) !important;
+    }}
+    /* Campos */
+    .stTextInput input, .stNumberInput input, .stDateInput input {{
+      background: #ffffff !important; color: var(--text) !important; border:1px solid var(--line) !important;
+    }}
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stMultiSelect div[data-baseweb="select"] > div {{
+      background:#ffffff !important; color: var(--text) !important; border:1px solid var(--line) !important;
+    }}
+
+    /* Expansores e Tabs */
+    .stExpander > details > summary {{ background: #ffffff !important; color: var(--text) !important;
+      border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
+    .stTabs [data-baseweb="tab"] {{ color: var(--muted) !important; }}
+    .stTabs [aria-selected="true"] {{ color: var(--text) !important; border-color: var(--brand) !important; }}
+
+    /* Tooltips do Streamlit ficam muito claros; sobe contraste */
+    .stTooltipIcon svg {{ fill: var(--muted) !important; }}
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
@@ -1871,5 +1928,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

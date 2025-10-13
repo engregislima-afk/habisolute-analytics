@@ -71,29 +71,37 @@ class NumberedCanvas(pdfcanvas.Canvas):
         return lines
 
     def _draw_footer_and_pagenum(self, total_pages: int):
-        w, h = self._pagesize
-        text_font = "Helvetica"
-        text_size = 7
-        leading   = text_size + 1
-        right_reserve = 100
+    w, h = self._pagesize
 
-        self.setFont(text_font, text_size)
-        lines = self._wrap_footer(
-            FOOTER_TEXT,
-            font_name=text_font,
-            font_size=text_size,
-            max_width=w - 36 - right_reserve
-        )
+    # ——— Texto legal (esquerda) ———
+    text_font = "Helvetica"
+    text_size = 7
+    leading   = text_size + 1
+    right_reserve = 100
 
-        base_y = 10
-        for i, ln in enumerate(lines):
-            y = base_y + i * leading
-            if y > 28 - leading:
-                break
-            self.drawString(18, y, ln)
+    self.setFont(text_font, text_size)
+    lines = self._wrap_footer(
+        FOOTER_TEXT,
+        font_name=text_font,
+        font_size=text_size,
+        max_width=w - 36 - right_reserve
+    )
 
-        self.setFont("Helvetica", 8)
-        self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
+    base_y = 10
+    for i, ln in enumerate(lines):
+        y = base_y + i * leading
+        # não subir além da margem inferior (28 pt)
+        if y > 28 - leading:
+            break
+        self.drawString(18, y, ln)
+
+    # ——— Assinatura da empresa (centralizado, acima do número da página) ———
+    self.setFont("Helvetica-Oblique", 8)
+    self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
+
+    # ——— Número de página (direita) ———
+    self.setFont("Helvetica", 8)
+    self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
@@ -1669,6 +1677,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

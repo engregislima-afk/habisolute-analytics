@@ -113,6 +113,11 @@ s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0)
 s.setdefault("BATCH_MODE", False)
 s.setdefault("_prev_batch", s["BATCH_MODE"])
+# Se estiver logado mas o nome sumiu (ex.: refresh da guia), recupera do prefs
+if s.get("logged_in") and not s.get("username"):
+    _p = load_user_prefs()
+    if _p.get("last_user"):
+        s["username"] = _p["last_user"]
 
 # --- preferências via URL ---
 def _apply_query_prefs():
@@ -326,17 +331,23 @@ def _auth_login_ui():
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
-            rec = user_get((user or "").strip())
-            if not rec or not rec.get("active", True):
-                st.error("Usuário inexistente ou inativo.")
-            elif not _verify_password(pwd, rec.get("password", "")):
-                st.error("Senha incorreta.")
-            else:
-                s["logged_in"] = True
-                s["username"] = (user or "").strip()
-                s["is_admin"] = bool(rec.get("is_admin", False))
-                s["must_change"] = bool(rec.get("must_change", False))
-                st.rerun()
+    rec = user_get((user or "").strip())
+    if not rec or not rec.get("active", True):
+        st.error("Usuário inexistente ou inativo.")
+    elif not _verify_password(pwd, rec.get("password", "")):
+        st.error("Senha incorreta.")
+    else:
+        s["logged_in"] = True
+        s["username"]  = (user or "").strip()
+        s["is_admin"]  = bool(rec.get("is_admin", False))
+        s["must_change"] = bool(rec.get("must_change", False))
+
+        # ➕ salva o último usuário nas preferências (para recuperar em refresh)
+        prefs = load_user_prefs()
+        prefs["last_user"] = s["username"]
+        save_user_prefs(prefs)
+
+        st.rerun()
     st.caption("Primeiro acesso: **admin / 1234** (será exigida troca de senha).")
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -468,9 +479,9 @@ with st.sidebar:
         s["uploader_key"] += 1
     s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
     st.markdown("---")
-    st.caption(f"Usuário: {s.get('current_user')} {'(Admin)' if s.get('is_admin') else ''}")
-    TOL_MP = float(s["TOL_MP"])
-BATCH_MODE = bool(s["BATCH_MODE"])
+    nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
+papel = "Admin" if s.get("is_admin") else "Usuário"
+st.caption(f"Usuário: **{nome_login}** ({papel})")
 
 # =============================================================================
 # Utilidades de parsing
@@ -1821,6 +1832,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

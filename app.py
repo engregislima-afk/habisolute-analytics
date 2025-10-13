@@ -22,7 +22,7 @@ from reportlab.pdfgen import canvas as pdfcanvas
 FOOTER_TEXT = (
     "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
     "Este documento poderá ser reproduzido somente na íntegra. "
-    "Resultados apresentados sem considerar a incerteza de medição."
+    "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
@@ -1756,6 +1756,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

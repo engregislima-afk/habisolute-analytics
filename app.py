@@ -108,13 +108,13 @@ def _load_users() -> List[Dict[str, Any]]:
             data = json.loads(raw)
 
             # Migração/normalização:
-            # - Se vier {"users":[...]} -> usa a lista
-            # - Se vier um dict com "login" -> vira [dict]
-            # - Se vier lista -> filtra apenas dicts
+            # - {"users":[...]} -> usa a lista
+            # - dict com "login" -> vira [dict]
+            # - lista -> filtra dicts válidos
             if isinstance(data, dict):
                 if "users" in data and isinstance(data["users"], list):
                     return [u for u in data["users"] if isinstance(u, dict)]
-                if "login" in data:  # arquivo antigo com um único usuário
+                if "login" in data:
                     return [data]
                 return []
             if isinstance(data, list):
@@ -168,7 +168,7 @@ def _seed_default_admin_if_missing():
 _seed_default_admin_if_missing()
 
 def create_user(name: str, login: str, password: str, role: str = "user", active: bool = True) -> bool:
-    """Cria usuário (retorna True/False). Não permite logins duplicados."""
+    """Cria usuário. Não permite logins duplicados."""
     login = (login or "").strip()
     if not login or not password:
         return False
@@ -224,7 +224,7 @@ def set_user_active(login: str, active: bool) -> bool:
     return changed
 
 def list_users() -> List[Dict[str, Any]]:
-    """Lista usuários (sem expor hash/salt na UI; a filtragem fica para a camada de apresentação)."""
+    """Lista usuários (hash/salt ficam apenas no arquivo)."""
     return _load_users()
 
 def authenticate(login: str, password: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
@@ -287,7 +287,6 @@ def show_login() -> None:
             else:
                 st.error(msg or "Usuário ou senha inválidos.")
 
-    # sem dica de login
     st.markdown("</div>", unsafe_allow_html=True)
 # =============================== PARTE 2 — Login, Preferências, Upload, Parsing ===============================
 
@@ -1540,5 +1539,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ======================================= FIM DO APP =======================================
+
 
 

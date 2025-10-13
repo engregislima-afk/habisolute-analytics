@@ -929,6 +929,29 @@ def gerar_pdf(
     pareamento_df: Optional[pd.DataFrame],
     pv_detalhe: Optional[pd.DataFrame],
 ) -> bytes:
+    """
+    Gera o relatório em PDF com:
+      - Cabeçalho completo (empresa, obra, data, fck e abatimento NF)
+      - Tabela principal dos resultados
+      - Resumo estatístico
+      - Gráficos em tamanho aumentado
+      - Verificação do fck por idade
+      - Condição Real × Estimado (médias)
+      - Verificação detalhada por CP (7/28/63 dias)
+      - Rodapé com numeração de páginas e texto legal + crédito da Habisolute
+    """
+
+    # --- helper interno: rótulo "Abatimento NF (valor ± tol)":
+    def _abat_nf_label(df_: pd.DataFrame) -> str:
+        snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
+        stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
+        if snf.empty:
+            return "—"
+        v = float(snf.mode().iloc[0])
+        t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
+        return f"{v:.0f} ± {t:.0f} mm"
+
+    # página em paisagem quando há muitas colunas
     use_landscape = (len(df.columns) >= 8)
     pagesize = landscape(A4) if use_landscape else A4
 
@@ -941,19 +964,20 @@ def gerar_pdf(
     )
 
     styles = getSampleStyleSheet()
-    styles["Title"].fontName = "Helvetica-Bold";  styles["Title"].fontSize = 18
-    styles["Heading2"].fontName = "Helvetica-Bold"; styles["Heading2"].fontSize = 14
-    styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
-    styles["Normal"].fontName = "Helvetica";       styles["Normal"].fontSize = 9
+    styles["Title"].fontName   = "Helvetica-Bold"; styles["Title"].fontSize   = 18
+    styles["Heading2"].fontName= "Helvetica-Bold"; styles["Heading2"].fontSize= 14
+    styles["Heading3"].fontName= "Helvetica-Bold"; styles["Heading3"].fontSize= 12
+    styles["Normal"].fontName  = "Helvetica";      styles["Normal"].fontSize  = 9
 
     story = []
+
     # ===== Cabeçalho completo =====
     story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
     story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
     if s.get("qr_url"):
         story.append(Paragraph(f"<b>Resumo/QR:</b> {s['qr_url']}", styles['Normal']))
     story.append(Paragraph(f"<b>Obra:</b> {obra_label}", styles['Normal']))
-    story.append(Paragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))  # << corrigido
+    story.append(Paragraph(f"<b>Data do relatório:</b> {data_label}", styles['Normal']))
     story.append(Paragraph(f"<b>fck de projeto:</b> {fck_label} MPa", styles['Normal']))
     story.append(Paragraph(f"<b>Abatimento de NF:</b> {_abat_nf_label(df)}", styles['Normal']))
     story.append(Spacer(1, 8))
@@ -976,7 +1000,7 @@ def gerar_pdf(
     story.append(Spacer(1, 10))
 
     # ===== Resumo estatístico =====
-    if not stats.empty:
+    if isinstance(stats, pd.DataFrame) and not stats.empty:
         story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
         stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
         t2 = Table(stt, repeatRows=1)
@@ -990,13 +1014,14 @@ def gerar_pdf(
         story.append(t2); story.append(Spacer(1, 10))
 
     # ===== Gráficos (MAIORES no PDF) =====
-    if fig1: story.append(_img_from_fig(fig1)); story.append(Spacer(1, 8))
-    if fig2: story.append(_img_from_fig(fig2)); story.append(Spacer(1, 8))
-    if fig3: story.append(_img_from_fig(fig3)); story.append(Spacer(1, 8))
-    if fig4: story.append(_img_from_fig(fig4)); story.append(Spacer(1, 8))
+    # usa o helper existente _img_from_fig(fig, w, h) – aqui aumentamos o tamanho
+    if fig1: story.append(_img_from_fig(fig1, w=540, h=340)); story.append(Spacer(1, 8))
+    if fig2: story.append(_img_from_fig(fig2, w=540, h=340)); story.append(Spacer(1, 8))
+    if fig3: story.append(_img_from_fig(fig3, w=540, h=340)); story.append(Spacer(1, 8))
+    if fig4: story.append(_img_from_fig(fig4, w=540, h=340)); story.append(Spacer(1, 8))
 
     # ===== Verificação do fck =====
-    if verif_fck_df is not None and not verif_fck_df.empty:
+    if isinstance(verif_fck_df, pd.DataFrame) and not verif_fck_df.empty:
         story.append(PageBreak())
         story.append(Paragraph("Verificação do fck de Projeto (média por idade)", styles["Heading3"]))
         rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
@@ -1019,7 +1044,7 @@ def gerar_pdf(
         story.append(tv); story.append(Spacer(1, 10))
 
     # ===== Condição Real × Estimado =====
-    if cond_df is not None and not cond_df.empty:
+    if isinstance(cond_df, pd.DataFrame) and not cond_df.empty:
         story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
         rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
         for _, r in cond_df.iterrows():
@@ -1042,12 +1067,11 @@ def gerar_pdf(
         story.append(tc); story.append(Spacer(1, 10))
 
     # ===== Verificação detalhada por CP (completa) =====
-    if pv_detalhe is not None and not pv_detalhe.empty:
-        story.append(PageBreak())
-        story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
-        head = list(pv_detalhe.columns)
-        rows_p = pv_detalhe.values.tolist()
-        tp = Table([head] + rows_p, repeatRows=1)
+    if isinstance(pareamento_df, pd.DataFrame) and not pareamento_df.empty:
+        story.append(Paragraph("Pareamento ponto-a-ponto (Real × Estimado)", styles["Heading3"]))
+        head_p = ["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
+        rows_p = pareamento_df[head_p].values.tolist()
+        tp = Table([head_p] + rows_p, repeatRows=1)
         tp.setStyle(TableStyle([
             ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
             ("GRID",(0,0),(-1,-1),0.5,colors.black),
@@ -1055,10 +1079,27 @@ def gerar_pdf(
             ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
             ("FONTSIZE",(0,0),(-1,-1),8.3),
         ]))
-        story.append(tp)
+        story.append(tp); story.append(Spacer(1, 10))
 
-    # Canvas com rodapé/numeração
+    # — tabela “Verificação detalhada por CP (7/28/63 dias)” (pivot completo) —
+    if isinstance(pv_detalhe, pd.DataFrame) and not pv_detalhe.empty:
+        story.append(PageBreak())
+        story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
+        head_v = list(pv_detalhe.columns)
+        rows_v2 = pv_detalhe.values.tolist()
+        tv2 = Table([head_v] + rows_v2, repeatRows=1)
+        tv2.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+            ("GRID",(0,0),(-1,-1),0.5,colors.black),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),
+            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+            ("FONTSIZE",(0,0),(-1,-1),8.1),
+        ]))
+        story.append(tv2)
+
+    # Constrói com canvas numerado e rodapé (inclui crédito da Habisolute no NumberedCanvas)
     doc.build(story, canvasmaker=NumberedCanvas)
+
     pdf = buffer.getvalue()
     buffer.close()
     return pdf
@@ -1563,4 +1604,5 @@ st.markdown(
 )
 
     
+
 

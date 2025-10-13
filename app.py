@@ -277,7 +277,7 @@ def show_login() -> None:
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True, key="k_login"):
-            ok, u, msg = authenticate(user_login, user_pwd)
+            ok, u, msg = authenticate(user_login, user_pwd)  # único caminho válido
             if ok and u:
                 s["logged_in"]  = True
                 s["user_login"] = u.get("login")
@@ -1539,6 +1539,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 # ======================================= FIM DO APP =======================================
+
 
 
 

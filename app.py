@@ -1,4 +1,4 @@
-# app.py — Habisolute Analytics (trecho até login + painel de usuários)
+# app.py — Habisolute Analytics (até login + painel de usuários)
 
 import io
 import re
@@ -55,7 +55,7 @@ class NumberedCanvas(pdfcanvas.Canvas):
     def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
         """Quebra simples de linha para o rodapé."""
         if max_width is None:
-            max_width = self._pagesize[0] - 36 - 120  # margem esq 18 + dir 18, reserva p/ nº de página
+            max_width = self._pagesize[0] - 36 - 120
         words = text.split()
         lines, line = [], ""
         for w in words:
@@ -71,35 +71,21 @@ class NumberedCanvas(pdfcanvas.Canvas):
         return lines
 
     def _draw_footer_and_pagenum(self, total_pages: int):
-        """Desenha o texto legal, assinatura da empresa e numeração de página."""
         w, h = self._pagesize
-
-        # ——— Texto legal (esquerda) ———
-        text_font = "Helvetica"
-        text_size = 7
-        leading = text_size + 1
-        right_reserve = 100
-
+        # texto legal (esq)
+        text_font = "Helvetica"; text_size = 7; leading = text_size + 1; right_reserve = 100
         self.setFont(text_font, text_size)
-        lines = self._wrap_footer(
-            FOOTER_TEXT,
-            font_name=text_font,
-            font_size=text_size,
-            max_width=w - 36 - right_reserve
-        )
-
+        lines = self._wrap_footer(FOOTER_TEXT, font_name=text_font, font_size=text_size,
+                                  max_width=w - 36 - right_reserve)
         base_y = 10
         for i, ln in enumerate(lines):
             y = base_y + i * leading
-            if y > 28 - leading:
-                break
+            if y > 28 - leading: break
             self.drawString(18, y, ln)
-
-        # ——— Assinatura da empresa (centralizado) ———
+        # assinatura
         self.setFont("Helvetica-Oblique", 8)
         self.drawCentredString(w / 2.0, 26, FOOTER_BRAND_TEXT)
-
-        # ——— Número de página (direita) ———
+        # página
         self.setFont("Helvetica", 8)
         self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
 
@@ -112,7 +98,7 @@ PREFS_DIR = Path.home() / ".habisolute"
 PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"
 
-# === Base de Usuários (novo) ===
+# === Base de Usuários ===
 USERS_DB = PREFS_DIR / "users.json"
 
 def _save_all_prefs(data: Dict[str, Any]) -> None:
@@ -168,7 +154,6 @@ def _apply_query_prefs():
             s["qr_url"] = qr
     except Exception:
         pass
-
 _apply_query_prefs()
 
 # =============================================================================
@@ -256,31 +241,49 @@ def _save_users(data: Dict[str, Any]) -> None:
 
 def _load_users() -> Dict[str, Any]:
     """
-    Garante schema {"users": {username: {...}}}. Conserta/migra formatos inválidos.
+    Lê USERS_DB e garante:
+      - schema {"users": {...}}
+      - existência do usuário 'admin'
+    Corrige/migra formatos inválidos (dict/list) e cria admin/1234 quando necessário.
     """
+    def _bootstrap_admin(db: Dict[str, Any]) -> Dict[str, Any]:
+        db.setdefault("users", {})
+        if "admin" not in db["users"]:
+            db["users"]["admin"] = {
+                "password": _hash_password("1234"),
+                "is_admin": True,
+                "active": True,
+                "must_change": True,
+                "created_at": datetime.now().isoformat(timespec="seconds")
+            }
+        return db
+
     try:
         if USERS_DB.exists():
             raw = USERS_DB.read_text(encoding="utf-8").strip()
             if raw:
                 data = json.loads(raw)
 
-                # Correto
+                # já válido
                 if isinstance(data, dict) and isinstance(data.get("users"), dict):
-                    return data
+                    fixed = _bootstrap_admin(data)
+                    if fixed is not data:
+                        _save_users(fixed)
+                    return fixed
 
-                # Dict direto de usuários
+                # dict de usuários sem chave "users"
                 if isinstance(data, dict):
-                    fixed = {"users": data}
+                    fixed = _bootstrap_admin({"users": data})
                     _save_users(fixed)
                     return fixed
 
-                # Lista (ex.: ["admin","joao"] ou [{"username":...}])
+                # lista: ["user", ...] ou [{"username": ...}, ...]
                 if isinstance(data, list):
                     users_map: Dict[str, Any] = {}
                     for item in data:
                         if isinstance(item, str):
                             uname = item.strip()
-                            if not uname:
+                            if not uname: 
                                 continue
                             users_map[uname] = {
                                 "password": _hash_password("1234"),
@@ -300,24 +303,14 @@ def _load_users() -> Dict[str, Any]:
                                 "must_change": True,
                                 "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))
                             }
-                    fixed = {"users": users_map}
+                    fixed = _bootstrap_admin({"users": users_map})
                     _save_users(fixed)
                     return fixed
     except Exception:
         pass
 
-    # Default com admin
-    default = {
-        "users": {
-            "admin": {
-                "password": _hash_password("1234"),
-                "is_admin": True,
-                "active": True,
-                "must_change": True,
-                "created_at": datetime.now().isoformat(timespec="seconds")
-            }
-        }
-    }
+    # default absoluto
+    default = _bootstrap_admin({"users": {}})
     _save_users(default)
     return default
 
@@ -332,15 +325,13 @@ def user_set(username: str, record: Dict[str, Any]) -> None:
     _save_users(db)
 
 def user_exists(username: str) -> bool:
-    rec = user_get(username)
-    return rec is not None
+    return user_get(username) is not None
 
 def user_list() -> List[Dict[str, Any]]:
     db = _load_users()
     out = []
     for uname, rec in db.get("users", {}).items():
-        r = dict(rec)
-        r["username"] = uname
+        r = dict(rec); r["username"] = uname
         out.append(r)
     out.sort(key=lambda r: (not r.get("is_admin", False), r["username"]))
     return out
@@ -366,19 +357,18 @@ def _auth_login_ui():
     with c3:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
         if st.button("Acessar", use_container_width=True):
-            rec = user_get(user.strip())
+            rec = user_get((user or "").strip())
             if not rec or not rec.get("active", True):
                 st.error("Usuário inexistente ou inativo.")
             elif not _verify_password(pwd, rec.get("password", "")):
                 st.error("Senha incorreta.")
             else:
                 s["logged_in"] = True
-                s["username"] = user.strip()
+                s["username"] = (user or "").strip()
                 s["is_admin"] = bool(rec.get("is_admin", False))
                 s["must_change"] = bool(rec.get("must_change", False))
                 st.rerun()
-
-    st.caption("Primeiro acesso padrão: **admin / 1234**")
+    st.caption("Primeiro acesso: **admin / 1234** (será exigida troca de senha).")
     st.markdown("</div>", unsafe_allow_html=True)
 
 def _force_change_password_ui(username: str):
@@ -462,7 +452,6 @@ st.markdown("</div>", unsafe_allow_html=True)
 if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
-
         tab1, tab2 = st.tabs(["Usuários", "Novo usuário"])
 
         with tab1:
@@ -478,8 +467,7 @@ if s.get("is_admin", False):
                     colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
                     with colE:
                         if u["username"] != "admin":
-                            act = not u.get("active", True)
-                            if st.button(("Reativar" if act else "Desativar"), key=f"act_{u['username']}"):
+                            if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
                                 rec = user_get(u["username"]) or {}
                                 rec["active"] = not rec.get("active", True)
                                 user_set(u["username"], rec)
@@ -1883,4 +1871,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

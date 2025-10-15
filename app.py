@@ -25,28 +25,6 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
-# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas) =====
-FOOTER_TEXT = (
-    "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
-    "Este documento poderá ser reproduzido somente na íntegra. "
-    "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
-)
-FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
-
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas as pdfcanvas
-
-# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
-FOOTER_TEXT = (
-    "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
-    "Este documento poderá ser reproduzido somente na íntegra. "
-    "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
-)
-FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
-
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas as pdfcanvas
-
 class NumberedCanvas(pdfcanvas.Canvas):
     ORANGE = colors.HexColor("#f97316")  # laranja forte
     BLACK  = colors.black
@@ -88,24 +66,17 @@ class NumberedCanvas(pdfcanvas.Canvas):
         w, h = self._pagesize
 
         # ==== FAIXAS DE CABEÇALHO ====
-        # laranja (topo)
         self.setFillColor(self.ORANGE)
         self.rect(0, h - 10, w, 6, stroke=0, fill=1)
-        # preta (logo abaixo)
         self.setFillColor(self.BLACK)
         self.rect(0, h - 16, w, 2, stroke=0, fill=1)
 
-        # ==== FAIXAS DE RODAPÉ (mais para baixo) ====
-        # preta quase na borda inferior
-        self.setFillColor(self.BLACK)
-        self.rect(0, 8, w, 2, stroke=0, fill=1)
-        # laranja logo acima
-        self.setFillColor(self.ORANGE)
-        self.rect(0, 12, w, 6, stroke=0, fill=1)
+        # ==== FAIXAS DE RODAPÉ (ajustadas) ====
+        self.setFillColor(self.BLACK);  self.rect(0, 8,  w, 2, stroke=0, fill=1)
+        self.setFillColor(self.ORANGE); self.rect(0, 12, w, 6, stroke=0, fill=1)
 
         # ==== TEXTOS DO RODAPÉ (um pouco mais para cima) ====
-        # suba o bloco de textos ajustando y0
-        y0 = 44  # altura base dos textos do rodapé
+        y0 = 44
         self.setFillColor(colors.black)
         self.setFont("Helvetica", 7)
         lines = self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)
@@ -113,11 +84,9 @@ class NumberedCanvas(pdfcanvas.Canvas):
             y = y0 + i * 8
             self.drawString(18, y, ln)
 
-        # marca/brand
         self.setFont("Helvetica-Oblique", 8)
         self.drawCentredString(w / 2.0, y0 - 8, FOOTER_BRAND_TEXT)
 
-        # numeração (acima das faixas e abaixo do brand)
         self.setFont("Helvetica", 8)
         self.drawRightString(w - 18, y0 - 18, f"Página {self._pageNumber} de {total_pages}")
 
@@ -356,7 +325,6 @@ if s.get("must_change", False):
 
 # >>> Cabeçalho apenas para quem está logado
 _render_header()
-
 # =============================================================================
 # Toolbar de preferências
 # =============================================================================
@@ -499,26 +467,52 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None; abat_obra = None
-    for sline in linhas:
-        s_clean = sline.replace(",", ".").replace("±", "+-")
-        m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
-            r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
-            s_clean
-        )
-        if m_nf and abat_nf is None:
-            try: abat_nf = float(m_nf.group(1))
-            except Exception: pass
-        m_obra = re.search(
-            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
-            r"(\d+(?:\.\d+)?)\s*mm",
-            s_clean
-        )
-        if m_obra and abat_obra is None:
-            try: abat_obra = float(m_obra.group(2))
-            except Exception: pass
-    return abat_nf, abat_obra
+    """
+    Lê TODAS as ocorrências de 'Abatimento NF' e 'Abatimento Obra' ao longo do PDF,
+    aceita variações e devolve a MODA (valor mais frequente) para cada um.
+    """
+    nf_vals: List[float] = []
+    obra_vals: List[float] = []
+
+    # Padrões tolerantes (permitem 'Slump', 'Abatimento', 'NF', 'Nota Fiscal', etc.)
+    pat_nf   = re.compile(r"(?i)(abat(?:imento|\.?im\.?)|slump)[^a-z0-9]{0,8}(nf|nota\s*fiscal)?[^0-9]{0,10}(\d{2,3}(?:[.,]\d+)?)\s*mm?")
+    pat_obra = re.compile(r"(?i)(abat(?:imento|\.?im\.?)|slump)[^a-z0-9]{0,8}(obra|medido\s*em\s*obra)?[^0-9]{0,10}(\d{2,3}(?:[.,]\d+)?)\s*mm?")
+
+    for raw in linhas:
+        line = raw.replace(",", ".").replace("±", "+-")
+        # Coleta múltiplas ocorrências na mesma linha
+        for m in pat_nf.finditer(line):
+            try:
+                v = float(m.group(3))
+                if 20 <= v <= 250: nf_vals.append(v)
+            except Exception:
+                pass
+        for m in pat_obra.finditer(line):
+            try:
+                v = float(m.group(3))
+                if 20 <= v <= 250: obra_vals.append(v)
+            except Exception:
+                pass
+
+        # Casos como: "Abatimento NF (mm) 140 20" (valor e tolerância coladinhos)
+        if re.search(r"(?i)abat.*nf", line):
+            nums = [float(x) for x in re.findall(r"\b\d{2,3}(?:\.\d+)?\b", line)]
+            if nums:
+                v = nums[0]
+                if 20 <= v <= 250: nf_vals.append(v)
+        if re.search(r"(?i)abat.*obra|medido\s*em\s*obra", line):
+            nums = [float(x) for x in re.findall(r"\b\d{2,3}(?:\.\d+)?\b", line)]
+            if nums:
+                v = nums[0]
+                if 20 <= v <= 250: obra_vals.append(v)
+
+    def _mode_or_none(vals: List[float]) -> Optional[float]:
+        if not vals: return None
+        s = pd.Series(vals)
+        try: return float(s.mode().iat[0])
+        except Exception: return float(sum(vals) / len(vals))
+
+    return _mode_or_none(nf_vals), _mode_or_none(obra_vals)
 
 def _extract_fck_values(line: str) -> List[float]:
     if not line or "fck" not in line.lower(): return []
@@ -576,6 +570,7 @@ def _normalize_fck_label(value: Any) -> str:
     raw = str(value).strip()
     if not raw or raw.lower() == 'nan': return "—"
     return raw
+
 def extrair_dados_certificado(uploaded_file):
     try:
         raw = uploaded_file.read()
@@ -689,6 +684,7 @@ def extrair_dados_certificado(uploaded_file):
                     if nf_regex.match(tok) and tok != cp:
                         nf = tok; nf_idx = j; break
 
+                # Abatimento medido em obra: buscar imediatamente antes da data
                 abat_obra_val = None
                 if i_data is not None:
                     for j in range(i_data - 1, max(-1, i_data - 6), -1):
@@ -698,6 +694,7 @@ def extrair_dados_certificado(uploaded_file):
                             if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
+                # Abatimento NF junto à linha do CP (valor ± tol) — com fallback para valor global
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
@@ -1127,7 +1124,7 @@ if uploaded_files:
         else:
             st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
-        # ===== Gráfico 3 — Comparação médias (CORRIGIDO fill_between)
+        # ===== Gráfico 3 — Comparação médias
         st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
         fig3, cond_df, verif_fck_df = None, None, None
         mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
@@ -1248,7 +1245,7 @@ if uploaded_files:
         verif_fck_df["Status"] = resumo_status
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (pares Δ>2MPa)
+        # ===== Verificação detalhada por CP (pares Δ>2MPa, aceita 7/7/28/28/63/63)
         st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
         pv_cp_status = None
         tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()

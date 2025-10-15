@@ -513,10 +513,6 @@ def _normalize_fck_label(value: Any) -> str:
     if not raw or raw.lower() == 'nan': return "—"
     return raw
 def extrair_dados_certificado(uploaded_file):
-    # Retorna DataFrame com colunas:
-    #   Relatório, CP, Idade (dias), Resistência (MPa), Nota Fiscal, Local, Usina,
-    #   Abatimento NF (mm), Abatimento NF tol (mm), Abatimento Obra (mm)
-    # + metadados: obra, data_relatorio, fck_projeto
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -792,7 +788,6 @@ else:
 # Função da VISÃO GERAL isolada (evita erros de indentação)
 # =============================================================================
 def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFrame, TOL_MP: float):
-    # Renderiza KPIs (obra/data/fck/tolerância/%fck), e as duas tabelas base
     import pandas as _pd
     from datetime import datetime as _dt
 
@@ -898,7 +893,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     st.dataframe(df_view, use_container_width=True)
     st.write("#### Estatísticas por CP")
     st.dataframe(stats_cp_idade, use_container_width=True)
-    # =============================================================================
+# =============================================================================
 # Pipeline principal
 # =============================================================================
 if uploaded_files:
@@ -925,7 +920,6 @@ if uploaded_files:
 
         # ===== Validações cruze NF/Relatório e CP/Relatório
         if not df.empty:
-            # NF repetida em mais de 1 relatório
             nf_rel = df.dropna(subset=["Nota Fiscal","Relatório"]).astype({"Relatório": str})
             nf_multi = (nf_rel.groupby(["Nota Fiscal"])["Relatório"]
                         .nunique().reset_index(name="n_rel"))
@@ -937,7 +931,6 @@ if uploaded_files:
                 st.error("🚨 **Nota Fiscal repetida em relatórios diferentes!**")
                 st.dataframe(detalhes.rename(columns={"CP":"#CPs distintos"}), use_container_width=True)
 
-            # CP repetido em mais de 1 relatório
             cp_rel = df.dropna(subset=["CP","Relatório"]).astype({"Relatório": str})
             cp_multi = (cp_rel.groupby(["CP"])["Relatório"]
                         .nunique().reset_index(name="n_rel"))
@@ -1004,7 +997,7 @@ if uploaded_files:
                   .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
         )
 
-        # ===== VISÃO GERAL (função isolada)
+        # ===== VISÃO GERAL
         render_overview_and_tables(df_view, stats_cp_idade, TOL_MP)
 
         # ---------------- Gráficos
@@ -1070,7 +1063,7 @@ if uploaded_files:
         else:
             st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
-        # ===== Gráfico 3 — Comparação médias
+        # ===== Gráfico 3 — Comparação médias (CORRIGIDO fill_between)
         st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
         fig3, cond_df, verif_fck_df = None, None, None
         mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
@@ -1092,9 +1085,9 @@ if uploaded_files:
             sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
             fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
             ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
-            _sa_dp = sa[sa["count"] >= 2]
+            _sa_dp = sa[sa["count"] >= 2].copy()
             if not _sa_dp.empty:
-                ax3.fill_between(_sa_dp["Idade (dias)"], _sa["mean"] - _sa_dp["std"], _sa["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
+                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
             ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
             if fck_active is not None:
                 ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
@@ -1165,12 +1158,11 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
-        # ===== Verificação do fck de Projeto — RESUMO + DETALHADO =====
+        # ===== Verificação do fck (Resumo + Detalhada)
         st.write("#### ✅ Verificação do fck de Projeto")
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
         fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
 
-        # Tabela resumo fck
         mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
         m7  = mean_by_age.get(7,  float("nan"))
         m28 = mean_by_age.get(28, float("nan"))
@@ -1192,7 +1184,7 @@ if uploaded_files:
         verif_fck_df["Status"] = resumo_status
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (7/28/63 + pares Δ>2MPa)
+        # ===== Verificação detalhada por CP (pares Δ>2MPa)
         st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
         pv_cp_status = None
         tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
@@ -1204,12 +1196,10 @@ if uploaded_files:
 
             pv_multi = tmp_v.pivot_table(index="CP", columns=["Idade (dias)", "rep"], values="MPa", aggfunc="first").sort_index(axis=1)
 
-            # Garante colunas para idades mesmo sem leituras
             for age in [7, 28, 63]:
                 if age not in pv_multi.columns.get_level_values(0):
                     pv_multi[(age, 1)] = pd.NA
 
-            # Ordena colunas por idade e repetição
             ordered = []
             for age in [7, 28, 63]:
                 reps = sorted([r for (a, r) in pv_multi.columns if a == age])
@@ -1223,7 +1213,6 @@ if uploaded_files:
             pv = pv_multi.copy(); pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
             pv = pv.reset_index()
 
-            # Ordena por número do CP (se contiver dígitos)
             try:
                 pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
             except Exception:
@@ -1261,7 +1250,6 @@ if uploaded_files:
                 "Status 63d": [ _status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ],
             }, index=pv_multi.index)
 
-            # ===== Pares 7/7, 28/28, 63/63 com Δ>2 MPa (alerta por linha)
             def _delta_flag(row_vals: pd.Series) -> bool:
                 vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
                 if vals.empty: return False
@@ -1333,7 +1321,6 @@ if uploaded_files:
             styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
             story = []
 
-            # Cabeçalho
             story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
             story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
             usina_hdr = _usina_label_from_df(df); abat_nf_hdr = _abat_nf_header_label(df)
@@ -1345,7 +1332,6 @@ if uploaded_files:
             if qr_url: story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
             story.append(Spacer(1, 8))
 
-            # Tabela principal
             headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"]
             rows = df[headers].values.tolist()
             table = Table([headers] + rows, repeatRows=1)
@@ -1361,7 +1347,6 @@ if uploaded_files:
             ]))
             story.append(table); story.append(Spacer(1, 8))
 
-            # Resumo estatístico
             if not stats.empty:
                 story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
                 stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
@@ -1385,9 +1370,8 @@ if uploaded_files:
             if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
             if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
 
-            # Verificação do fck — tabelas
             if verif_fck_df is not None and not verif_fck_df.empty:
-                story.append(PageBreak())
+                PageBreak()
                 story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
                 rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
                 for _, r in verif_fck_df.iterrows():
@@ -1467,7 +1451,7 @@ if uploaded_files:
             doc.build(story, canvasmaker=NumberedCanvas)
             pdf = buffer.getvalue(); buffer.close(); return pdf
 
-        # ===== PDF / Impressão / Exportações =====
+        # ===== PDF / Exportações
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
         if has_df:
             try:
@@ -1475,7 +1459,6 @@ if uploaded_files:
                     df_view, stats_cp_idade,
                     fig1, fig2, fig3, fig4,
                     str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                    # período
                     (lambda _d: (
                         (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
                         if _d else "—"
@@ -1491,7 +1474,6 @@ if uploaded_files:
                 try: render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
                 except Exception: pass
 
-            # Exportações: Excel e CSVs
             try:
                 stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
                 excel_buffer = io.BytesIO()
@@ -1565,6 +1547,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-

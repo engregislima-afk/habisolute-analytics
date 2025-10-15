@@ -513,12 +513,10 @@ def _normalize_fck_label(value: Any) -> str:
     if not raw or raw.lower() == 'nan': return "—"
     return raw
     def extrair_dados_certificado(uploaded_file):
-    """
-    Retorna DataFrame com colunas:
-      Relatório, CP, Idade (dias), Resistência (MPa), Nota Fiscal, Local, Usina,
-      Abatimento NF (mm), Abatimento NF tol (mm), Abatimento Obra (mm)
-    + metadados: obra, data_relatorio, fck_projeto
-    """
+    # Retorna DataFrame com colunas:
+    #   Relatório, CP, Idade (dias), Resistência (MPa), Nota Fiscal, Local, Usina,
+    #   Abatimento NF (mm), Abatimento NF tol (mm), Abatimento Obra (mm)
+    # + metadados: obra, data_relatorio, fck_projeto
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -544,7 +542,7 @@ def _normalize_fck_label(value: Any) -> str:
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")  # aceita 128.323 etc.
+    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
     obra = "NÃO IDENTIFICADA"
@@ -794,6 +792,7 @@ else:
 # Função da VISÃO GERAL isolada (evita erros de indentação)
 # =============================================================================
 def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFrame, TOL_MP: float):
+    # Renderiza KPIs (obra/data/fck/tolerância/%fck), e as duas tabelas base
     import pandas as _pd
     from datetime import datetime as _dt
 
@@ -1095,7 +1094,7 @@ if uploaded_files:
             ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
             _sa_dp = sa[sa["count"] >= 2]
             if not _sa_dp.empty:
-                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
+                ax3.fill_between(_sa_dp["Idade (dias)"], _sa["mean"] - _sa_dp["std"], _sa["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
             ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
             if fck_active is not None:
                 ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
@@ -1566,4 +1565,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

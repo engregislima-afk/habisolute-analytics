@@ -36,8 +36,19 @@ FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas as pdfcanvas
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
+FOOTER_TEXT = (
+    "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
+    "Este documento poderá ser reproduzido somente na íntegra. "
+    "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
+)
+FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
+
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas as pdfcanvas
+
 class NumberedCanvas(pdfcanvas.Canvas):
-    ORANGE = colors.HexColor("#f97316")  # “laranja forte”
+    ORANGE = colors.HexColor("#f97316")  # laranja forte
     BLACK  = colors.black
 
     def __init__(self, *args, **kwargs):
@@ -45,7 +56,6 @@ class NumberedCanvas(pdfcanvas.Canvas):
         self._saved_page_states = []
 
     def showPage(self):
-        # salva o estado da página corrente para desenhar os elementos fixos depois
         self._saved_page_states.append(dict(self.__dict__))
         self._startPage()
 
@@ -77,41 +87,39 @@ class NumberedCanvas(pdfcanvas.Canvas):
     def _draw_fixed_bars_and_footer(self, total_pages: int):
         w, h = self._pagesize
 
-        # ---- FAIXAS DE CABEÇALHO ----
-        # barra laranja (topo)
+        # ==== FAIXAS DE CABEÇALHO ====
+        # laranja (topo)
         self.setFillColor(self.ORANGE)
-        self.rect(0, h - 10, w, 6, stroke=0, fill=1)   # y = h-10; altura 6 pt
-
-        # barra preta (logo abaixo)
+        self.rect(0, h - 10, w, 6, stroke=0, fill=1)
+        # preta (logo abaixo)
         self.setFillColor(self.BLACK)
-        self.rect(0, h - 16, w, 2, stroke=0, fill=1)   # 2 pt
+        self.rect(0, h - 16, w, 2, stroke=0, fill=1)
 
-        # ---- FAIXAS DE RODAPÉ ----
-        # barra preta (acima da margem inferior)
+        # ==== FAIXAS DE RODAPÉ (mais para baixo) ====
+        # preta quase na borda inferior
         self.setFillColor(self.BLACK)
-        self.rect(0, 24, w, 2, stroke=0, fill=1)
-
-        # barra laranja (logo acima da preta)
+        self.rect(0, 8, w, 2, stroke=0, fill=1)
+        # laranja logo acima
         self.setFillColor(self.ORANGE)
-        self.rect(0, 28, w, 6, stroke=0, fill=1)
+        self.rect(0, 12, w, 6, stroke=0, fill=1)
 
-        # ---- Texto do rodapé e numeração ----
+        # ==== TEXTOS DO RODAPÉ (um pouco mais para cima) ====
+        # suba o bloco de textos ajustando y0
+        y0 = 44  # altura base dos textos do rodapé
         self.setFillColor(colors.black)
         self.setFont("Helvetica", 7)
         lines = self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)
-        # posiciona acima das faixas (começando em y=38)
-        y0 = 38
         for i, ln in enumerate(lines):
             y = y0 + i * 8
             self.drawString(18, y, ln)
 
-        # marca da empresa
+        # marca/brand
         self.setFont("Helvetica-Oblique", 8)
-        self.drawCentredString(w / 2.0, y0 - 6, FOOTER_BRAND_TEXT)
+        self.drawCentredString(w / 2.0, y0 - 8, FOOTER_BRAND_TEXT)
 
-        # numeração
+        # numeração (acima das faixas e abaixo do brand)
         self.setFont("Helvetica", 8)
-        self.drawRightString(w - 18, y0 - 14, f"Página {self._pageNumber} de {total_pages}")
+        self.drawRightString(w - 18, y0 - 18, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
@@ -1603,4 +1611,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

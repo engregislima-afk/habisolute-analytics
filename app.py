@@ -487,6 +487,59 @@ def _normalize_fck_label(value: Any) -> str:
 # =============================================================================
 # Extração do PDF (deve ficar ANTES do pipeline principal)
 # =============================================================================
+# --- PARSING: abatimentos (NF e em obra) ------------------------------
+def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
+    """Recebe um token como '80+-10', '80 ± 10', '80, 10', '80' e retorna (valor, tol)."""
+    if not tok:
+        return None, None
+    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
+    if not m:
+        return None, None
+    try:
+        v = float(m.group(1))
+        tol = float(m.group(2)) if m.group(2) is not None else None
+        return v, tol
+    except Exception:
+        return None, None
+
+def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Varre o texto do PDF procurando:
+      - Abatimento NF (mm)
+      - Abatimento medido em obra (mm)
+    Retorna (abat_nf, abat_obra).
+    """
+    abat_nf = None
+    abat_obra = None
+    for sline in linhas:
+        s_clean = sline.replace(",", ".").replace("±", "+-")
+
+        # Ex.: "Abatimento NF 80 ±10 mm" / "abatim nf 70mm"
+        m_nf = re.search(
+            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
+            r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
+            s_clean
+        )
+        if m_nf and abat_nf is None:
+            try:
+                abat_nf = float(m_nf.group(1))
+            except Exception:
+                pass
+
+        # Ex.: "abatimento medido em obra 90 mm" / "abatimento obra 100mm"
+        m_obra = re.search(
+            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
+            r"(\d+(?:\.\d+)?)\s*mm",
+            s_clean
+        )
+        if m_obra and abat_obra is None:
+            try:
+                abat_obra = float(m_obra.group(2))
+            except Exception:
+                pass
+
+    return abat_nf, abat_obra
 def extrair_dados_certificado(uploaded_file):
     """
     Retorna DataFrame com colunas:
@@ -1680,4 +1733,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

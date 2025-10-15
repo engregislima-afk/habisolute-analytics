@@ -575,10 +575,25 @@ def _normalize_fck_label(value: Any) -> str:
                 txt = re.sub(r"[’´`]", "'", txt)
                 linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip()])
     except Exception:
-        return (pd.DataFrame(columns=[
-            "Relatório", "CP", "Idade (dias)", "Resistência (MPa)", "Nota Fiscal", "Local",
-            "Usina", "Abatimento NF (mm)", "Abatimento NF tol (mm)", "Abatimento Obra (mm)"
-        ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
+        return (
+            pd.DataFrame(
+                columns=[
+                    "Relatório",
+                    "CP",
+                    "Idade (dias)",
+                    "Resistência (MPa)",
+                    "Nota Fiscal",
+                    "Local",
+                    "Usina",
+                    "Abatimento NF (mm)",
+                    "Abatimento NF tol (mm)",
+                    "Abatimento Obra (mm)",
+                ]
+            ),
+            "NÃO IDENTIFICADA",
+            "NÃO IDENTIFICADA",
+            "NÃO IDENTIFICADO",
+        )
 
     cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
     data_regex = re.compile(r"\d{2}/\d{2}/\d{4}")
@@ -692,7 +707,7 @@ def _normalize_fck_label(value: Any) -> str:
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
+                    for tok in partes[nf_idx + 1 : nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
                         if v is not None and 20 <= v <= 250:
                             abat_nf_val = float(v)
@@ -700,20 +715,38 @@ def _normalize_fck_label(value: Any) -> str:
                             break
 
                 local = local_por_relatorio.get(relatorio)
-                dados.append([
-                    relatorio, cp, idade, resistencia, nf, local,
-                    usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
-                    abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
-                ])
+                dados.append(
+                    [
+                        relatorio,
+                        cp,
+                        idade,
+                        resistencia,
+                        nf,
+                        local,
+                        usina_nome,
+                        (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
+                        abat_nf_tol,
+                        (abat_obra_val if abat_obra_val is not None else abat_obra_pdf),
+                    ]
+                )
             except Exception:
                 pass
 
-    df = pd.DataFrame(dados, columns=[
-        "Relatório", "CP", "Idade (dias)", "Resistência (MPa)", "Nota Fiscal", "Local",
-        "Usina", "Abatimento NF (mm)", "Abatimento NF tol (mm)", "Abatimento Obra (mm)"
-    ])
+    df = pd.DataFrame(
+        dados,
+        columns=[
+            "Relatório",
+            "CP",
+            "Idade (dias)",
+            "Resistência (MPa)",
+            "Nota Fiscal",
+            "Local",
+            "Usina",
+            "Abatimento NF (mm)",
+            "Abatimento NF tol (mm)",
+            "Abatimento Obra (mm)",
+        ],
+    )
     if not df.empty:
         rel_map = {}
         for rel, valores in fck_por_relatorio.items():
@@ -1991,3 +2024,4 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+

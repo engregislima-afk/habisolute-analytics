@@ -962,10 +962,9 @@ if uploaded_files:
                   .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
         )
 
-        # ====== VISÃO GERAL (restaurada) ======
+        # ====== VISÃO GERAL (restaurada, sem strings multilinha) ======
 st.markdown("#### Visão Geral")
 
-# Obra / Data / fck
 def _format_float_label(value: Optional[float]) -> str:
     if value is None or pd.isna(value):
         return "—"
@@ -981,9 +980,8 @@ def to_date(d):
 
 obra_label = "—"
 data_label = "—"
-
-# fck_label a partir da coluna "Fck Projeto" (preserva múltiplos se existirem)
 fck_label = "—"
+
 if not df_view.empty:
     ob = sorted(set(df_view["Obra"].astype(str)))
     obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
@@ -1008,13 +1006,13 @@ if not df_view.empty:
         di, df_ = min(datas_validas), max(datas_validas)
         data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
 
-# % de acertos por idade (28/63) com base no fck mais frequente do conjunto ativo
-def fmt_pct(v): return "--" if v is None else f"{v:.0f}%"
+def fmt_pct(v): 
+    return "--" if v is None else f"{v:.0f}%"
+
 fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
 fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
 KPIs = compute_exec_kpis(df_view, fck_val)
 
-# Cartões linha 1
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 with k1:
     st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
@@ -1029,7 +1027,6 @@ with k5:
 with k6:
     st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
 
-# Cartões linha 2 — Média/DP, Nº de relatórios, Abatimento NF (com ± se houver)
 e1, e2, e3, e4 = st.columns(4)
 with e1:
     media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
@@ -1053,8 +1050,8 @@ with e4:
             abat_nf_label = f"{v:.0f} mm"
     st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
 
-# Semáforo (mantido)
-p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
+p28 = KPIs.get("pct28")
+p63 = KPIs.get("pct63")
 score = None
 if (p28 is not None) or (p63 is not None):
     score = (0 if p28 is None else 0.6 * p28) + (0 if p63 is None else 0.4 * p63)
@@ -1069,26 +1066,31 @@ h28, t28 = _hits(df_view, 28, fck_val)
 h63, t63 = _hits(df_view, 63, fck_val)
 
 st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
-explic = f"""
-<div class="kpi-help" style="margin:8px 0 14px 0; line-height:1.45">
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px">
-    <span class="pill">Cálculo do semáforo</span><span class="pill">28d = 60%</span><span class="pill">63d = 40%</span>
-  </div>
-  <div style="font-size:13px">
-    <div>28 dias: <b>{'--' if p28 is None else f'{p28:.0f}%'}</b> ({h28}/{t28} CPs ≥ fck)</div>
-    <div>63 dias: <b>{'--' if p63 is None else f'{p63:.0f}%'}</b> ({h63}/{t63} CPs ≥ fck)</div>
-    <div style="margin-top:6px">
-      Score ponderado = <b>{'-' if score is None else f'{score:.0f}%'}</b>
-      &rarr; <b style="color:{KPIs['status_cor']}">{KPIs['status_txt']}</b>
-    </div>
-    <div style="margin-top:4px">
-      Faixas: <b>≥90</b> ✅Bom • <b>≥75</b> ⚠️Atenção • <b>&lt;75</b> 🔴Crítico.
-    </div>
-  </div>
-</div>
-"""
-st.markdown(explic, unsafe_allow_html=True)
+
+explic_html = (
+    "<div class='kpi-help' style='margin:8px 0 14px 0; line-height:1.45'>"
+    "<div style='display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px'>"
+    "<span class='pill'>Cálculo do semáforo</span>"
+    "<span class='pill'>28d = 60%</span>"
+    "<span class='pill'>63d = 40%</span>"
+    "</div>"
+    f"<div style='font-size:13px'>"
+    f"<div>28 dias: <b>{'--' if p28 is None else f'{p28:.0f}%'}</b> ({h28}/{t28} CPs ≥ fck)</div>"
+    f"<div>63 dias: <b>{'--' if p63 is None else f'{p63:.0f}%'}</b> ({h63}/{t63} CPs ≥ fck)</div>"
+    f"<div style='margin-top:6px'>Score ponderado = <b>{'-' if score is None else f'{score:.0f}%'}</b> "
+    f"&rarr; <b style='color:{KPIs['status_cor']}'>{KPIs['status_txt']}</b></div>"
+    "<div style='margin-top:4px'>Faixas: <b>≥90</b> ✅Bom • <b>≥75</b> ⚠️Atenção • <b>&lt;75</b> 🔴Crítico.</div>"
+    "</div></div>"
+)
+st.markdown(explic_html, unsafe_allow_html=True)
 # ====== /VISÃO GERAL ======
+
+# ---------------- Tabelas base (sem indent extra)
+st.write("#### Resultados Individuais")
+st.dataframe(df_view, use_container_width=True)
+
+st.write("#### Estatísticas por CP")
+st.dataframe(stats_cp_idade, use_container_width=True)
 
         # ---------------- Tabelas base
         st.write("#### Resultados Individuais")
@@ -1778,6 +1780,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

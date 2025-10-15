@@ -25,37 +25,93 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas) =====
+FOOTER_TEXT = (
+    "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
+    "Este documento poderá ser reproduzido somente na íntegra. "
+    "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
+)
+FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
+
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas as pdfcanvas
+
 class NumberedCanvas(pdfcanvas.Canvas):
+    ORANGE = colors.HexColor("#f97316")  # “laranja forte”
+    BLACK  = colors.black
+
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs); self._saved_page_states = []
-    def showPage(self): self._saved_page_states.append(dict(self.__dict__)); self._startPage()
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        # salva o estado da página corrente para desenhar os elementos fixos depois
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
     def save(self):
         total_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
-            self._draw_footer_and_pagenum(total_pages)
+            self._draw_fixed_bars_and_footer(total_pages)
             super().showPage()
         super().save()
+
     def _wrap_footer(self, text, font_name="Helvetica", font_size=7, max_width=None):
-        if max_width is None: max_width = self._pagesize[0] - 36 - 120
-        words = text.split(); lines, line = [], ""
+        if max_width is None:
+            max_width = self._pagesize[0] - 36 - 120
+        words = text.split()
+        lines, line = [], ""
         for w in words:
             test = (line + " " + w).strip()
-            if self.stringWidth(test, font_name, font_size) <= max_width: line = test
+            if self.stringWidth(test, font_name, font_size) <= max_width:
+                line = test
             else:
-                if line: lines.append(line)
+                if line:
+                    lines.append(line)
                 line = w
-        if line: lines.append(line)
+        if line:
+            lines.append(line)
         return lines
-    def _draw_footer_and_pagenum(self, total_pages: int):
+
+    def _draw_fixed_bars_and_footer(self, total_pages: int):
         w, h = self._pagesize
+
+        # ---- FAIXAS DE CABEÇALHO ----
+        # barra laranja (topo)
+        self.setFillColor(self.ORANGE)
+        self.rect(0, h - 10, w, 6, stroke=0, fill=1)   # y = h-10; altura 6 pt
+
+        # barra preta (logo abaixo)
+        self.setFillColor(self.BLACK)
+        self.rect(0, h - 16, w, 2, stroke=0, fill=1)   # 2 pt
+
+        # ---- FAIXAS DE RODAPÉ ----
+        # barra preta (acima da margem inferior)
+        self.setFillColor(self.BLACK)
+        self.rect(0, 24, w, 2, stroke=0, fill=1)
+
+        # barra laranja (logo acima da preta)
+        self.setFillColor(self.ORANGE)
+        self.rect(0, 28, w, 6, stroke=0, fill=1)
+
+        # ---- Texto do rodapé e numeração ----
+        self.setFillColor(colors.black)
         self.setFont("Helvetica", 7)
-        for i, ln in enumerate(self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)):
-            y = 10 + i * 8
-            if y > 20: break
+        lines = self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)
+        # posiciona acima das faixas (começando em y=38)
+        y0 = 38
+        for i, ln in enumerate(lines):
+            y = y0 + i * 8
             self.drawString(18, y, ln)
-        self.setFont("Helvetica-Oblique", 8); self.drawCentredString(w/2.0, 26, FOOTER_BRAND_TEXT)
-        self.setFont("Helvetica", 8); self.drawRightString(w - 18, 10, f"Página {self._pageNumber} de {total_pages}")
+
+        # marca da empresa
+        self.setFont("Helvetica-Oblique", 8)
+        self.drawCentredString(w / 2.0, y0 - 6, FOOTER_BRAND_TEXT)
+
+        # numeração
+        self.setFont("Helvetica", 8)
+        self.drawRightString(w - 18, y0 - 14, f"Página {self._pageNumber} de {total_pages}")
 
 # =============================================================================
 # Configuração básica
@@ -1547,3 +1603,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

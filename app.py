@@ -377,26 +377,72 @@ if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2 = st.tabs(["Usuários", "Novo usuário"])
+
+        # ====== LISTA / AÇÕES ======
         with tab1:
             users = user_list()
-            if not users: st.info("Nenhum usuário cadastrado.")
+            if not users:
+                st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
-                    colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA, colB, colC, colD, colE = st.columns([2, 1, 1.2, 1.6, 1.6])
                     colA.write(f"**{u['username']}**")
                     colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
                     colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
-                    colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
+                    colD.write("Exige troca" if u.get("must_change") else "Senha OK")
+
                     with colE:
                         if u["username"] != "admin":
-                            if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
-                                rec = user_get(u["username"]) or {}; rec["active"] = not rec.get("active", True)
-                                user_set(u["username"], rec); st.rerun()
-                            if st.button("Redefinir", key=f"rst_{u['username']}"):
-                                rec = user_get(u["username"]) or {}; rec["password"] = _hash_password("1234"); rec["must_change"]=True
-                                user_set(u["username"], rec); st.rerun()
+                            if st.button(("Desativar" if u.get("active", True) else "Reativar"),
+                                         key=f"act_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["active"] = not rec.get("active", True)
+                                user_set(u["username"], rec)
+                                st.rerun()
+
+                            if st.button("Redefinir senha", key=f"rst_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["password"] = _hash_password("1234")
+                                rec["must_change"] = True
+                                user_set(u["username"], rec)
+                                st.rerun()
+
                             if st.button("Excluir", key=f"del_{u['username']}"):
-                                user_delete(u["username"]); st.rerun()
+                                user_delete(u["username"])
+                                st.rerun()
+
+        # ====== CADASTRO ======
+        with tab2:
+            st.subheader("Cadastrar novo usuário")
+            new_user = st.text_input("Usuário (sem espaços, min. 3 caracteres)", key="nu_user")
+            new_pass = st.text_input("Senha inicial (opcional — padrão 1234)", type="password", key="nu_pass")
+            colx, coly = st.columns(2)
+            with colx:
+                new_is_admin = st.checkbox("Conceder perfil Admin", value=False, key="nu_admin")
+            with coly:
+                new_active = st.checkbox("Ativo", value=True, key="nu_active")
+
+            if st.button("➕ Criar usuário", type="primary", key="nu_create"):
+                uname = (new_user or "").strip()
+                # Validações
+                if len(uname) < 3 or " " in uname:
+                    st.error("Informe um nome de usuário válido (sem espaços, mínimo 3 caracteres).")
+                elif user_exists(uname):
+                    st.error("Já existe um usuário com esse nome.")
+                elif uname.lower() == "admin":
+                    st.error("O nome 'admin' é reservado.")
+                else:
+                    pwd = (new_pass or "1234")
+                    rec = {
+                        "password": _hash_password(pwd),
+                        "is_admin": bool(new_is_admin),
+                        "active": bool(new_active),
+                        "must_change": True,  # força troca no 1º login
+                        "created_at": datetime.now().isoformat(timespec="seconds"),
+                    }
+                    user_set(uname, rec)
+                    st.success(f"Usuário **{uname}** criado com sucesso! (senha inicial: {'••••' if new_pass else '1234'})")
+                    st.rerun()
 
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
@@ -1608,5 +1654,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

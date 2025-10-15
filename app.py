@@ -619,8 +619,10 @@ def _normalize_fck_label(value: Any) -> str:
                 else:
                     fck_valores_globais.extend(valores_fck)
                 if not isinstance(fck_projeto, (int, float)):
-                    try: fck_projeto = float(valores_fck[0])
-                    except Exception: pass
+                    try:
+                        fck_projeto = float(valores_fck[0])
+                    except Exception:
+                        pass
 
     usina_nome = _limpa_usina_extra(_detecta_usina(linhas_todas))
     abat_nf_pdf, abat_obra_pdf = _detecta_abatimentos(linhas_todas)
@@ -633,7 +635,8 @@ def _normalize_fck_label(value: Any) -> str:
 
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel: relatorio_cabecalho = m_rel.group(1)
+            if m_rel:
+                relatorio_cabecalho = m_rel.group(1)
             continue
 
         if len(partes) >= 5 and cp_regex.match(partes[0]):
@@ -654,7 +657,9 @@ def _normalize_fck_label(value: Any) -> str:
                     if t.isdigit():
                         v = int(t)
                         if 1 <= v <= 120:
-                            idade = v; idade_idx = j; break
+                            idade = v
+                            idade_idx = j
+                            break
 
                 resistencia, res_idx = None, None
                 if idade_idx is not None:
@@ -662,7 +667,8 @@ def _normalize_fck_label(value: Any) -> str:
                         t = partes[j]
                         if float_token.match(t):
                             resistencia = float(t.replace(",", "."))
-                            res_idx = j; break
+                            res_idx = j
+                            break
 
                 if idade is None or resistencia is None:
                     continue
@@ -672,7 +678,9 @@ def _normalize_fck_label(value: Any) -> str:
                 for j in range(start_nf, len(partes)):
                     tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
+                        nf = tok
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -681,7 +689,8 @@ def _normalize_fck_label(value: Any) -> str:
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
                             if 20 <= v <= 250:
-                                abat_obra_val = float(v); break
+                                abat_obra_val = float(v)
+                                break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
@@ -712,8 +721,10 @@ def _normalize_fck_label(value: Any) -> str:
         for rel, valores in fck_por_relatorio.items():
             uniques = []
             for valor in valores:
-                try: val_f = float(valor)
-                except Exception: continue
+                try:
+                    val_f = float(valor)
+                except Exception:
+                    continue
                 if val_f not in uniques:
                     uniques.append(val_f)
             if uniques:
@@ -724,11 +735,13 @@ def _normalize_fck_label(value: Any) -> str:
             fallback_fck = float(fck_projeto)
         else:
             candidatos = []
-            for valores in fck_por_relatorio.values(): candidatos.extend(valores)
+            for valores in fck_por_relatorio.values():
+                candidatos.extend(valores)
             candidatos.extend(fck_valores_globais)
             for cand in candidatos:
                 try:
-                    fallback_fck = float(cand); break
+                    fallback_fck = float(cand)
+                    break
                 except Exception:
                     continue
             if fallback_fck is not None:
@@ -1825,3 +1838,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

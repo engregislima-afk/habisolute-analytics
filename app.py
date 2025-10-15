@@ -1433,9 +1433,9 @@ if uploaded_files:
             cols_63  = [c for c in pv.columns if c.startswith("63d")]
             ordered_cols = (
                 cols_cp
-                + [c for c in cols_7  if "(MPa)" in c]  + ["Status 7d",  "7d — Pares"]
-                + [c for c in cols_28 if "(MPa)" in c]  + ["Status 28d", "28d — Pares"]
-                + [c for c in cols_63 if "(MPa)" in c]  + ["Status 63d", "63d — Pares"]
+                + [c for c in cols_7  if "(MPa)" in c]  + ["Status 7d",  "7d — Correção"]
+                + [c for c in cols_28 if "(MPa)" in c]  + ["Status 28d", "28d — Correção"]
+                + [c for c in cols_63 if "(MPa)" in c]  + ["Status 63d", "63d — Correção"]
             )
             ordered_cols = [c for c in ordered_cols if c in pv.columns]
             pv = pv[ordered_cols]
@@ -1733,5 +1733,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

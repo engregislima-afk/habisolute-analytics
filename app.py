@@ -521,12 +521,12 @@ def _normalize_fck_label(value: Any) -> str:
     if not raw or raw.lower() == 'nan': return "—"
     return raw
     def extrair_dados_certificado(uploaded_file):
-    """
+        """
     Retorna DataFrame com colunas:
       Relatório, CP, Idade (dias), Resistência (MPa), Nota Fiscal, Local, Usina,
       Abatimento NF (mm), Abatimento NF tol (mm), Abatimento Obra (mm)
     + metadados: obra, data_relatorio, fck_projeto
-    """
+        """
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -1683,5 +1683,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

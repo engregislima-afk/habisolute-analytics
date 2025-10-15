@@ -962,88 +962,133 @@ if uploaded_files:
                   .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
         )
 
-        st.markdown("#### Visão Geral")
-        obra_label = "—"
-        data_label = "—"
-        fck_label = selected_fck_label or "—"
-        if not df_view.empty:
-            ob = sorted(set(df_view["Obra"].astype(str)))
-            obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
+        # ====== VISÃO GERAL (restaurada) ======
+st.markdown("#### Visão Geral")
 
-            fck_candidates: List[str] = []
-            for raw in df_view["Fck Projeto"].tolist():
-                normalized = _to_float_or_none(raw)
-                if normalized is not None:
-                    formatted = _format_float_label(normalized)
-                    if formatted != "—":
-                        fck_candidates.append(formatted)
-                else:
-                    raw_str = str(raw).strip()
-                    if raw_str and raw_str.lower() != "nan":
-                        fck_candidates.append(raw_str)
-            if fck_candidates:
-                fck_label = ", ".join(dict.fromkeys(fck_candidates))
-            datas_validas = [to_date(x) for x in df_view["Data Certificado"].unique()]
-            datas_validas = [d for d in datas_validas if d is not None]
-            if datas_validas:
-                di, df_ = min(datas_validas), max(datas_validas)
-                data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
+# Obra / Data / fck
+def _format_float_label(value: Optional[float]) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    num = float(value)
+    label = f"{num:.2f}".rstrip("0").rstrip(".")
+    return label or f"{num:.2f}"
 
-        def fmt_pct(v): return "--" if v is None else f"{v:.0f}%"
+def to_date(d):
+    try:
+        return datetime.strptime(str(d), "%d/%m/%Y").date()
+    except Exception:
+        return None
 
-        fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-        fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-        KPIs = compute_exec_kpis(df_view, fck_val)
+obra_label = "—"
+data_label = "—"
 
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
-        with k1:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
-        with k2:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
-        with k3:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
-        with k4:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
-        with k5:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs com fck 28d</div><div class="h-kpi">{fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
-        with k6:
-            st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs com fck 63d</div><div class="h-kpi">{fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+# fck_label a partir da coluna "Fck Projeto" (preserva múltiplos se existirem)
+fck_label = "—"
+if not df_view.empty:
+    ob = sorted(set(df_view["Obra"].astype(str)))
+    obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
 
-        # ---- Status semáforo
-        p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
-        score = None
-        if (p28 is not None) or (p63 is not None):
-            score = (0 if p28 is None else 0.6 * p28) + (0 if p63 is None else 0.4 * p63)
-        def _hits(df_src, age, fck):
-            if fck is None or pd.isna(fck): return (0, 0)
-            sub = df_src[df_src["Idade (dias)"] == age].groupby("CP")["Resistência (MPa)"].mean()
-            return int((sub >= fck).sum()), int(sub.shape[0])
-        h28, t28 = _hits(df_view, 28, fck_val)
-        h63, t63 = _hits(df_view, 63, fck_val)
+    fck_candidates: List[str] = []
+    for raw in df_view["Fck Projeto"].tolist():
+        normalized = _to_float_or_none(raw)
+        if normalized is not None:
+            formatted = _format_float_label(normalized)
+            if formatted != "—":
+                fck_candidates.append(formatted)
+        else:
+            raw_str = str(raw).strip()
+            if raw_str and raw_str.lower() != "nan":
+                fck_candidates.append(raw_str)
+    if fck_candidates:
+        fck_label = ", ".join(dict.fromkeys(fck_candidates))
 
-        st.markdown(
-            f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>",
-            unsafe_allow_html=True
-        )
-        explic = f"""
-        <div class="kpi-help" style="margin:8px 0 14px 0; line-height:1.45">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px">
-            <span class="pill">Cálculo do semáforo</span><span class="pill">28d = 60%</span><span class="pill">63d = 40%</span>
-          </div>
-          <div style="font-size:13px">
-            <div>28 dias: <b>{'--' if p28 is None else f'{p28:.0f}%'}</b> ({h28}/{t28} CPs ≥ fck)</div>
-            <div>63 dias: <b>{'--' if p63 is None else f'{p63:.0f}%'}</b> ({h63}/{t63} CPs ≥ fck)</div>
-            <div style="margin-top:6px">
-              Score ponderado = <b>{'-' if score is None else f'{score:.0f}%'}</b>
-              &rarr; <b style="color:{KPIs['status_cor']}">{KPIs['status_txt']}</b>
-            </div>
-            <div style="margin-top:4px">
-              Faixas: <b>≥90</b> ✅Bom • <b>≥75</b> ⚠️Atenção • <b>&lt;75</b> 🔴Crítico.
-            </div>
-          </div>
-        </div>
-        """
-        st.markdown(explic, unsafe_allow_html=True)
+    datas_validas = [to_date(x) for x in df_view["Data Certificado"].unique()]
+    datas_validas = [d for d in datas_validas if d is not None]
+    if datas_validas:
+        di, df_ = min(datas_validas), max(datas_validas)
+        data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
+
+# % de acertos por idade (28/63) com base no fck mais frequente do conjunto ativo
+def fmt_pct(v): return "--" if v is None else f"{v:.0f}%"
+fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+KPIs = compute_exec_kpis(df_view, fck_val)
+
+# Cartões linha 1
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+with k1:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
+with k2:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
+with k3:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
+with k4:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
+with k5:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
+with k6:
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+
+# Cartões linha 2 — Média/DP, Nº de relatórios, Abatimento NF (com ± se houver)
+e1, e2, e3, e4 = st.columns(4)
+with e1:
+    media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Média geral</div><div class="h-kpi">{media_txt}</div></div>', unsafe_allow_html=True)
+with e2:
+    dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div><div class="h-kpi">{dp_txt}</div></div>', unsafe_allow_html=True)
+with e3:
+    n_relatorios = df_view["Relatório"].nunique()
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div><div class="h-kpi">{n_relatorios}</div></div>', unsafe_allow_html=True)
+with e4:
+    snf = pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
+    stol = pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else pd.Series(dtype=float)
+    abat_nf_label = "—"
+    if snf is not None and not snf.dropna().empty:
+        v = float(snf.dropna().mode().iloc[0])
+        if stol is not None and not stol.dropna().empty:
+            t = float(stol.dropna().mode().iloc[0])
+            abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
+        else:
+            abat_nf_label = f"{v:.0f} mm"
+    st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+
+# Semáforo (mantido)
+p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
+score = None
+if (p28 is not None) or (p63 is not None):
+    score = (0 if p28 is None else 0.6 * p28) + (0 if p63 is None else 0.4 * p63)
+
+def _hits(df_src, age, fck):
+    if fck is None or pd.isna(fck):
+        return (0, 0)
+    sub = df_src[df_src["Idade (dias)"] == age].groupby("CP")["Resistência (MPa)"].mean()
+    return int((sub >= fck).sum()), int(sub.shape[0])
+
+h28, t28 = _hits(df_view, 28, fck_val)
+h63, t63 = _hits(df_view, 63, fck_val)
+
+st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
+explic = f"""
+<div class="kpi-help" style="margin:8px 0 14px 0; line-height:1.45">
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px">
+    <span class="pill">Cálculo do semáforo</span><span class="pill">28d = 60%</span><span class="pill">63d = 40%</span>
+  </div>
+  <div style="font-size:13px">
+    <div>28 dias: <b>{'--' if p28 is None else f'{p28:.0f}%'}</b> ({h28}/{t28} CPs ≥ fck)</div>
+    <div>63 dias: <b>{'--' if p63 is None else f'{p63:.0f}%'}</b> ({h63}/{t63} CPs ≥ fck)</div>
+    <div style="margin-top:6px">
+      Score ponderado = <b>{'-' if score is None else f'{score:.0f}%'}</b>
+      &rarr; <b style="color:{KPIs['status_cor']}">{KPIs['status_txt']}</b>
+    </div>
+    <div style="margin-top:4px">
+      Faixas: <b>≥90</b> ✅Bom • <b>≥75</b> ⚠️Atenção • <b>&lt;75</b> 🔴Crítico.
+    </div>
+  </div>
+</div>
+"""
+st.markdown(explic, unsafe_allow_html=True)
+# ====== /VISÃO GERAL ======
 
         # ---------------- Tabelas base
         st.write("#### Resultados Individuais")
@@ -1733,6 +1778,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

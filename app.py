@@ -418,12 +418,15 @@ st.markdown(
 if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
+
+        # >>> ABAS DEVEM SER CRIADAS AQUI E USADAS LOGO ABAIXO
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
 
         # ===== Aba 1 — Usuários
         with tab1:
             users = user_list()
-            if not users: st.info("Nenhum usuário cadastrado.")
+            if not users:
+                st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
                     colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
@@ -464,15 +467,18 @@ if s.get("is_admin", False):
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
 
-# ===== Aba 3 — Auditoria (com melhorias)
-with tab3:
-    st.markdown("### Auditoria do Sistema")
-
-    df_log = read_audit_df()
-    if df_log.empty:
-        st.info("Sem eventos de auditoria ainda.")
-        st.stop()
-
+        # ===== Aba 3 — Auditoria
+        with tab3:
+            st.markdown("### Auditoria do Sistema")
+            df_log = read_audit_df()
+            if df_log.empty:
+                st.info("Sem eventos de auditoria ainda.")
+            else:
+                # (mantenha aqui o conteúdo da auditoria com filtros/exports)
+                ...
+else:
+    # NUNCA faça referência a tab1/tab2/tab3 aqui!
+    pass
     # ---------- Helpers
     def _badge(level: str) -> str:
         lvl = (level or "").upper()
@@ -1831,6 +1837,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

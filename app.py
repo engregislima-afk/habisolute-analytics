@@ -1441,62 +1441,76 @@ if uploaded_files:
             st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
         # ===== Gráfico 3 — Comparação médias
-        st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
-        fig3, cond_df, verif_fck_df = None, None, None
-        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7  = mean_by_age.get(7,  float("nan"))
-        m28 = mean_by_age.get(28, float("nan"))
-        m63 = mean_by_age.get(63, float("nan"))
+st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
+fig3, cond_df, verif_fck_df = None, None, None
 
-        verif_fck_df = pd.DataFrame({
-            "Idade (dias)": [7, 28, 63],
-            "Média Real (MPa)": [m7, m28, m63],
-            "fck Projeto (MPa)": [
-                float("nan"),
-                (fck_active if fck_active is not None else float("nan")),
-                (fck_active if fck_active is not None else float("nan")),
-            ],
-        })
+# Médias por idade do conjunto em foco (ou do conjunto geral, se sem foco)
+mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+m7  = mean_by_age.get(7,  np.nan)
+m28 = mean_by_age.get(28, np.nan)
+m63 = mean_by_age.get(63, np.nan)
 
-        if est_df is not None:
-            sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
-            fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
-            ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
-            _sa_dp = sa[sa["count"] >= 2].copy()
-            if not _sa_dp.empty:
-                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
-            ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
-            if fck_active is not None:
-                ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
-            ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
-            ax3.set_title("Comparação Real × Estimado (médias)")
-            place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
-            st.pyplot(fig3)
-            if CAN_EXPORT:
-                _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
-                st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
+# Tabela de verificação do fck de Projeto
+# - 7 dias: sempre informativo (fck em branco/NaN)
+# - 28 e 63 dias: usa fck ativo (se houver), caso contrário fica em branco/NaN
+verif_fck_df = pd.DataFrame({
+    "Idade (dias)":         [7,     28,     63],
+    "Média Real (MPa)":     [m7,    m28,    m63],
+    "fck Projeto (MPa)":    [np.nan,
+                             (float(fck_active) if fck_active is not None else np.nan),
+                             (float(fck_active) if fck_active is not None else np.nan)],
+})
 
-            def _status_row(delta, tol):
-                if pd.isna(delta): return "⚪ Sem dados"
-                if abs(delta) <= tol: return "✅ Dentro dos padrões"
-                return "🔵 Acima do padrão" if delta > 0 else "🔴 Abaixo do padrão"
+# Garante que as colunas sejam numéricas (None -> NaN)
+verif_fck_df["Média Real (MPa)"]  = pd.to_numeric(verif_fck_df["Média Real (MPa)"], errors="coerce")
+verif_fck_df["fck Projeto (MPa)"] = pd.to_numeric(verif_fck_df["fck Projeto (MPa)"], errors="coerce")
 
-            _TOL = float(TOL_MP)
-            cond_df = pd.DataFrame({
-                "Idade (dias)": [7, 28, 63],
-                "Média Real (MPa)": [
-                    sa.loc[sa["Idade (dias)"] == 7,  "mean"].mean(),
-                    sa.loc[sa["Idade (dias)"] == 28, "mean"].mean(),
-                    sa.loc[sa["Idade (dias)"] == 63, "mean"].mean(),
-                ],
-                "Estimado (MPa)": est_df.set_index("Idade (dias)")["Resistência (MPa)"].reindex([7, 28, 63]).values
-            })
-            cond_df["Δ (Real-Est.)"] = cond_df["Média Real (MPa)"] - cond_df["Estimado (MPa)"]
-            cond_df["Status"] = [_status_row(d, _TOL) for d in cond_df["Δ (Real-Est.)"]]
-            st.write("#### 📊 Condição Real × Estimado (médias)")
-            st.dataframe(cond_df, use_container_width=True)
-        else:
-            st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
+# Status por linha
+def _status_row(idade, media, fckp):
+    if idade == 7:
+        return "🟡 Informativo (7d)"
+    if pd.isna(media) or pd.isna(fckp):
+        return "⚪ Sem dados"
+    return "🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck"
+
+verif_fck_df["Status"] = [
+    _status_row(idade, media, fckp)
+    for idade, media, fckp in verif_fck_df[["Idade (dias)", "Média Real (MPa)", "fck Projeto (MPa)"]].itertuples(index=False, name=None)
+]
+
+# (restante do Gráfico 3 que você já tinha)
+if est_df is not None:
+    sa = stats_all_focus.copy()
+    sa["std"] = sa["std"].fillna(0.0)
+    fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
+    ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2,
+             label=("Média (CP focado)" if cp_focus else "Média Real"))
+    _sa_dp = sa[sa["count"] >= 2].copy()
+    if not _sa_dp.empty:
+        ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"],
+                         _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
+    ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--",
+             marker="o", linewidth=2, label="Estimado")
+    if fck_active is not None:
+        ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+    ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
+    ax3.set_title("Comparação Real × Estimado (médias)")
+    place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
+    st.pyplot(fig3)
+    # ... (seu código de export do gráfico 3)
+else:
+    st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
+
+# ===== Verificação do fck de Projeto (exibição da tabela)
+st.write("#### ✅ Verificação do fck de Projeto")
+st.dataframe(
+    verif_fck_df,
+    use_container_width=True,
+    column_config={
+        "Média Real (MPa)":  st.column_config.NumberColumn(format="%.4f"),
+        "fck Projeto (MPa)": st.column_config.NumberColumn(format="%.0f"),
+    },
+)
 
         # ===== Gráfico 4 — Pareamento ponto-a-ponto
         st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
@@ -1953,4 +1967,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

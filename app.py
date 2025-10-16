@@ -1502,47 +1502,71 @@ if uploaded_files:
             st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
         # ===== Gráfico 4 — Pareamento ponto-a-ponto
-        st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
-        fig4, pareamento_df = None, None
-        if 'est_df' in locals() and est_df is not None and not est_df.empty:
-            est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
-            pares = []
-            for cp, sub in df_plot.groupby("CP"):
-                for _, r in sub.iterrows():
-                    idade = int(r["Idade (dias)"])
-                    if idade in est_map:
-                        real = float(r["Resistência (MPa)"]); est  = float(est_map[idade]); delta = real - est
-                        _TOL = float(TOL_MP)
-                        status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
-                        pares.append([str(cp), idade, real, est, delta, status])
-            pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
-            fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
-            for cp, sub in df_plot.groupby("CP"):
-                sub = sub.sort_values("Idade (dias)")
-                x = sub["Idade (dias)"].tolist(); y_real = sub["Resistência (MPa)"].tolist()
-                x_est = [i for i in x if i in est_map]; y_est = [est_map[i] for i in x_est]
-                ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
-                if x_est:
-                    ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
-                    for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
-                        ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
-            if fck_active is not None:
-                ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
-            ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
-            ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
-            place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
-            st.pyplot(fig4)
-            if CAN_EXPORT:
-                _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
-                st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
-            st.write("#### 📑 Pareamento ponto-a-ponto")
-            st.dataframe(pareamento_df, use_container_width=True)
-        else:
-            st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
-                    # ===== Verificação do fck (Resumo + Detalhada)
+st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
+fig4, pareamento_df = None, None
+
+if ('est_df' in locals()) and (est_df is not None) and (not est_df.empty):
+    est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
+    pares = []
+    for cp, sub in df_plot.groupby("CP"):
+        for _, r in sub.iterrows():
+            idade = int(r["Idade (dias)"])
+            if idade in est_map:
+                real = float(r["Resistência (MPa)"])
+                est  = float(est_map[idade])
+                delta = real - est
+                _TOL = float(TOL_MP)
+                status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                pares.append([str(cp), idade, real, est, delta, status])
+
+    pareamento_df = pd.DataFrame(
+        pares,
+        columns=["CP", "Idade (dias)", "Real (MPa)", "Estimado (MPa)", "Δ", "Status"]
+    ).sort_values(["CP", "Idade (dias)"])
+
+    fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+    for cp, sub in df_plot.groupby("CP"):
+        sub = sub.sort_values("Idade (dias)")
+        x = sub["Idade (dias)"].tolist()
+        y_real = sub["Resistência (MPa)"].tolist()
+        x_est = [i for i in x if i in est_map]
+        y_est = [est_map[i] for i in x_est]
+
+        ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
+        if x_est:
+            ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
+            for xx, yr, ye in zip(
+                x_est,
+                [rv for i, rv in zip(x, y_real) if i in est_map],
+                y_est
+            ):
+                ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
+
+    if fck_active is not None:
+        ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+
+    ax4.set_xlabel("Idade (dias)")
+    ax4.set_ylabel("Resistência (MPa)")
+    ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
+    place_right_legend(ax4)
+    ax4.grid(True, linestyle="--", alpha=0.5)
+    st.pyplot(fig4)
+
+    if CAN_EXPORT:
+        _buf4 = io.BytesIO()
+        fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+        st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(),
+                           file_name="grafico4_pareamento.png", mime="image/png")
+
+    st.write("#### 📑 Pareamento ponto-a-ponto")
+    st.dataframe(pareamento_df, use_container_width=True)
+
+else:
+    st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+
+# ===== Verificação do fck (Resumo)
 st.write("#### ✅ Verificação do fck de Projeto")
 
-# tenta reaproveitar o fck já detectado nos gráficos; se não houver, calcula pela moda
 fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
 fck_active2 = (
     fck_active if ('fck_active' in locals() and fck_active is not None)
@@ -1554,7 +1578,6 @@ m7  = mean_by_age.get(7,  float("nan"))
 m28 = mean_by_age.get(28, float("nan"))
 m63 = mean_by_age.get(63, float("nan"))
 
-# agora preenche o fck para TODAS as idades (7/28/63)
 if fck_active2 is not None:
     fck_col = [float(fck_active2), float(fck_active2), float(fck_active2)]
 else:
@@ -1566,7 +1589,6 @@ verif_fck_df = pd.DataFrame({
     "fck Projeto (MPa)": fck_col,
 })
 
-# status (7d continua apenas informativo)
 resumo_status = []
 for idade, media, fckp in verif_fck_df.itertuples(index=False):
     if idade == 7:
@@ -1580,105 +1602,126 @@ for idade, media, fckp in verif_fck_df.itertuples(index=False):
 verif_fck_df["Status"] = resumo_status
 st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (pares Δ>2MPa)
-        st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
-        pv_cp_status = None
-        tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
-        if tmp_v.empty:
-            st.info("Sem CPs de 7/28/63 dias no filtro atual.")
-        else:
-            tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
-            tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
+# ===== Verificação detalhada por CP (7/28/63 dias)
+st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
 
-            pv_multi = tmp_v.pivot_table(index="CP", columns=["Idade (dias)", "rep"], values="MPa", aggfunc="first").sort_index(axis=1)
+pv_cp_status = None
+tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
 
-            for age in [7, 28, 63]:
-                if age not in pv_multi.columns.get_level_values(0):
-                    pv_multi[(age, 1)] = pd.NA
+if tmp_v.empty:
+    st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+else:
+    tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
+    tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
 
-            ordered = []
-            for age in [7, 28, 63]:
-                reps = sorted([r for (a, r) in pv_multi.columns if a == age])
-                for r in reps: ordered.append((age, r))
-            pv_multi = pv_multi.reindex(columns=ordered)
+    pv_multi = (
+        tmp_v.pivot_table(index="CP", columns=["Idade (dias)", "rep"],
+                          values="MPa", aggfunc="first")
+             .sort_index(axis=1)
+    )
 
-            def _flat(age, rep):
-                base = f"{age}d"
-                return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
+    for age in [7, 28, 63]:
+        if age not in pv_multi.columns.get_level_values(0):
+            pv_multi[(age, 1)] = pd.NA
 
-            pv = pv_multi.copy(); pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
-            pv = pv.reset_index()
+    ordered = []
+    for age in [7, 28, 63]:
+        reps = sorted([r for (a, r) in pv_multi.columns if a == age])
+        for r in reps:
+            ordered.append((age, r))
+    pv_multi = pv_multi.reindex(columns=ordered)
 
-            try:
-                pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
-            except Exception:
-                pv["__cp_sort__"] = range(len(pv))
-            pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
+    def _flat(age, rep):
+        base = f"{age}d"
+        return f"{base} (MPa)" if rep == 1 else f"{base} #{rep} (MPa)"
 
-            fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-            fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
+    pv = pv_multi.copy()
+    pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
+    pv = pv.reset_index()
 
-            def _status_text_media(media_idade, age, fckp):
-                if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp): return "⚪ Sem dados"
-                if age == 7: return "🟡 Informativo (7d)"
-                return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
+    try:
+        pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+    except Exception:
+        pv["__cp_sort__"] = range(len(pv))
+    pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-            media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
-            media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+    fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+    fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
 
-            if 28 in pv_multi.columns.get_level_values(0) and (fck_active2 is not None) and not pd.isna(fck_active2):
-                cols28 = pv_multi[28]
-                def _all_reps_ok(row):
-                    vals = row.dropna().astype(float)
-                    if vals.empty: return None
-                    return bool((vals >= float(fck_active2)).all())
-                ok28 = cols28.apply(_all_reps_ok, axis=1)
-            else:
-                ok28 = pd.Series([None] * pv_multi.shape[0], index=pv_multi.index)
+    def _status_text_media(media_idade, age, fckp):
+        if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
+            return "⚪ Sem dados"
+        if age == 7:
+            return "🟡 Informativo (7d)"
+        return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
-            def _status_from_ok(ok):
-                if ok is None: return "⚪ Sem dados"
-                return "🟢 Atingiu fck" if ok else "🔴 Não atingiu fck"
+    media_7  = pv_multi[7].mean(axis=1)  if 7  in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
+    media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
 
-            status_df = pd.DataFrame({
-                "Status 7d":  [ _status_text_media(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index) ],
-                "Status 28d": [ _status_from_ok(v) for v in ok28.reindex(pv_multi.index) ],
-                "Status 63d": [ _status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index) ],
-            }, index=pv_multi.index)
+    if 28 in pv_multi.columns.get_level_values(0) and (fck_active2 is not None) and not pd.isna(fck_active2):
+        cols28 = pv_multi[28]
+        def _all_reps_ok(row):
+            vals = row.dropna().astype(float)
+            if vals.empty:
+                return None
+            return bool((vals >= float(fck_active2)).all())
+        ok28 = cols28.apply(_all_reps_ok, axis=1)
+    else:
+        ok28 = pd.Series([None] * pv_multi.shape[0], index=pv_multi.index)
 
-            def _delta_flag(row_vals: pd.Series) -> bool:
-                vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
-                if vals.empty: return False
-                return (vals.max() - vals.min()) > 2.0
+    def _status_from_ok(ok):
+        if ok is None:
+            return "⚪ Sem dados"
+        return "🟢 Atingiu fck" if ok else "🔴 Não atingiu fck"
 
-            alerta_pares = []
-            for idx in pv_multi.index:
-                flag = False
-                for age in [7, 28, 63]:
-                    cols = [c for c in pv_multi.columns if c[0] == age]
-                    if not cols: continue
-                    series_age = pv_multi.loc[idx, cols]
-                    if _delta_flag(series_age):
-                        flag = True; break
-                alerta_pares.append("🟠 Δ pares > 2 MPa" if flag else "")
+    status_df = pd.DataFrame({
+        "Status 7d":  [_status_text_media(v, 7,  fck_active2) for v in media_7.reindex(pv_multi.index)],
+        "Status 28d": [_status_from_ok(v) for v in ok28.reindex(pv_multi.index)],
+        "Status 63d": [_status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index)],
+    }, index=pv_multi.index)
 
-            pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
-            pv["Alerta Pares (Δ>2 MPa)"] = alerta_pares
+    def _delta_flag(row_vals: pd.Series) -> bool:
+        vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
+        if vals.empty:
+            return False
+        return (vals.max() - vals.min()) > 2.0
 
-            cols_cp = ["CP"]
-            cols_7  = [c for c in pv.columns if c.startswith("7d")]
-            cols_28 = [c for c in pv.columns if c.startswith("28d")]
-            cols_63 = [c for c in pv.columns if c.startswith("63d")]
+    alerta_pares = []
+    for idx in pv_multi.index:
+        flag = False
+        for age in [7, 28, 63]:
+            cols = [c for c in pv_multi.columns if c[0] == age]
+            if not cols:
+                continue
+            series_age = pv_multi.loc[idx, cols]
+            if _delta_flag(series_age):
+                flag = True
+                break
+        alerta_pares.append("🟠 Δ pares > 2 MPa" if flag else "")
 
-            ordered_cols = (
-                cols_cp + cols_7 + (["Status 7d"] if "Status 7d" in pv.columns else []) +
-                cols_28 + (["Status 28d"] if "Status 28d" in pv.columns else []) +
-                cols_63 + (["Status 63d"] if "Status 63d" in pv.columns else []) +
-                ["Alerta Pares (Δ>2 MPa)"]
-            )
-            pv = pv[ordered_cols].rename(columns={"Status 7d":"7 dias — Status", "Status 28d":"28 dias — Status", "Status 63d":"63 dias — Status"})
-            pv_cp_status = pv.copy()
-            st.dataframe(pv_cp_status, use_container_width=True)
+    pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
+    pv["Alerta Pares (Δ>2 MPa)"] = alerta_pares
+
+    cols_cp = ["CP"]
+    cols_7  = [c for c in pv.columns if c.startswith("7d")]
+    cols_28 = [c for c in pv.columns if c.startswith("28d")]
+    cols_63 = [c for c in pv.columns if c.startswith("63d")]
+
+    ordered_cols = (
+        cols_cp +
+        cols_7 + (["Status 7d"]  if "Status 7d"  in pv.columns else []) +
+        cols_28 + (["Status 28d"] if "Status 28d" in pv.columns else []) +
+        cols_63 + (["Status 63d"] if "Status 63d" in pv.columns else []) +
+        ["Alerta Pares (Δ>2 MPa)"]
+    )
+    pv = pv[ordered_cols].rename(columns={
+        "Status 7d":  "7 dias — Status",
+        "Status 28d": "28 dias — Status",
+        "Status 63d": "63 dias — Status",
+    })
+
+    pv_cp_status = pv.copy()
+    st.dataframe(pv_cp_status, use_container_width=True)
 
         # =============================================================================
         # PDF — Cabeçalho + gráficos + detalhamento CP
@@ -1970,6 +2013,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

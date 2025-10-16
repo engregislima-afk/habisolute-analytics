@@ -464,8 +464,6 @@ if s.get("is_admin", False):
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
 
-        # ===== Aba 3 — Auditoria
-        w# ===== Aba 3 — Auditoria (com melhorias)
 # ===== Aba 3 — Auditoria (com melhorias)
 with tab3:
     st.markdown("### Auditoria do Sistema")
@@ -1833,6 +1831,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

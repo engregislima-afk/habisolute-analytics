@@ -465,62 +465,163 @@ if s.get("is_admin", False):
                     st.rerun()
 
         # ===== Aba 3 — Auditoria
-        with tab3:
-            st.markdown("### Auditoria do Sistema")
-            df_log = read_audit_df()
-            if df_log.empty:
-                st.info("Sem eventos de auditoria ainda.")
-            else:
-                c1, c2, c3, c4 = st.columns([1.4,1.2,1.6,1.0])
-                with c1:
-                    users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
-                    f_user = st.selectbox("Usuário", users_opt, index=0)
-                with c2:
-                    f_action = st.text_input("Ação contém...", "")
-                with c3:
-                    lv_opts = ["(Todos)","INFO","WARN","ERROR"]
-                    f_level = st.selectbox("Nível", lv_opts, index=0)
-                with c4:
-                    page_size = st.number_input("Linhas", 50, 2000, 300, 50)
+        w# ===== Aba 3 — Auditoria (com melhorias)
+with tab3:
+    st.markdown("### Auditoria do Sistema")
 
-                d1, d2 = st.columns(2)
-                with d1:
-                    dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
-                with d2:
-                    dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+    df_log = read_audit_df()
+    if df_log.empty:
+        st.info("Sem eventos de auditoria ainda.")
+        st.stop()
 
-                logv = df_log.copy()
-                if f_user and f_user != "(Todos)":
-                    logv = logv[logv["user"] == f_user]
-                if f_action:
-                    logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
-                if f_level and f_level != "(Todos)":
-                    logv = logv[logv["level"] == f_level]
+    # ---------- Helpers
+    def _badge(level: str) -> str:
+        lvl = (level or "").upper()
+        if lvl == "ERROR":
+            return "🟥 ERROR"
+        if lvl == "WARN":
+            return "🟨 WARN"
+        if lvl == "INFO":
+            return "🟩 INFO"
+        return f"🔘 {lvl or '—'}"
 
-                if dt_min or dt_max:
-                    def _to_date_iso(x):
-                        try:
-                            return datetime.fromisoformat(x.replace("Z","")).date()
-                        except Exception:
-                            return None
-                    logv["_d"] = logv["ts"].apply(_to_date_iso)
-                    if dt_min:
-                        logv = logv[logv["_d"].apply(lambda d: d is not None and d >= dt_min)]
-                    if dt_max:
-                        logv = logv[logv["_d"].apply(lambda d: d is not None and d <= dt_max)]
-                    logv = logv.drop(columns=["_d"], errors="ignore")
+    def _as_date(s: str):
+        try:
+            return datetime.fromisoformat(str(s).replace("Z", "")).date()
+        except Exception:
+            return None
 
-                st.caption(f"{len(logv)} evento(s) filtrados")
-                st.dataframe(logv.head(int(page_size)), use_container_width=True)
+    # ---------- Cards-resumo (contadores rápidos)
+    tot_ev  = len(df_log)
+    por_acao = df_log["action"].value_counts().head(5)
+    por_user = df_log["user"].value_counts().head(5)
+    hoje = datetime.utcnow().date()
+    df_log["_d"] = df_log["ts"].apply(_as_date)
+    tot_hoje = int(df_log[df_log["_d"] == hoje].shape[0])
 
-                cdl1, cdl2 = st.columns([1,1])
-                with cdl1:
-                    st.download_button("⬇️ CSV (filtro aplicado)", data=logv.to_csv(index=False).encode("utf-8"),
-                                       file_name="audit_filtrado.csv", mime="text/csv", use_container_width=True)
-                with cdl2:
-                    st.download_button("⬇️ JSONL (completo)",
-                                       data=AUDIT_LOG.read_bytes() if AUDIT_LOG.exists() else b"",
-                                       file_name="audit.jsonl", mime="application/json", use_container_width=True)
+    cA, cB, cC, cD = st.columns([1.0, 1.2, 1.2, 1.0])
+    with cA:
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Eventos</div><div class="h-kpi">{tot_ev}</div></div>', unsafe_allow_html=True)
+    with cB:
+        top_a = ", ".join([f"{k} ({v})" for k, v in por_acao.items()])
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Top ações</div><div class="h-kpi" style="font-size:16px">{top_a or "—"}</div></div>', unsafe_allow_html=True)
+    with cC:
+        top_u = ", ".join([f"{k} ({v})" for k, v in por_user.items()])
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Top usuários</div><div class="h-kpi" style="font-size:16px">{top_u or "—"}</div></div>', unsafe_allow_html=True)
+    with cD:
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Hoje</div><div class="h-kpi">{tot_hoje}</div></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ---------- Filtros
+    c1, c2, c3, c4 = st.columns([1.4, 1.2, 1.6, 1.0])
+    with c1:
+        users_opt = ["(Todos)"] + sorted(df_log["user"].dropna().unique().tolist())
+        f_user = st.selectbox("Usuário", users_opt, index=0)
+    with c2:
+        f_action = st.text_input("Ação contém...", "")
+    with c3:
+        lv_opts = ["(Todos)", "INFO", "WARN", "ERROR"]
+        f_level = st.selectbox("Nível", lv_opts, index=0)
+    with c4:
+        page_size = st.selectbox("Tamanho da página", [100, 300, 1000], index=1)
+
+    d1, d2 = st.columns(2)
+    with d1:
+        dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
+    with d2:
+        dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+
+    logv = df_log.copy()
+    if f_user and f_user != "(Todos)":
+        logv = logv[logv["user"] == f_user]
+    if f_action:
+        logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
+    if f_level and f_level != "(Todos)":
+        logv = logv[logv["level"] == f_level]
+
+    if dt_min or dt_max:
+        logv["_d"] = logv["ts"].apply(_as_date)
+        if dt_min:
+            logv = logv[logv["_d"].apply(lambda d: d is not None and d >= dt_min)]
+        if dt_max:
+            logv = logv[logv["_d"].apply(lambda d: d is not None and d <= dt_max)]
+        logv = logv.drop(columns=["_d"], errors="ignore")
+
+    # ---------- Transformações visuais (cores por nível)
+    view = logv.copy()
+    view["nível"] = view["level"].apply(_badge)
+    view = view.rename(columns={"ts": "timestamp", "user": "usuário", "action": "ação", "meta": "meta_raw"})
+    # Mostramos meta como um preview curto
+    def _preview_meta(x):
+        try:
+            j = json.loads(x) if isinstance(x, str) else (x or {})
+        except Exception:
+            return str(x)[:120] + ("..." if len(str(x)) > 120 else "")
+        txt = json.dumps(j, ensure_ascii=False)
+        return txt[:120] + ("..." if len(txt) > 120 else "")
+    view["meta"] = view["meta_raw"].apply(_preview_meta)
+    cols = ["timestamp", "usuário", "nível", "ação", "meta"]
+
+    # ---------- Paginação
+    total = len(view)
+    if total == 0:
+        st.caption("0 evento(s) filtrados")
+        st.stop()
+    n_pages = (total - 1) // int(page_size) + 1
+    pg_c1, pg_c2, pg_c3 = st.columns([1, 1.2, 2])
+    with pg_c1:
+        cur_page = st.number_input("Página", min_value=1, max_value=max(1, n_pages), value=1, step=1)
+    with pg_c2:
+        st.caption(f"{total} evento(s) • {n_pages} página(s)")
+    start, end = (int(cur_page) - 1) * int(page_size), min(total, int(cur_page) * int(page_size))
+    page_df = view.iloc[start:end].reset_index(drop=True)
+
+    st.dataframe(page_df[cols], use_container_width=True, height=420)
+
+    # ---------- Visualização detalhada (tipo "modal" simplificado)
+    # Seleciona um evento e mostra o meta formatado
+    st.markdown("##### Ver detalhado")
+    opt_labels = [f"{i+1+start:05d} — {row['timestamp']} • {row['ação']} • {row['usuário']}" for i, row in page_df.iterrows()]
+    if opt_labels:
+        sel = st.selectbox("Evento", opt_labels, index=0)
+        idx_local = opt_labels.index(sel)
+        raw = page_df.iloc[idx_local]["meta_raw"]
+        try:
+            meta_parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            meta_parsed = {"_raw": raw}
+        with st.expander("Conteúdo do meta (JSON)", expanded=True):
+            st.json(meta_parsed, expanded=True)
+
+    # ---------- Exports com nome inteligente
+    # período e usuário para nome de arquivo
+    try:
+        _dates = [d for d in logv["ts"].apply(_as_date).dropna().tolist()]
+        if _dates:
+            per_str = f"{min(_dates)}_{max(_dates)}" if min(_dates) != max(_dates) else f"{min(_dates)}"
+        else:
+            per_str = datetime.utcnow().date().isoformat()
+    except Exception:
+        per_str = datetime.utcnow().date().isoformat()
+    who = (f_user if f_user and f_user != "(Todos)" else "all")
+    fname_csv  = f"audit_{per_str}_{who}.csv"
+    fname_json = f"audit_full_{datetime.utcnow().date().isoformat()}.jsonl"
+
+    st.caption(f"{len(logv)} evento(s) filtrados")
+    cdl1, cdl2 = st.columns([1, 1])
+    with cdl1:
+        st.download_button(
+            "⬇️ CSV (filtro aplicado)",
+            data=logv[["ts","user","level","action","meta"]].to_csv(index=False).encode("utf-8"),
+            file_name=fname_csv, mime="text/csv", use_container_width=True
+        )
+    with cdl2:
+        st.download_button(
+            "⬇️ JSONL (completo)",
+            data=AUDIT_LOG.read_bytes() if AUDIT_LOG.exists() else b"",
+            file_name=fname_json, mime="application/json", use_container_width=True
+        )
 
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
@@ -1731,4 +1832,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

@@ -1725,7 +1725,7 @@ if uploaded_files:
             return t or "relatorio"
 
         def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
-    """
+        """
     Gera nomes como:
       Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf  (se houver hint no nome do arquivo)
       Relatorio_analise_certificado_obra_Residencial_Chianti_7d_10_10_2025.pdf      (idade+data detectados)
@@ -1933,5 +1933,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

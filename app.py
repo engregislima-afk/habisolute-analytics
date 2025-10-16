@@ -114,7 +114,7 @@ def read_audit_df() -> pd.DataFrame:
     with AUDIT_LOG.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line: 
+            if not line:
                 continue
             try:
                 rec = json.loads(line)
@@ -411,7 +411,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 # =============================================================================
 # Painel de Usuários (somente admin) + Auditoria
 # =============================================================================
@@ -438,7 +437,7 @@ if CAN_ADMIN:
                 st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
-                    colA, colB, colC, colD, colE = st.columns([2, 1, 1.2, 1.6, 1.4])
+                    colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
                     colA.write(f"**{u['username']}**")
                     colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
                     colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
@@ -471,16 +470,13 @@ if CAN_ADMIN:
                 elif user_exists(new_u.strip()):
                     st.error("Usuário já existe.")
                 else:
-                    user_set(
-                        new_u.strip(),
-                        {
-                            "password": _hash_password("1234"),
-                            "is_admin": bool(is_ad),
-                            "active": True,
-                            "must_change": True,
-                            "created_at": datetime.now().isoformat(timespec="seconds"),
-                        },
-                    )
+                    user_set(new_u.strip(), {
+                        "password": _hash_password("1234"),
+                        "is_admin": bool(is_ad),
+                        "active": True,
+                        "must_change": True,
+                        "created_at": datetime.now().isoformat(timespec="seconds")
+                    })
                     log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
@@ -602,9 +598,9 @@ if CAN_ADMIN:
                         use_container_width=True,
                     )
 else:
-    # Usuário sem permissão de admin: NADA de painel/auditoria aqui.
-    # Deixe o restante do app (uploader/leituras) seguir normalmente.
+    # Usuário sem permissão de admin: nada de painel/auditoria
     pass
+
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
 # =============================================================================
@@ -627,6 +623,7 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.caption(f"Usuário: **{nome_login}** ({papel})")
+
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -921,8 +918,6 @@ def extrair_dados_certificado(uploaded_file):
                     fallback_fck = float(cand); break
                 except Exception:
                     continue
-            if fallback_fck is not None:
-                fck_projeto = fallback_fck
 
         if rel_map or fallback_fck is not None:
             df["Relatório"] = df["Relatório"].astype(str)
@@ -1297,8 +1292,10 @@ if uploaded_files:
         place_right_legend(ax)
         ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         st.pyplot(fig1)
-        _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
-        st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
+        # downloads somente admin
+        if CAN_EXPORT:
+            _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
+            st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
         # ===== Gráfico 2 — Curva Estimada
         st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
@@ -1318,8 +1315,9 @@ if uploaded_files:
             ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
             place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig2)
-            _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
-            st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
+            if CAN_EXPORT:
+                _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
         else:
             st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
@@ -1355,8 +1353,9 @@ if uploaded_files:
             ax3.set_title("Comparação Real × Estimado (médias)")
             place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig3)
-            _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
-            st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
+            if CAN_EXPORT:
+                _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
 
             def _status_row(delta, tol):
                 if pd.isna(delta): return "⚪ Sem dados"
@@ -1411,8 +1410,9 @@ if uploaded_files:
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig4)
-            _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
-            st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
+            if CAN_EXPORT:
+                _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
             st.write("#### 📑 Pareamento ponto-a-ponto")
             st.dataframe(pareamento_df, use_container_width=True)
         else:
@@ -1608,8 +1608,9 @@ if uploaded_files:
             story.append(table); story.append(Spacer(1, 8))
 
             if not stats.empty:
+                from copy import deepcopy
+                stt = [["CP","Idade (dias)","Média","DP","n"]] + deepcopy(stats).values.tolist()
                 story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
-                stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
                 t2 = Table(stt, repeatRows=1)
                 t2.setStyle(TableStyle([
                     ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
@@ -1711,20 +1712,27 @@ if uploaded_files:
             doc.build(story, canvasmaker=NumberedCanvas)
             pdf = buffer.getvalue(); buffer.close(); return pdf
 
-        # ===== PDF / Exportações
+        # ===== PDF / Exportações (somente admin)
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
-        if has_df:
+        if has_df and CAN_EXPORT:
             try:
                 pdf_bytes = gerar_pdf(
                     df_view, stats_cp_idade,
-                    fig1, fig2, fig3, fig4,
+                    fig1 if 'fig1' in locals() else None,
+                    fig2 if 'fig2' in locals() else None,
+                    fig3 if 'fig3' in locals() else None,
+                    fig4 if 'fig4' in locals() else None,
                     str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
                     (lambda _d: (
                         (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
                         if _d else "—"
                     ))([d for d in df["_DataObj"].dropna().tolist()] if "_DataObj" in df.columns else []),
                     _format_float_label(fck_active),
-                    verif_fck_df, cond_df, pareamento_df, pv_cp_status, s.get("qr_url","")
+                    verif_fck_df if 'verif_fck_df' in locals() else None,
+                    cond_df if 'cond_df' in locals() else None,
+                    pareamento_df if 'pareamento_df' in locals() else None,
+                    pv_cp_status if 'pv_cp_status' in locals() else None,
+                    s.get("qr_url","")
                 )
                 _nome_pdf = "Relatorio_Graficos.pdf"
                 st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes, file_name=_nome_pdf, mime="application/pdf")
@@ -1735,7 +1743,7 @@ if uploaded_files:
                 })
             except Exception as e:
                 st.error(f"Falha ao gerar PDF: {e}")
-            if "render_print_block" in globals() and "pdf_bytes" in locals():
+            if 'pdf_bytes' in locals() and pdf_bytes and CAN_EXPORT:
                 try: render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
                 except Exception: pass
 
@@ -1814,10 +1822,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-

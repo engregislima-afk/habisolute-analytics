@@ -1775,6 +1775,61 @@ if uploaded_files:
                             img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
                     except Exception: pass
+                        # ===== Util: nome de arquivo "bonito" para o PDF =====
+def _slugify_for_filename(text: str) -> str:
+    import unicodedata, re
+    t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
+    t = re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
+    return t or "relatorio"
+
+def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
+    """
+    Gera nomes como:
+      Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf
+    ou, se não houver 'hint' no nome do arquivo:
+      Relatorio_analise_certificado_obra_Residencial_Chianti_2025-10-07.pdf
+      Relatorio_analise_certificado_obra_Residencial_Chianti_2025-10-07_2025-10-14.pdf
+    """
+    import re
+    from datetime import datetime as _dt
+
+    # Obra
+    obra_label = "Obra"
+    if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
+        obra_label = str(df_view["Obra"].dropna().astype(str).mode().iat[0])
+    obra_slug = _slugify_for_filename(obra_label)
+
+    # Tentar extrair "hint" do nome do arquivo (ex.: 098_7d_07_10_2025)
+    hint = None
+    for f in uploaded_files or []:
+        fname = getattr(f, "name", "") or ""
+        m = re.search(r"(\d+)_([0-9]{1,2}d)_(\d{2}_\d{2}_\d{4})", fname.lower())
+        if m:
+            hint = f"{m.group(1)}_{m.group(2)}_{m.group(3)}"
+            break
+
+    if hint:
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{hint}.pdf"
+
+    # Caso não exista hint, usar datas do certificado
+    def _to_date(s):
+        try:
+            return _dt.strptime(str(s), "%d/%m/%Y").date()
+        except Exception:
+            return None
+
+    dates = []
+    if "Data Certificado" in df_view.columns:
+        dates = [d for d in df_view["Data Certificado"].apply(_to_date).dropna().tolist()]
+    if dates:
+        di, df = min(dates), max(dates)
+        if di == df:
+            return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.isoformat()}.pdf"
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.isoformat()}_{df.isoformat()}.pdf"
+
+    # Fallback
+    today = _dt.utcnow().date().isoformat()
+    return f"Relatorio_analise_certificado_obra_{obra_slug}_{today}.pdf"
                 st.download_button("📊 Baixar Excel (XLSX)", data=excel_buffer.getvalue(),
                                    file_name="Relatorio_Graficos.xlsx",
                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1822,3 +1877,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

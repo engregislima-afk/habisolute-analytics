@@ -623,7 +623,6 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.caption(f"Usuário: **{nome_login}** ({papel})")
-
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -1247,8 +1246,7 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
         return f"{base}_{date_tok}.pdf"
     from datetime import datetime as _dt
     return f"{base}_{_dt.utcnow().strftime('%d_%m_%Y')}.pdf"
-
-# =============================================================================
+    # =============================================================================
 # Pipeline principal
 # =============================================================================
 if uploaded_files:

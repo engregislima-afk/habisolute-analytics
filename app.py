@@ -415,11 +415,16 @@ st.markdown(
 # =============================================================================
 # Painel de Usuários (somente admin) + Auditoria
 # =============================================================================
+
+# --- DataFrame vazio "seguro" para caso algum trecho escape fora do Admin
+def _empty_audit_df():
+    return pd.DataFrame(columns=["ts", "user", "level", "action", "meta"])
+
+df_log = _empty_audit_df()  # evita NameError para não-admin
+
 if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
-
-        # >>> ABAS DEVEM SER CRIADAS AQUI E USADAS LOGO ABAIXO
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
 
         # ===== Aba 1 — Usuários
@@ -429,7 +434,7 @@ if s.get("is_admin", False):
                 st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
-                    colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA, colB, colC, colD, colE = st.columns([2, 1, 1.2, 1.6, 1.4])
                     colA.write(f"**{u['username']}**")
                     colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
                     colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
@@ -437,13 +442,19 @@ if s.get("is_admin", False):
                     with colE:
                         if u["username"] != "admin":
                             if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
-                                rec = user_get(u["username"]) or {}; rec["active"] = not rec.get("active", True)
-                                user_set(u["username"], rec); st.rerun()
+                                rec = user_get(u["username"]) or {}
+                                rec["active"] = not rec.get("active", True)
+                                user_set(u["username"], rec)
+                                st.rerun()
                             if st.button("Redefinir", key=f"rst_{u['username']}"):
-                                rec = user_get(u["username"]) or {}; rec["password"] = _hash_password("1234"); rec["must_change"]=True
-                                user_set(u["username"], rec); st.rerun()
+                                rec = user_get(u["username"]) or {}
+                                rec["password"] = _hash_password("1234")
+                                rec["must_change"] = True
+                                user_set(u["username"], rec)
+                                st.rerun()
                             if st.button("Excluir", key=f"del_{u['username']}"):
-                                user_delete(u["username"]); st.rerun()
+                                user_delete(u["username"])
+                                st.rerun()
 
         # ===== Aba 2 — Novo usuário
         with tab2:
@@ -456,16 +467,140 @@ if s.get("is_admin", False):
                 elif user_exists(new_u.strip()):
                     st.error("Usuário já existe.")
                 else:
-                    user_set(new_u.strip(), {
-                        "password": _hash_password("1234"),
-                        "is_admin": bool(is_ad),
-                        "active": True,
-                        "must_change": True,
-                        "created_at": datetime.now().isoformat(timespec="seconds")
-                    })
+                    user_set(
+                        new_u.strip(),
+                        {
+                            "password": _hash_password("1234"),
+                            "is_admin": bool(is_ad),
+                            "active": True,
+                            "must_change": True,
+                            "created_at": datetime.now().isoformat(timespec="seconds"),
+                        },
+                    )
                     log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
+
+        # ===== Aba 3 — Auditoria (tudo fica aqui dentro, seguro p/ não-admin)
+        with tab3:
+            st.markdown("### Auditoria do Sistema")
+
+            df_log = read_audit_df()  # só carrega real dentro do Admin
+
+            if df_log.empty:
+                st.info("Sem eventos de auditoria ainda.")
+            else:
+                # ---------- Cards-resumo ----------
+                try:
+                    _d = pd.to_datetime(df_log["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
+                    hoje = datetime.utcnow().date()
+                    tot_ev = int(len(df_log))
+                    tot_usr = int(df_log["user"].nunique())
+                    tot_act = int(df_log["action"].nunique())
+                    tot_hoje = int((_d == hoje).sum())
+                except Exception:
+                    tot_ev = len(df_log); tot_usr = 0; tot_act = 0; tot_hoje = 0
+
+                st.markdown(
+                    f"""
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px 0">
+                      <div class="h-card"><div class="h-kpi-label">Eventos</div><div class="h-kpi">{tot_ev}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Por usuário</div><div class="h-kpi">{tot_usr}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Por ação</div><div class="h-kpi">{tot_act}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Hoje</div><div class="h-kpi">{tot_hoje}</div></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                # ---------- Filtros ----------
+                c1, c2, c3, c4 = st.columns([1.4, 1.2, 1.6, 1.0])
+                with c1:
+                    users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
+                    f_user = st.selectbox("Usuário", users_opt, index=0)
+                with c2:
+                    f_action = st.text_input("Ação contém...", "")
+                with c3:
+                    lv_opts = ["(Todos)", "INFO", "WARN", "ERROR"]
+                    f_level = st.selectbox("Nível", lv_opts, index=0)
+                with c4:
+                    page_size = st.selectbox("Linhas", [100, 300, 1000], index=1)
+
+                d1, d2 = st.columns(2)
+                with d1:
+                    dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
+                with d2:
+                    dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+
+                logv = df_log.copy()
+
+                # cores por nível (apenas uma ajuda visual nas células)
+                level_color = {"INFO": "#9ca3af", "WARN": "#d97706", "ERROR": "#ef4444"}
+
+                if f_user and f_user != "(Todos)":
+                    logv = logv[logv["user"] == f_user]
+                if f_action:
+                    logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
+                if f_level and f_level != "(Todos)":
+                    logv = logv[logv["level"] == f_level]
+
+                # filtro por data
+                if "ts" in logv.columns:
+                    logv["_d"] = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
+                    if dt_min:
+                        logv = logv[logv["_d"].apply(lambda d: (d is not None) and (d >= dt_min))]
+                    if dt_max:
+                        logv = logv[logv["_d"].apply(lambda d: (d is not None) and (d <= dt_max))]
+                    logv = logv.drop(columns=["_d"], errors="ignore")
+
+                st.caption(f"{len(logv)} evento(s) filtrados)")
+
+                # paginação simples
+                total = len(logv)
+                if total > 0:
+                    pcols = st.columns([1, 3, 1])
+                    with pcols[0]:
+                        page = st.number_input("Página", min_value=1, max_value=max(1, (total - 1) // page_size + 1), value=1, step=1)
+                    start = (int(page) - 1) * int(page_size)
+                    end = start + int(page_size)
+                    view = logv.iloc[start:end].copy()
+                else:
+                    view = logv.copy()
+
+                # render da tabela
+                st.dataframe(view, use_container_width=True)
+
+                # ---------- Exports (com nomes inteligentes) ----------
+                # período p/ nome do arquivo
+                try:
+                    dts = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dropna()
+                    if not dts.empty:
+                        pmin = dts.min().strftime("%Y-%m-%d")
+                        pmax = dts.max().strftime("%Y-%m-%d")
+                        periodo = f"{pmin}_{pmax}" if pmin != pmax else pmin
+                    else:
+                        periodo = datetime.utcnow().strftime("%Y-%m-%d")
+                except Exception:
+                    periodo = datetime.utcnow().strftime("%Y-%m-%d")
+                usuario_lbl = s.get("username") or "anon"
+
+                cdl1, cdl2 = st.columns([1, 1])
+                with cdl1:
+                    st.download_button(
+                        "⬇️ CSV (filtro aplicado)",
+                        data=logv.to_csv(index=False).encode("utf-8"),
+                        file_name=f"audit_{periodo}_{usuario_lbl}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                with cdl2:
+                    st.download_button(
+                        "⬇️ JSONL (completo)",
+                        data=AUDIT_LOG.read_bytes() if AUDIT_LOG.exists() else b"",
+                        file_name=f"audit_full_{periodo}.jsonl",
+                        mime="application/json",
+                        use_container_width=True,
+                    )
 
         # ===== Aba 3 — Auditoria
         with tab3:
@@ -1837,6 +1972,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

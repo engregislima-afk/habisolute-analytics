@@ -1546,6 +1546,7 @@ if uploaded_files:
             st.dataframe(pv_cp_status, use_container_width=True)
 
         # =============================================================================
+# =============================================================================
 # PDF — Cabeçalho + gráficos + detalhamento CP
 # =============================================================================
 def _usina_label_from_df(df_: pd.DataFrame) -> str:
@@ -1677,6 +1678,7 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
     rel_tail = _extract_rel_tail_from_files(uploaded_files)  # 'RRR_7d_dd_mm_aaaa' ou 'RRR' ou None
     age_tok  = _extract_age_token(df_view) or ""
     date_tok = _extract_cert_date_token(df_view) or ""
+
     # Se do arquivo já veio no formato completo, use e pronto
     if rel_tail and "_" in rel_tail and rel_tail.count("_") >= 2:
         final_tail = rel_tail
@@ -1885,7 +1887,7 @@ if has_df and CAN_EXPORT:
             s.get("qr_url","")
         )
 
-        file_name_pdf = build_pdf_filename(df_view, uploaded_files)  # << nome no padrão solicitado
+        file_name_pdf = build_pdf_filename(df_view, uploaded_files)  # nome no padrão solicitado
         st.download_button(
             "📄 Baixar Relatório (PDF)",
             data=pdf_bytes,
@@ -2089,4 +2091,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

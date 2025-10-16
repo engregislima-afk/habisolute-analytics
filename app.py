@@ -1,5 +1,5 @@
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
-import io, re, json, base64, tempfile, zipfile, hashlib, os
+import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -25,8 +25,9 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
-    ORANGE = colors.HexColor("#f97316")  # laranja forte
+    ORANGE = colors.HexColor("#f97316")
     BLACK  = colors.black
 
     def __init__(self, *args, **kwargs):
@@ -64,33 +65,20 @@ class NumberedCanvas(pdfcanvas.Canvas):
 
     def _draw_fixed_bars_and_footer(self, total_pages: int):
         w, h = self._pagesize
-
-        # ==== FAIXAS DE CABEÇALHO ====
-        self.setFillColor(self.ORANGE)
-        self.rect(0, h - 10, w, 6, stroke=0, fill=1)
-        self.setFillColor(self.BLACK)
-        self.rect(0, h - 16, w, 2, stroke=0, fill=1)
-
-        # ==== FAIXAS DE RODAPÉ (ajustadas) ====
-        self.setFillColor(self.BLACK)
-        self.rect(0, 8, w, 2, stroke=0, fill=1)
-        self.setFillColor(self.ORANGE)
-        self.rect(0, 12, w, 6, stroke=0, fill=1)
-
-        # ==== TEXTOS DO RODAPÉ (um pouco mais para cima) ====
-        y0 = 44  # altura base
-        self.setFillColor(colors.black)
-        self.setFont("Helvetica", 7)
+        # Cabeçalho
+        self.setFillColor(self.ORANGE); self.rect(0, h - 10, w, 6, stroke=0, fill=1)
+        self.setFillColor(self.BLACK);   self.rect(0, h - 16, w, 2, stroke=0, fill=1)
+        # Rodapé
+        self.setFillColor(self.BLACK);   self.rect(0, 8, w, 2, stroke=0, fill=1)
+        self.setFillColor(self.ORANGE);  self.rect(0, 12, w, 6, stroke=0, fill=1)
+        # Textos
+        y0 = 44
+        self.setFillColor(colors.black); self.setFont("Helvetica", 7)
         lines = self._wrap_footer(FOOTER_TEXT, "Helvetica", 7, w - 36 - 100)
         for i, ln in enumerate(lines):
-            y = y0 + i * 8
-            self.drawString(18, y, ln)
-
-        # marca
+            y = y0 + i * 8; self.drawString(18, y, ln)
         self.setFont("Helvetica-Oblique", 8)
         self.drawCentredString(w / 2.0, y0 - 8, FOOTER_BRAND_TEXT)
-
-        # numeração
         self.setFont("Helvetica", 8)
         self.drawRightString(w - 18, y0 - 18, f"Página {self._pageNumber} de {total_pages}")
 
@@ -101,29 +89,48 @@ st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 
 PREFS_DIR = Path.home() / ".habisolute"; PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"; USERS_DB = PREFS_DIR / "users.json"
-AUDIT_LOG = PREFS_DIR / "audit.log"
 
-# ===== Helpers de auditoria =====
-def _audit(event: str, meta: Optional[Dict[str, Any]] = None) -> None:
+# ====== Auditoria (JSONL) ======
+AUDIT_LOG = PREFS_DIR / "audit.jsonl"
+def _now_iso():
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+def log_event(action: str, meta: Dict[str, Any] | None = None, level: str = "INFO"):
     try:
         rec = {
-            "ts": datetime.now().isoformat(timespec="seconds"),
-            "user": st.session_state.get("username") or "-",
-            "event": event,
-            "meta": meta or {}
+            "ts": _now_iso(),
+            "user": st.session_state.get("username") or "anon",
+            "level": level,
+            "action": action,
+            "meta": meta or {},
         }
         with AUDIT_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
         pass
-
-def baixar_auditoria():
-    try:
-        if AUDIT_LOG.exists():
-            return AUDIT_LOG.read_bytes()
-    except Exception:
-        return None
-    return None
+def read_audit_df() -> pd.DataFrame:
+    if not AUDIT_LOG.exists():
+        return pd.DataFrame(columns=["ts","user","level","action","meta"])
+    rows = []
+    with AUDIT_LOG.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line: 
+                continue
+            try:
+                rec = json.loads(line)
+                rows.append({
+                    "ts": rec.get("ts"),
+                    "user": rec.get("user"),
+                    "level": rec.get("level"),
+                    "action": rec.get("action"),
+                    "meta": json.dumps(rec.get("meta") or {}, ensure_ascii=False),
+                })
+            except Exception:
+                continue
+    df = pd.DataFrame(rows, columns=["ts","user","level","action","meta"])
+    if not df.empty:
+        df = df.sort_values("ts", ascending=False, kind="stable").reset_index(drop=True)
+    return df
 
 # ----- prefs util -----
 def _save_all_prefs(data: Dict[str, Any]) -> None:
@@ -148,7 +155,7 @@ s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
 
-# Recupera usuário após refresh
+# Recupera usuário após refresh se necessário
 if s.get("logged_in") and not s.get("username"):
     _p = load_user_prefs()
     if _p.get("last_user"): s["username"] = _p["last_user"]
@@ -246,7 +253,6 @@ def _verify_password(pw: str, hashed: str) -> bool:
 def _save_users(data: Dict[str, Any]) -> None:
     tmp = USERS_DB.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(USERS_DB)
-
 def _load_users() -> Dict[str, Any]:
     def _bootstrap_admin(db: Dict[str, Any]) -> Dict[str, Any]:
         db.setdefault("users", {})
@@ -317,14 +323,16 @@ def _auth_login_ui():
         if st.button("Acessar", use_container_width=True):
             rec = user_get((user or "").strip())
             if not rec or not rec.get("active", True):
-                st.error("Usuário inexistente ou inativo."); _audit("login_fail", {"user": user})
+                st.error("Usuário inexistente ou inativo.")
+                log_event("login_fail", {"username": user, "reason": "not_found_or_inactive"}, level="WARN")
             elif not _verify_password(pwd, rec.get("password","")):
-                st.error("Senha incorreta."); _audit("login_fail", {"user": user})
+                st.error("Senha incorreta.")
+                log_event("login_fail", {"username": user, "reason": "bad_password"}, level="WARN")
             else:
                 s["logged_in"]=True; s["username"]=(user or "").strip()
                 s["is_admin"]=bool(rec.get("is_admin",False)); s["must_change"]=bool(rec.get("must_change",False))
                 prefs = load_user_prefs(); prefs["last_user"]=s["username"]; save_user_prefs(prefs)
-                _audit("login_ok", {"user": s["username"]})
+                log_event("login_success", {"username": s["username"]})
                 st.rerun()
     st.caption("Primeiro acesso: **admin / 1234** (será exigida troca de senha).")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -339,7 +347,7 @@ def _force_change_password_ui(username: str):
         else:
             rec = user_get(username) or {}
             rec["password"]=_hash_password(p1); rec["must_change"]=False; user_set(username, rec)
-            _audit("password_change", {"user": username})
+            log_event("password_changed", {"username": username})
             st.success("Senha atualizada! Redirecionando…"); s["must_change"]=False; st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -384,11 +392,10 @@ with c4:
             try:
                 qp = st.query_params; qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
             except Exception: pass
-            _audit("prefs_saved", {"theme": s["theme_mode"], "brand": s["brand"]})
             st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
     with col_b:
         if st.button("Sair", use_container_width=True, key="k_logout"):
-            _audit("logout", {"user": s.get("username")})
+            log_event("logout", {"username": s.get("username")})
             s["logged_in"] = False; st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -406,12 +413,14 @@ st.markdown(
 )
 
 # =============================================================================
-# Painel de Usuários (somente admin)
+# Painel de Usuários (somente admin) + Auditoria
 # =============================================================================
 if s.get("is_admin", False):
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
-        tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "🔎 Logs de Auditoria"])
+        tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
+
+        # ===== Aba 1 — Usuários
         with tab1:
             users = user_list()
             if not users: st.info("Nenhum usuário cadastrado.")
@@ -426,49 +435,93 @@ if s.get("is_admin", False):
                         if u["username"] != "admin":
                             if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
                                 rec = user_get(u["username"]) or {}; rec["active"] = not rec.get("active", True)
-                                user_set(u["username"], rec); _audit("user_toggle", {"user": u["username"], "active": rec["active"]}); st.rerun()
+                                user_set(u["username"], rec); st.rerun()
                             if st.button("Redefinir", key=f"rst_{u['username']}"):
                                 rec = user_get(u["username"]) or {}; rec["password"] = _hash_password("1234"); rec["must_change"]=True
-                                user_set(u["username"], rec); _audit("user_reset", {"user": u["username"]}); st.rerun()
+                                user_set(u["username"], rec); st.rerun()
                             if st.button("Excluir", key=f"del_{u['username']}"):
-                                user_delete(u["username"]); _audit("user_delete", {"user": u["username"]}); st.rerun()
+                                user_delete(u["username"]); st.rerun()
+
+        # ===== Aba 2 — Novo usuário
         with tab2:
-            nu, npw, adm = st.columns([1.6, 1.2, 0.8])
-            with nu:
-                new_user = st.text_input("Usuário")
-            with npw:
-                new_pw = st.text_input("Senha inicial", type="password", value="1234")
-            with adm:
-                is_admin = st.checkbox("Admin", value=False)
-            c = st.columns([1,1,3])
-            with c[0]:
-                if st.button("Cadastrar", use_container_width=True):
-                    un = (new_user or "").strip()
-                    if not un: st.error("Informe o usuário."); 
-                    elif user_exists(un):
-                        st.error("Usuário já existe.")
-                    else:
-                        rec = {"password": _hash_password(new_pw or "1234"), "is_admin": bool(is_admin),
-                               "active": True, "must_change": True,
-                               "created_at": datetime.now().isoformat(timespec="seconds")}
-                        user_set(un, rec); _audit("user_create", {"user": un, "is_admin": bool(is_admin)})
-                        st.success("Usuário criado!"); st.rerun()
-            with c[1]:
-                if st.button("Baixar auditoria", use_container_width=True):
-                    blob = baixar_auditoria()
-                    if blob:
-                        st.download_button("Clique para baixar audit.log", data=blob, file_name="audit.log", mime="text/plain", use_container_width=True)
-                    else:
-                        st.info("Sem registros de auditoria ainda.")
+            st.markdown("### Novo usuário")
+            new_u = st.text_input("Usuário (login)")
+            is_ad = st.checkbox("Admin?", value=False)
+            if st.button("Criar usuário", key="btn_new_user"):
+                if not new_u.strip():
+                    st.error("Informe o nome do usuário.")
+                elif user_exists(new_u.strip()):
+                    st.error("Usuário já existe.")
+                else:
+                    user_set(new_u.strip(), {
+                        "password": _hash_password("1234"),
+                        "is_admin": bool(is_ad),
+                        "active": True,
+                        "must_change": True,
+                        "created_at": datetime.now().isoformat(timespec="seconds")
+                    })
+                    log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
+                    st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
+                    st.experimental_rerun()
+
+        # ===== Aba 3 — Auditoria
         with tab3:
-            if AUDIT_LOG.exists():
-                try:
-                    lines = AUDIT_LOG.read_text(encoding="utf-8").splitlines()[-500:]
-                    st.code("\n".join(lines) or "(vazio)", language="json")
-                except Exception as e:
-                    st.error(f"Falha ao ler audit.log: {e}")
+            st.markdown("### Auditoria do Sistema")
+            df_log = read_audit_df()
+            if df_log.empty:
+                st.info("Sem eventos de auditoria ainda.")
             else:
-                st.info("Sem registros de auditoria ainda.")
+                c1, c2, c3, c4 = st.columns([1.4,1.2,1.6,1.0])
+                with c1:
+                    users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
+                    f_user = st.selectbox("Usuário", users_opt, index=0)
+                with c2:
+                    f_action = st.text_input("Ação contém...", "")
+                with c3:
+                    lv_opts = ["(Todos)","INFO","WARN","ERROR"]
+                    f_level = st.selectbox("Nível", lv_opts, index=0)
+                with c4:
+                    page_size = st.number_input("Linhas", 50, 2000, 300, 50)
+
+                d1, d2 = st.columns(2)
+                with d1:
+                    dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
+                with d2:
+                    dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+
+                logv = df_log.copy()
+                if f_user and f_user != "(Todos)":
+                    logv = logv[logv["user"] == f_user]
+                if f_action:
+                    logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
+                if f_level and f_level != "(Todos)":
+                    logv = logv[logv["level"] == f_level]
+
+                if dt_min or dt_max:
+                    def _to_date_iso(x):
+                        try:
+                            return datetime.fromisoformat(x.replace("Z","")).date()
+                        except Exception:
+                            return None
+                    logv["_d"] = logv["ts"].apply(_to_date_iso)
+                    if dt_min:
+                        logv = logv[logv["_d"].apply(lambda d: d is not None and d >= dt_min)]
+                    if dt_max:
+                        logv = logv[logv["_d"].apply(lambda d: d is not None and d <= dt_max)]
+                    logv = logv.drop(columns=["_d"], errors="ignore")
+
+                st.caption(f"{len(logv)} evento(s) filtrados")
+                st.dataframe(logv.head(int(page_size)), use_container_width=True)
+
+                cdl1, cdl2 = st.columns([1,1])
+                with cdl1:
+                    st.download_button("⬇️ CSV (filtro aplicado)", data=logv.to_csv(index=False).encode("utf-8"),
+                                       file_name="audit_filtrado.csv", mime="text/csv", use_container_width=True)
+                with cdl2:
+                    st.download_button("⬇️ JSONL (completo)",
+                                       data=AUDIT_LOG.read_bytes() if AUDIT_LOG.exists() else b"",
+                                       file_name="audit.jsonl", mime="application/json", use_container_width=True)
+
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
 # =============================================================================
@@ -491,7 +544,6 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.caption(f"Usuário: **{nome_login}** ({papel})")
-
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -524,7 +576,6 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
             if t: return t
     return None
 
-# --- PARSING: abatimentos (NF e obra) ------------------------------
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
     if not tok: return None, None
     t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
@@ -538,11 +589,9 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    """Lê 'Abatimento de NF' e 'abatimento medido em obra' a partir do texto bruto do PDF."""
     abat_nf = None; abat_obra = None
     for sline in linhas:
         s_clean = sline.replace(",", ".").replace("±", "+-")
-        # NF
         m_nf = re.search(
             r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
@@ -551,7 +600,6 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
         if m_nf and abat_nf is None:
             try: abat_nf = float(m_nf.group(1))
             except Exception: pass
-        # Obra
         m_obra = re.search(
             r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
@@ -620,7 +668,6 @@ def _normalize_fck_label(value: Any) -> str:
     return raw
 
 def extrair_dados_certificado(uploaded_file):
-    """Extrai tabela base do certificado PDF."""
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -634,13 +681,12 @@ def extrair_dados_certificado(uploaded_file):
                 txt = page.extract_text() or ""
                 txt = re.sub(r"[“”]", "\"", txt)
                 txt = re.sub(r"[’´`]", "'", txt)
-                linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip()])
+                linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip() ])
     except Exception:
         return (pd.DataFrame(columns=[
             "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"]),
-            "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO"
-        )
+            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
+        ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
 
     cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
     data_regex = re.compile(r"\d{2}/\d{2}/\d{4}")
@@ -1021,7 +1067,14 @@ if uploaded_files:
                 df_i["Fck Projeto"] = fck_i
             df_i["Arquivo"] = getattr(f, "name", "arquivo.pdf")
             frames.append(df_i)
-    _audit("pdf_uploaded", {"count": len([x for x in uploaded_files if x is not None])})
+            # auditoria de parsing
+            log_event("file_parsed", {
+                "file": getattr(f, "name", "arquivo.pdf"),
+                "rows": int(df_i.shape[0]),
+                "relatorios": int(df_i["Relatório"].nunique()),
+                "obra": obra_i,
+                "data_cert": data_i,
+            })
 
     if not frames:
         st.error("⚠️ Não encontrei CPs válidos nos PDFs enviados.")
@@ -1040,6 +1093,13 @@ if uploaded_files:
                            )
                 st.error("🚨 **Nota Fiscal repetida em relatórios diferentes!**")
                 st.dataframe(detalhes.rename(columns={"CP":"#CPs distintos"}), use_container_width=True)
+                try:
+                    log_event("violation_nf_duplicate", {
+                        "nf_list": list(map(str, viol_nf)),
+                        "details": detalhes.to_dict(orient="records")
+                    }, level="WARN")
+                except Exception:
+                    pass
 
             cp_rel = df.dropna(subset=["CP","Relatório"]).astype({"Relatório": str})
             cp_multi = (cp_rel.groupby(["CP"])["Relatório"]
@@ -1050,6 +1110,13 @@ if uploaded_files:
                                .groupby(["CP","Relatório"])["Idade (dias)"].count().reset_index(name="#leituras"))
                 st.error("🚨 **CP repetido em relatórios diferentes!**")
                 st.dataframe(detalhes_cp, use_container_width=True)
+                try:
+                    log_event("violation_cp_duplicate", {
+                        "cp_list": list(map(str, viol_cp)),
+                        "details": detalhes_cp.to_dict(orient="records")
+                    }, level="WARN")
+                except Exception:
+                    pass
 
         # ---------------- Filtros
         st.markdown("#### Filtros")
@@ -1197,13 +1264,7 @@ if uploaded_files:
             ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
             _sa_dp = sa[sa["count"] >= 2].copy()
             if not _sa_dp.empty:
-                ax3.fill_between(
-    _sa_dp["Idade (dias)"],
-    _sa_dp["mean"] - _sa_dp["std"],
-    _sa_dp["mean"] + _sa_dp["std"],
-    alpha=0.2,
-    label="Real ±1 DP"
-)
+                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
             ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
             if fck_active is not None:
                 ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
@@ -1584,18 +1645,17 @@ if uploaded_files:
                 )
                 _nome_pdf = "Relatorio_Graficos.pdf"
                 st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes, file_name=_nome_pdf, mime="application/pdf")
-                _audit("pdf_generated", {"size": len(pdf_bytes)})
+                log_event("export_pdf", {
+                    "rows": int(df_view.shape[0]),
+                    "relatorios": int(df_view["Relatório"].nunique()),
+                    "obra": str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—"
+                })
             except Exception as e:
                 st.error(f"Falha ao gerar PDF: {e}")
-
-            # Bloco de impressão
             if "render_print_block" in globals() and "pdf_bytes" in locals():
-                try:
-                    render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
-                except Exception:
-                    pass
+                try: render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
+                except Exception: pass
 
-            # Exportações XLSX e ZIP
             try:
                 stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
                 excel_buffer = io.BytesIO()
@@ -1614,8 +1674,7 @@ if uploaded_files:
                         if ws_md is not None and "fig1" in locals() and fig1 is not None:
                             img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
                             ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
-                    except Exception:
-                        pass
+                    except Exception: pass
                     try:
                         ws_comp = writer.sheets.get("Comparação")
                         if ws_comp is not None and "fig2" in locals() and fig2 is not None:
@@ -1624,13 +1683,12 @@ if uploaded_files:
                         if ws_comp is not None and "fig3" in locals() and fig3 is not None:
                             img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
-                    except Exception:
-                        pass
+                    except Exception: pass
                 st.download_button("📊 Baixar Excel (XLSX)", data=excel_buffer.getvalue(),
                                    file_name="Relatorio_Graficos.xlsx",
                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                    use_container_width=True)
-                _audit("xlsx_generated", {"size": len(excel_buffer.getvalue())})
+                log_event("export_excel", { "rows": int(df_view.shape[0]) })
 
                 zip_buf = io.BytesIO()
                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -1643,16 +1701,15 @@ if uploaded_files:
                 st.download_button("🗃️ Baixar CSVs (ZIP)", data=zip_buf.getvalue(),
                                    file_name="Relatorio_Graficos_CSVs.zip",
                                    mime="application/zip", use_container_width=True)
-                _audit("zip_generated", {"size": len(zip_buf.getvalue())})
-            except Exception as e:
-                st.error(f"Falha nas exportações: {e}")
+                log_event("export_zip", { "rows": int(df_view.shape[0]) })
+            except Exception:
+                pass
 else:
     st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
 # 5) Ler Novo(s) Certificado(s)
 if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
     s["uploader_key"] += 1
-    _audit("reset_upload")
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
@@ -1674,4 +1731,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

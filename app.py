@@ -466,6 +466,7 @@ if s.get("is_admin", False):
 
         # ===== Aba 3 — Auditoria
         w# ===== Aba 3 — Auditoria (com melhorias)
+# ===== Aba 3 — Auditoria (com melhorias)
 with tab3:
     st.markdown("### Auditoria do Sistema")
 
@@ -552,12 +553,12 @@ with tab3:
     view = logv.copy()
     view["nível"] = view["level"].apply(_badge)
     view = view.rename(columns={"ts": "timestamp", "user": "usuário", "action": "ação", "meta": "meta_raw"})
-    # Mostramos meta como um preview curto
     def _preview_meta(x):
         try:
             j = json.loads(x) if isinstance(x, str) else (x or {})
         except Exception:
-            return str(x)[:120] + ("..." if len(str(x)) > 120 else "")
+            s = str(x)
+            return s[:120] + ("..." if len(s) > 120 else "")
         txt = json.dumps(j, ensure_ascii=False)
         return txt[:120] + ("..." if len(txt) > 120 else "")
     view["meta"] = view["meta_raw"].apply(_preview_meta)
@@ -579,23 +580,23 @@ with tab3:
 
     st.dataframe(page_df[cols], use_container_width=True, height=420)
 
-    # ---------- Visualização detalhada (tipo "modal" simplificado)
-    # Seleciona um evento e mostra o meta formatado
+    # ---------- Visualização detalhada
     st.markdown("##### Ver detalhado")
     opt_labels = [f"{i+1+start:05d} — {row['timestamp']} • {row['ação']} • {row['usuário']}" for i, row in page_df.iterrows()]
     if opt_labels:
-        sel = st.selectbox("Evento", opt_labels, index=0)
-        idx_local = opt_labels.index(sel)
-        raw = page_df.iloc[idx_local]["meta_raw"]
-        try:
-            meta_parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
-        except Exception:
-            meta_parsed = {"_raw": raw}
-        with st.expander("Conteúdo do meta (JSON)", expanded=True):
-            st.json(meta_parsed, expanded=True)
+         sel = st.selectbox("Evento", opt_labels, index=0)
+         idx_local = opt_labels.index(sel)
+         raw = page_df.iloc[idx_local]["meta_raw"]
+         try:
+             meta_parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+         except Exception:
+             meta_parsed = {"_raw": raw}
+         with st.expander("Conteúdo do meta (JSON)", expanded=True):
+             st.json(meta_parsed, expanded=True)
+    else:
+         st.caption("Nenhum evento nesta página.")
 
     # ---------- Exports com nome inteligente
-    # período e usuário para nome de arquivo
     try:
         _dates = [d for d in logv["ts"].apply(_as_date).dropna().tolist()]
         if _dates:
@@ -1832,5 +1833,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

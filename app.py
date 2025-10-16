@@ -1197,7 +1197,13 @@ if uploaded_files:
             ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
             _sa_dp = sa[sa["count"] >= 2].copy()
             if not _sa_dp.empty:
-                ax3.fill_between(_sa_dp["Idade (dias)"], _sa["mean"] - _sa_dp["std"], _sa["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
+                ax3.fill_between(
+    _sa_dp["Idade (dias)"],
+    _sa_dp["mean"] - _sa_dp["std"],
+    _sa_dp["mean"] + _sa_dp["std"],
+    alpha=0.2,
+    label="Real ±1 DP"
+)
             ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
             if fck_active is not None:
                 ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
@@ -1668,3 +1674,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

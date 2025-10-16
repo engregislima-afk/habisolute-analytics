@@ -6,7 +6,6 @@ from typing import Optional, Tuple, List, Dict, Any
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import pdfplumber
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
@@ -625,7 +624,6 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.caption(f"Usuário: **{nome_login}** ({papel})")
-
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -748,7 +746,8 @@ def _normalize_fck_label(value: Any) -> str:
     raw = str(value).strip()
     if not raw or raw.lower() == 'nan': return "—"
     return raw
-    def extrair_dados_certificado(uploaded_file):
+
+def extrair_dados_certificado(uploaded_file):
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -1092,6 +1091,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
             else:
                 abat_nf_label = f"{v:.0f} mm"
         st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+
     p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
     score = None
     if (p28 is not None) or (p63 is not None):
@@ -1248,14 +1248,14 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
         return f"{base}_{date_tok}.pdf"
     from datetime import datetime as _dt
     return f"{base}_{_dt.utcnow().strftime('%d_%m_%Y')}.pdf"
-    # =============================================================================
+
+# =============================================================================
 # Pipeline principal
 # =============================================================================
 if uploaded_files:
     frames = []
     for f in uploaded_files:
-        if f is None:
-            continue
+        if f is None: continue
         df_i, obra_i, data_i, fck_i = extrair_dados_certificado(f)
         if not df_i.empty:
             df_i["Data Certificado"] = data_i
@@ -1451,7 +1451,6 @@ if uploaded_files:
         m28 = mean_by_age.get(28, float("nan"))
         m63 = mean_by_age.get(63, float("nan"))
 
-        # Tabela de verificação de fck (inclui 7/28/63 — 7d informativo)
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [m7, m28, m63],
@@ -1461,16 +1460,6 @@ if uploaded_files:
                 (fck_active if fck_active is not None else float("nan")),
             ],
         })
-        resumo_status = []
-        for idade, media, fckp in verif_fck_df.itertuples(index=False):
-            if idade == 7:
-                resumo_status.append("🟡 Informativo (7d)")
-            else:
-                if pd.isna(media) or pd.isna(fckp):
-                    resumo_status.append("⚪ Sem dados")
-                else:
-                    resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
-        verif_fck_df["Status"] = resumo_status
 
         if est_df is not None:
             sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
@@ -1490,7 +1479,6 @@ if uploaded_files:
                 _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
 
-            # Tabela Condição Real × Estimado
             def _status_row(delta, tol):
                 if pd.isna(delta): return "⚪ Sem dados"
                 if abs(delta) <= tol: return "✅ Dentro dos padrões"
@@ -1516,7 +1504,7 @@ if uploaded_files:
         # ===== Gráfico 4 — Pareamento ponto-a-ponto
         st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
         fig4, pareamento_df = None, None
-        if est_df is not None and not est_df.empty:
+        if 'est_df' in locals() and est_df is not None and not est_df.empty:
             est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
             pares = []
             for cp, sub in df_plot.groupby("CP"):
@@ -1551,32 +1539,31 @@ if uploaded_files:
             st.dataframe(pareamento_df, use_container_width=True)
         else:
             st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
-
-        # ===== Verificação do fck (Resumo + Detalhada)
+                    # ===== Verificação do fck (Resumo + Detalhada)
         st.write("#### ✅ Verificação do fck de Projeto")
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
         fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
 
-        mean_by_age2 = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7b  = mean_by_age2.get(7,  float("nan"))
-        m28b = mean_by_age2.get(28, float("nan"))
-        m63b = mean_by_age2.get(63, float("nan"))
-        verif_fck_df2 = pd.DataFrame({
+        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+        m7  = mean_by_age.get(7,  float("nan"))
+        m28 = mean_by_age.get(28, float("nan"))
+        m63 = mean_by_age.get(63, float("nan"))
+        verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
-            "Média Real (MPa)": [m7b, m28b, m63b],
+            "Média Real (MPa)": [m7, m28, m63],
             "fck Projeto (MPa)": [float("nan"), (fck_active2 if fck_active2 is not None else float("nan")), (fck_active2 if fck_active2 is not None else float("nan"))],
         })
-        resumo_status2 = []
-        for idade, media, fckp in verif_fck_df2.itertuples(index=False):
+        resumo_status = []
+        for idade, media, fckp in verif_fck_df.itertuples(index=False):
             if idade == 7:
-                resumo_status2.append("🟡 Informativo (7d)")
+                resumo_status.append("🟡 Informativo (7d)")
             else:
                 if pd.isna(media) or pd.isna(fckp):
-                    resumo_status2.append("⚪ Sem dados")
+                    resumo_status.append("⚪ Sem dados")
                 else:
-                    resumo_status2.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
-        verif_fck_df2["Status"] = resumo_status2
-        st.dataframe(verif_fck_df2, use_container_width=True)
+                    resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
+        verif_fck_df["Status"] = resumo_status
+        st.dataframe(verif_fck_df, use_container_width=True)
 
         # ===== Verificação detalhada por CP (pares Δ>2MPa)
         st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")

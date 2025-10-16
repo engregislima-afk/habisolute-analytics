@@ -462,7 +462,7 @@ if s.get("is_admin", False):
                     })
                     log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
-                    st.experimental_rerun()
+                    st.rerun()
 
         # ===== Aba 3 — Auditoria
         with tab3:
@@ -1731,3 +1731,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

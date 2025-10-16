@@ -1725,52 +1725,80 @@ if uploaded_files:
             return t or "relatorio"
 
         def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
-            """
-            Exemplos:
-              Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf
-              Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025.pdf
-              Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025_14_10_2025.pdf
-            """
-            import re as _re
-            from datetime import datetime as _dt
+    """
+    Gera nomes como:
+      Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf  (se houver hint no nome do arquivo)
+      Relatorio_analise_certificado_obra_Residencial_Chianti_7d_10_10_2025.pdf      (idade+data detectados)
+      Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025.pdf         (apenas data única)
+      Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025_14_10_2025.pdf (intervalo)
+    """
+    import re as _re
+    from datetime import datetime as _dt
 
-            # Obra
-            obra_label = "Obra"
-            if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
-                obra_label = str(df_view["Obra"].dropna().astype(str).mode().iat[0])
-            obra_slug = _slugify_for_filename(obra_label)
+    # Obra
+    obra_label = "Obra"
+    if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
+        obra_label = str(df_view["Obra"].dropna().astype(str).mode().iat[0])
+    obra_slug = _slugify_for_filename(obra_label)
 
-            # Tentar extrair padrão do nome do arquivo (ex.: 098_7d_07_10_2025)
-            hint = None
-            for f in uploaded_files or []:
-                fname = (getattr(f, "name", "") or "")
-                m = _re.search(r"(\d+)_([0-9]{1,2}d)_(\d{2}_\d{2}_\d{4})", fname.lower())
-                if m:
-                    hint = f"{m.group(1)}_{m.group(2)}_{m.group(3)}"
-                    break
-            if hint:
-                return f"Relatorio_analise_certificado_obra_{obra_slug}_{hint}.pdf"
+    # 1) Tentativa de "hint" no nome do arquivo (ex.: 098_7d_07_10_2025)
+    hint = None
+    for f in uploaded_files or []:
+        fname = (getattr(f, "name", "") or "")
+        m = _re.search(r"(\d+)_([0-9]{1,2}d)_(\d{2}_\d{2}_\d{4})", fname.lower())
+        if m:
+            hint = f"{m.group(1)}_{m.group(2)}_{m.group(3)}"
+            break
+    if hint:
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{hint}.pdf"
 
-            # Caso não exista hint, usar datas do certificado (dd_mm_aaaa)
-            def _to_date(s):
-                try:
-                    return _dt.strptime(str(s), "%d/%m/%Y").date()
-                except Exception:
-                    return None
+    # 2) Caso não haja hint, tentar montar <idade>d_<dd>_<mm>_<aaaa> a partir dos dados
+    def _to_date(s):
+        try:
+            return _dt.strptime(str(s), "%d/%m/%Y").date()
+        except Exception:
+            return None
 
-            dates = []
-            if "Data Certificado" in df_view.columns:
-                dates = [d for d in df_view["Data Certificado"].apply(_to_date).dropna().tolist()]
+    # Idade (dias) dominante
+    idade_mode = None
+    if "Idade (dias)" in df_view.columns:
+        try:
+            idades = pd.to_numeric(df_view["Idade (dias)"], errors="coerce").dropna().astype(int)
+            if not idades.empty:
+                idade_mode = int(idades.mode().iat[0])
+        except Exception:
+            pass
 
-            if dates:
-                di, df_ = min(dates), max(dates)
-                if di == df_:
-                    return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}.pdf"
-                return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}_{df_.strftime('%d_%m_%Y')}.pdf"
+    # Data do certificado dominante (ou única)
+    datas = []
+    if "Data Certificado" in df_view.columns:
+        datas = [d for d in df_view["Data Certificado"].apply(_to_date).dropna().tolist()]
 
-            # Fallback (data de hoje)
-            today = _dt.utcnow().strftime("%d_%m_%Y")
-            return f"Relatorio_analise_certificado_obra_{obra_slug}_{today}.pdf"
+    data_mode = None
+    if datas:
+        # modo; se múltiplos modos, pega o mínimo cronológico
+        try:
+            # pandas mode para datas (convertendo para série de strings), depois volta para date
+            s_datas = pd.Series(datas)
+            m = s_datas.mode()
+            if not m.empty:
+                data_mode = min(m.tolist())
+        except Exception:
+            data_mode = min(datas)
+
+    if (idade_mode is not None) and (data_mode is not None):
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{idade_mode}d_{data_mode.strftime('%d_%m_%Y')}.pdf"
+
+    # 3) Sem idade ou sem data dominante → usar intervalo de datas (se existir)
+    if datas:
+        di, df_ = min(datas), max(datas)
+        if di == df_:
+            return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}.pdf"
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}_{df_.strftime('%d_%m_%Y')}.pdf"
+
+    # 4) Fallback (data de hoje)
+    today = _dt.utcnow().strftime("%d_%m_%Y")
+    return f"Relatorio_analise_certificado_obra_{obra_slug}_{today}.pdf"
 
         # ===== Geração e botões =====
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
@@ -1905,4 +1933,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

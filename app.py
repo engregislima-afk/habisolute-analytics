@@ -1713,7 +1713,66 @@ if uploaded_files:
             doc.build(story, canvasmaker=NumberedCanvas)
             pdf = buffer.getvalue(); buffer.close(); return pdf
 
-        # ===== PDF / Exportações (somente admin)
+                # =============================================================================
+        # PDF / Exportações (somente admin)
+        # =============================================================================
+
+        # --- Utils: nome de arquivo "bonito" para o PDF ---
+        def _slugify_for_filename(text: str) -> str:
+            import unicodedata, re as _re
+            t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
+            t = _re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
+            return t or "relatorio"
+
+        def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
+            """
+            Exemplos:
+              Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf
+              Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025.pdf
+              Relatorio_analise_certificado_obra_Residencial_Chianti_07_10_2025_14_10_2025.pdf
+            """
+            import re as _re
+            from datetime import datetime as _dt
+
+            # Obra
+            obra_label = "Obra"
+            if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
+                obra_label = str(df_view["Obra"].dropna().astype(str).mode().iat[0])
+            obra_slug = _slugify_for_filename(obra_label)
+
+            # Tentar extrair padrão do nome do arquivo (ex.: 098_7d_07_10_2025)
+            hint = None
+            for f in uploaded_files or []:
+                fname = (getattr(f, "name", "") or "")
+                m = _re.search(r"(\d+)_([0-9]{1,2}d)_(\d{2}_\d{2}_\d{4})", fname.lower())
+                if m:
+                    hint = f"{m.group(1)}_{m.group(2)}_{m.group(3)}"
+                    break
+            if hint:
+                return f"Relatorio_analise_certificado_obra_{obra_slug}_{hint}.pdf"
+
+            # Caso não exista hint, usar datas do certificado (dd_mm_aaaa)
+            def _to_date(s):
+                try:
+                    return _dt.strptime(str(s), "%d/%m/%Y").date()
+                except Exception:
+                    return None
+
+            dates = []
+            if "Data Certificado" in df_view.columns:
+                dates = [d for d in df_view["Data Certificado"].apply(_to_date).dropna().tolist()]
+
+            if dates:
+                di, df_ = min(dates), max(dates)
+                if di == df_:
+                    return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}.pdf"
+                return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}_{df_.strftime('%d_%m_%Y')}.pdf"
+
+            # Fallback (data de hoje)
+            today = _dt.utcnow().strftime("%d_%m_%Y")
+            return f"Relatorio_analise_certificado_obra_{obra_slug}_{today}.pdf"
+
+        # ===== Geração e botões =====
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
         if has_df and CAN_EXPORT:
             try:
@@ -1735,21 +1794,27 @@ if uploaded_files:
                     pv_cp_status if 'pv_cp_status' in locals() else None,
                     s.get("qr_url","")
                 )
-                _nome_pdf = "Relatorio_Graficos.pdf"
-                st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes, file_name=_nome_pdf, mime="application/pdf")
+
+                # Nome do PDF seguindo o padrão solicitado
+                _nome_pdf = build_pdf_filename(df_view, uploaded_files)
+                st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
+                                   file_name=_nome_pdf, mime="application/pdf")
                 log_event("export_pdf", {
                     "rows": int(df_view.shape[0]),
                     "relatorios": int(df_view["Relatório"].nunique()),
                     "obra": str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—"
                 })
-            except Exception as e:
-                st.error(f"Falha ao gerar PDF: {e}")
-            if 'pdf_bytes' in locals() and pdf_bytes and CAN_EXPORT:
-                try: render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
-                except Exception: pass
 
-            try:
-                stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
+                # Botão de impressão em browser
+                if pdf_bytes:
+                    try:
+                        render_print_block(pdf_bytes, None, locals().get("brand", "#3b82f6"), locals().get("brand600", "#2563eb"))
+                    except Exception:
+                        pass
+
+                # ===== Excel / CSVs (opcional) =====
+                stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"]
+                                  .agg(mean="mean", std="std", count="count").reset_index())
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
                     df_view.to_excel(writer, sheet_name="Individuais", index=False)
@@ -1757,45 +1822,62 @@ if uploaded_files:
                     comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
                     _est_df = locals().get("est_df")
                     if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
-                        comp_df = comp_df.merge(_est_df.rename(columns={"Resistência (MPa)": "Estimado"}), on="Idade (dias)", how="outer").sort_values("Idade (dias)")
-                        comp_df.to_excel(writer, sheet_name="Comparação", index=False)
-                    else:
-                        comp_df.to_excel(writer, sheet_name="Comparação", index=False)
+                        comp_df = comp_df.merge(_est_df.rename(columns={"Resistência (MPa)": "Estimado"}),
+                                                on="Idade (dias)", how="outer").sort_values("Idade (dias)")
+                    comp_df.to_excel(writer, sheet_name="Comparação", index=False)
+
+                    # Inserir figuras (best-effort)
                     try:
                         ws_md = writer.sheets.get("Médias_DP")
                         if ws_md is not None and "fig1" in locals() and fig1 is not None:
-                            img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
+                            img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                            fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
                             ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
-                    except Exception: pass
+                    except Exception:
+                        pass
                     try:
                         ws_comp = writer.sheets.get("Comparação")
                         if ws_comp is not None and "fig2" in locals() and fig2 is not None:
-                            img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
+                            img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                            fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H20", img2.name, {"x_scale": 0.7, "y_scale": 0.7})
                         if ws_comp is not None and "fig3" in locals() and fig3 is not None:
-                            img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
+                            img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                            fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
-                    except Exception: pass
-                st.download_button("📊 Baixar Excel (XLSX)", data=excel_buffer.getvalue(),
-                                   file_name="Relatorio_Graficos.xlsx",
-                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                   use_container_width=True)
-                log_event("export_excel", { "rows": int(df_view.shape[0]) })
+                    except Exception:
+                        pass
 
+                st.download_button(
+                    "📊 Baixar Excel (XLSX)",
+                    data=excel_buffer.getvalue(),
+                    file_name="Relatorio_Graficos.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+                log_event("export_excel", {"rows": int(df_view.shape[0])})
+
+                # ZIP com CSVs
                 zip_buf = io.BytesIO()
                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                     z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
                     z.writestr("Medias_DP.csv", stats_cp_idade.to_csv(index=False, sep=";"))
                     if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
                         z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
-                    if "comp_df" in locals():
+                    if 'comp_df' in locals():
                         z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
-                st.download_button("🗃️ Baixar CSVs (ZIP)", data=zip_buf.getvalue(),
-                                   file_name="Relatorio_Graficos_CSVs.zip",
-                                   mime="application/zip", use_container_width=True)
-                log_event("export_zip", { "rows": int(df_view.shape[0]) })
-            except Exception:
-                pass
+
+                st.download_button(
+                    "🗃️ Baixar CSVs (ZIP)",
+                    data=zip_buf.getvalue(),
+                    file_name="Relatorio_Graficos_CSVs.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
+                log_event("export_zip", {"rows": int(df_view.shape[0])})
+
+            except Exception as e:
+                st.error(f"Falha ao exportar: {e}")
 else:
     st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
@@ -1823,3 +1905,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

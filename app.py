@@ -1501,33 +1501,80 @@ if est_df is not None:
 else:
     st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-# ===== Verificação do fck de Projeto (exibição da tabela)
-st.write("#### ✅ Verificação do fck de Projeto")
-st.dataframe(
-    verif_fck_df,
-    use_container_width=True,
-    column_config={
-        "Média Real (MPa)":  st.column_config.NumberColumn(format="%.4f"),
-        "fck Projeto (MPa)": st.column_config.NumberColumn(format="%.0f"),
-    },
-)
+# ===== Gráfico 4 — Pareamento ponto-a-ponto
+st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
+fig4, pareamento_df = None, None
 
-        # ===== Verificação do fck de Projeto (Resumo + Detalhada)
+if ('est_df' in locals()) and (est_df is not None) and (not est_df.empty):
+    est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
+    pares = []
+    for cp, sub in df_plot.groupby("CP"):
+        sub = sub.sort_values("Idade (dias)")
+        for _, r in sub.iterrows():
+            idade = int(r["Idade (dias)"])
+            if idade in est_map:
+                real = float(r["Resistência (MPa)"])
+                est  = float(est_map[idade])
+                delta = real - est
+                _TOL = float(TOL_MP)
+                status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                pares.append([str(cp), idade, real, est, delta, status])
+
+    pareamento_df = pd.DataFrame(
+        pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
+    ).sort_values(["CP","Idade (dias)"])
+
+    fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+    for cp, sub in df_plot.groupby("CP"):
+        sub = sub.sort_values("Idade (dias)")
+        x = sub["Idade (dias)"].tolist()
+        y_real = sub["Resistência (MPa)"].tolist()
+        x_est = [i for i in x if i in est_map]
+        y_est = [est_map[i] for i in x_est]
+
+        ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
+        if x_est:
+            ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
+            for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
+                ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
+
+    if fck_active is not None:
+        ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+
+    ax4.set_xlabel("Idade (dias)")
+    ax4.set_ylabel("Resistência (MPa)")
+    ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
+    place_right_legend(ax4)
+    ax4.grid(True, linestyle="--", alpha=0.5)
+    st.pyplot(fig4)
+
+    if CAN_EXPORT:
+        _buf4 = io.BytesIO()
+        fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+        st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(),
+                           file_name="grafico4_pareamento.png", mime="image/png")
+
+    st.write("#### 📑 Pareamento ponto-a-ponto")
+    st.dataframe(pareamento_df, use_container_width=True)
+else:
+    st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+
+# ===== Verificação do fck de Projeto (Resumo + Detalhada)
 st.write("#### ✅ Verificação do fck de Projeto")
 
 # fck ativo (moda entre os selecionados)
 fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
 fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
 
-# Idades presentes no conjunto (limitadas às idades padrão)
-idades_disp = sorted(pd.to_numeric(df_plot["Idade (dias)"], errors="coerce").dropna().astype(int).unique().tolist())
+# Idades a considerar (mostra somente as que existem no conjunto)
 idades_padrao = [3, 7, 14, 28, 63]
+idades_disp = sorted(pd.to_numeric(df_plot["Idade (dias)"], errors="coerce").dropna().astype(int).unique().tolist())
 idades_show = [i for i in idades_padrao if i in idades_disp]
 
 # Médias por idade
 mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
 
-# Monta tabela
+# Monta tabela de verificação
 rows = []
 for idade in idades_show:
     media = float(mean_by_age.get(idade, float("nan")))
@@ -1964,6 +2011,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

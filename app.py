@@ -1445,10 +1445,13 @@ if uploaded_files:
         # ===== Gráfico 3 — Comparação médias
         st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
         fig3, cond_df, verif_fck_df = None, None, None
-        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7  = mean_by_age.get(7,  float("nan"))
-        m28 = mean_by_age.get(28, float("nan"))
-        m63 = mean_by_age.get(63, float("nan"))
+        # fck ativo (moda do conjunto filtrado)
+fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+
+# monta a verificação com todas as idades de interesse
+verif_fck_df = make_verif_fck_table(df_plot, fck_active2, ages=(3, 7, 14, 28, 63))
+st.dataframe(verif_fck_df, use_container_width=True)
 
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
@@ -1971,4 +1974,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

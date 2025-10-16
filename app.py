@@ -1540,30 +1540,45 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
                     # ===== Verificação do fck (Resumo + Detalhada)
-        st.write("#### ✅ Verificação do fck de Projeto")
-        fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-        fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+st.write("#### ✅ Verificação do fck de Projeto")
 
-        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7  = mean_by_age.get(7,  float("nan"))
-        m28 = mean_by_age.get(28, float("nan"))
-        m63 = mean_by_age.get(63, float("nan"))
-        verif_fck_df = pd.DataFrame({
-            "Idade (dias)": [7, 28, 63],
-            "Média Real (MPa)": [m7, m28, m63],
-            "fck Projeto (MPa)": [float("nan"), (fck_active2 if fck_active2 is not None else float("nan")), (fck_active2 if fck_active2 is not None else float("nan"))],
-        })
-        resumo_status = []
-        for idade, media, fckp in verif_fck_df.itertuples(index=False):
-            if idade == 7:
-                resumo_status.append("🟡 Informativo (7d)")
-            else:
-                if pd.isna(media) or pd.isna(fckp):
-                    resumo_status.append("⚪ Sem dados")
-                else:
-                    resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
-        verif_fck_df["Status"] = resumo_status
-        st.dataframe(verif_fck_df, use_container_width=True)
+# tenta reaproveitar o fck já detectado nos gráficos; se não houver, calcula pela moda
+fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+fck_active2 = (
+    fck_active if ('fck_active' in locals() and fck_active is not None)
+    else (float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None)
+)
+
+mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+m7  = mean_by_age.get(7,  float("nan"))
+m28 = mean_by_age.get(28, float("nan"))
+m63 = mean_by_age.get(63, float("nan"))
+
+# agora preenche o fck para TODAS as idades (7/28/63)
+if fck_active2 is not None:
+    fck_col = [float(fck_active2), float(fck_active2), float(fck_active2)]
+else:
+    fck_col = [float("nan"), float("nan"), float("nan")]
+
+verif_fck_df = pd.DataFrame({
+    "Idade (dias)": [7, 28, 63],
+    "Média Real (MPa)": [m7, m28, m63],
+    "fck Projeto (MPa)": fck_col,
+})
+
+# status (7d continua apenas informativo)
+resumo_status = []
+for idade, media, fckp in verif_fck_df.itertuples(index=False):
+    if idade == 7:
+        resumo_status.append("🟡 Informativo (7d)")
+    else:
+        if pd.isna(media) or pd.isna(fckp):
+            resumo_status.append("⚪ Sem dados")
+        else:
+            resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
+
+verif_fck_df["Status"] = resumo_status
+st.dataframe(verif_fck_df, use_container_width=True)
 
         # ===== Verificação detalhada por CP (pares Δ>2MPa)
         st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
@@ -1955,5 +1970,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

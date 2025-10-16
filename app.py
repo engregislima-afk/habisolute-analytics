@@ -1501,13 +1501,14 @@ if est_df is not None:
 else:
     st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-# ===== Gráfico 4 — Pareamento ponto-a-ponto
+# ===== Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)
 st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
 fig4, pareamento_df = None, None
 
 if ('est_df' in locals()) and (est_df is not None) and (not est_df.empty):
     est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
     pares = []
+
     for cp, sub in df_plot.groupby("CP"):
         sub = sub.sort_values("Idade (dias)")
         for _, r in sub.iterrows():
@@ -1535,8 +1536,12 @@ if ('est_df' in locals()) and (est_df is not None) and (not est_df.empty):
         ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
         if x_est:
             ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
-            for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
-                ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
+            # linhas verticais ligando real × estimado
+            y_real_map = {i: v for i, v in zip(x, y_real)}
+            for xx, ye in zip(x_est, y_est):
+                yr = y_real_map.get(xx)
+                if yr is not None:
+                    ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
 
     if fck_active is not None:
         ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
@@ -1568,7 +1573,9 @@ fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty e
 
 # Idades a considerar (mostra somente as que existem no conjunto)
 idades_padrao = [3, 7, 14, 28, 63]
-idades_disp = sorted(pd.to_numeric(df_plot["Idade (dias)"], errors="coerce").dropna().astype(int).unique().tolist())
+idades_disp = sorted(
+    pd.to_numeric(df_plot["Idade (dias)"], errors="coerce").dropna().astype(int).unique().tolist()
+)
 idades_show = [i for i in idades_padrao if i in idades_disp]
 
 # Médias por idade
@@ -1592,34 +1599,6 @@ verif_fck_df = pd.DataFrame(
 )
 
 st.dataframe(verif_fck_df, use_container_width=True)
-else:
-    st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
-
-        # ===== Verificação do fck (Resumo + Detalhada)
-        st.write("#### ✅ Verificação do fck de Projeto")
-        fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-        fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-
-        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-        m7  = mean_by_age.get(7,  float("nan"))
-        m28 = mean_by_age.get(28, float("nan"))
-        m63 = mean_by_age.get(63, float("nan"))
-        verif_fck_df = pd.DataFrame({
-            "Idade (dias)": [7, 28, 63],
-            "Média Real (MPa)": [m7, m28, m63],
-            "fck Projeto (MPa)": [float("nan"), (fck_active2 if fck_active2 is not None else float("nan")), (fck_active2 if fck_active2 is not None else float("nan"))],
-        })
-        resumo_status = []
-        for idade, media, fckp in verif_fck_df.itertuples(index=False):
-            if idade == 7:
-                resumo_status.append("🟡 Informativo (7d)")
-            else:
-                if pd.isna(media) or pd.isna(fckp):
-                    resumo_status.append("⚪ Sem dados")
-                else:
-                    resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
-        verif_fck_df["Status"] = resumo_status
-        st.dataframe(verif_fck_df, use_container_width=True)
 
         # ===== Verificação detalhada por CP (pares Δ>2MPa)
         st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
@@ -2011,6 +1990,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

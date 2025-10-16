@@ -1754,6 +1754,22 @@ if uploaded_files:
 
             if verif_fck_df is not None and not verif_fck_df.empty:
                 PageBreak()
+                def make_verif_fck_table(df_src: pd.DataFrame, fck_value: Optional[float],
+                         ages=(3, 7, 14, 28, 63)) -> pd.DataFrame:
+    mean_by_age = df_src.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+    rows = []
+    for age in ages:
+        m = float(mean_by_age.get(age, float("nan")))
+        fckp = float(fck_value) if fck_value is not None else float("nan")
+        if age in (28, 63):
+            if pd.isna(m) or pd.isna(fckp):
+                status = "⚪ Sem dados"
+            else:
+                status = "🟢 Atingiu fck" if m >= fckp else "🔴 Não atingiu fck"
+        else:
+            status = f"🟡 Informativo ({age}d)"
+        rows.append([age, m, fckp, status])
+    return pd.DataFrame(rows, columns=["Idade (dias)", "Média Real (MPa)", "fck Projeto (MPa)", "Status"])
                 story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
                 rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
                 for _, r in verif_fck_df.iterrows():
@@ -1955,3 +1971,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

@@ -1453,7 +1453,7 @@ fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty e
 verif_fck_df = make_verif_fck_table(df_plot, fck_active2, ages=(3, 7, 14, 28, 63))
 st.dataframe(verif_fck_df, use_container_width=True)
 
-        verif_fck_df = pd.DataFrame({
+    verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [m7, m28, m63],
             "fck Projeto (MPa)": [
@@ -1976,6 +1976,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -1724,7 +1724,15 @@ if uploaded_files:
             t = _re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
             return t or "relatorio"
 
-        def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
+        # ===== Util: nome de arquivo "bonito" para o PDF =====
+def _slugify_for_filename(text: str) -> str:
+    import unicodedata, re
+    t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
+    t = re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
+    return t or "relatorio"
+
+
+def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
     """
     Gera nomes como:
       Relatorio_analise_certificado_obra_Residencial_Chianti_098_7d_07_10_2025.pdf  (se houver hint no nome do arquivo)
@@ -1776,9 +1784,7 @@ if uploaded_files:
 
     data_mode = None
     if datas:
-        # modo; se múltiplos modos, pega o mínimo cronológico
         try:
-            # pandas mode para datas (convertendo para série de strings), depois volta para date
             s_datas = pd.Series(datas)
             m = s_datas.mode()
             if not m.empty:
@@ -1788,6 +1794,17 @@ if uploaded_files:
 
     if (idade_mode is not None) and (data_mode is not None):
         return f"Relatorio_analise_certificado_obra_{obra_slug}_{idade_mode}d_{data_mode.strftime('%d_%m_%Y')}.pdf"
+
+    # 3) Sem idade ou sem data dominante → usar intervalo de datas (se existir)
+    if datas:
+        di, df_ = min(datas), max(datas)
+        if di == df_:
+            return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}.pdf"
+        return f"Relatorio_analise_certificado_obra_{obra_slug}_{di.strftime('%d_%m_%Y')}_{df_.strftime('%d_%m_%Y')}.pdf"
+
+    # 4) Fallback (data de hoje)
+    today = _dt.utcnow().strftime("%d_%m_%Y")
+    return f"Relatorio_analise_certificado_obra_{obra_slug}_{today}.pdf"
 
     # 3) Sem idade ou sem data dominante → usar intervalo de datas (se existir)
     if datas:
@@ -1933,6 +1950,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

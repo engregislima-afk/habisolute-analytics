@@ -1071,8 +1071,17 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
     with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
     with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
-    with k5: st.markdown(f'<div class="h-card'><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
-    with k6: st.markdown(f'<div class="h-card'><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+    with k5:
+    st.markdown(
+        f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>',
+        unsafe_allow_html=True
+    )
+    with k6:
+    st.markdown(
+        f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>',
+        unsafe_allow_html=True
+    )
+
 
     e1, e2, e3, e4 = st.columns(4)
     with e1:
@@ -1984,3 +1993,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

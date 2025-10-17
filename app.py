@@ -1,4 +1,3 @@
-REVISÃO FCK Projeto 7d + Nome no relatório - 16-10-2025.txt
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
@@ -1956,3 +1955,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

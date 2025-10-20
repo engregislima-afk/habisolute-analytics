@@ -1349,10 +1349,11 @@ if uploaded_files:
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
         # Gestão de múltiplos fck
-        df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
-        fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
-        multiple_fck_detected = len(fck_labels) > 1
-        if multiple_fck_detected:
+df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
+fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
+multiple_fck_detected = len(fck_labels) > 1
+
+if multiple_fck_detected:
     # 🔶 Banner customizado (legível em claro e escuro)
     st.markdown("""
     <style>
@@ -1364,6 +1365,7 @@ if uploaded_files:
         padding:12px 14px; border-radius:12px;
         font-weight:700; line-height:1.35;
         box-shadow:0 2px 8px rgba(0,0,0,.06);
+        margin: 4px 0 8px 0;
       }
       .hb-multifck .dot {
         width:10px; height:10px; border-radius:999px; background:#F59E0B;
@@ -1384,11 +1386,8 @@ if uploaded_files:
 else:
     selected_fck_label = fck_labels[0] if fck_labels else "—"
 
-        if df_view.empty:
-            st.info("Nenhum dado disponível para o fck selecionado.")
-            st.stop()
-
-        df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
+# Remover a coluna auxiliar depois do filtro
+df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
 
         # ===== Estatística por CP/Idade
         stats_cp_idade = (
@@ -1977,5 +1976,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

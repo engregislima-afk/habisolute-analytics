@@ -1348,7 +1348,7 @@ if uploaded_files:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
-        # Gestão de múltiplos fck
+        # --- Gestão de múltiplos fck ---
 df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
 fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
 multiple_fck_detected = len(fck_labels) > 1
@@ -1359,9 +1359,9 @@ if multiple_fck_detected:
     <style>
       .hb-multifck {
         display:flex; align-items:center; gap:10px;
-        background:#FFF3CD;                /* amarelo suave */
-        border:1px solid #F59E0B;          /* laranja/amarelo */
-        color:#111827;                     /* quase preto para destacar */
+        background:#FFF3CD;
+        border:1px solid #F59E0B;
+        color:#111827;
         padding:12px 14px; border-radius:12px;
         font-weight:700; line-height:1.35;
         box-shadow:0 2px 8px rgba(0,0,0,.06);
@@ -1386,14 +1386,20 @@ if multiple_fck_detected:
 else:
     selected_fck_label = fck_labels[0] if fck_labels else "—"
 
-# Remover a coluna auxiliar depois do filtro
+# Se após o filtro ficou vazio, aborta a página
+if df_view.empty:
+    st.info("Nenhum dado disponível para o fck selecionado.")
+    st.stop()
+
+# Remove a coluna auxiliar
 df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
 
-        # ===== Estatística por CP/Idade
-        stats_cp_idade = (
-            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                  .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
-        )
+# ===== Estatística por CP/Idade =====
+stats_cp_idade = (
+    df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+           .agg(Média="mean", Desvio_Padrão="std", n="count")
+           .reset_index()
+)
 
         # ===== VISÃO GERAL
         render_overview_and_tables(df_view, stats_cp_idade, TOL_MP)
@@ -1976,6 +1982,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -235,17 +235,19 @@ else:
     .stExpander > details > summary {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
     </style>
     """
-# forçar legibilidade de alerts
-css += """
-st.markdown("""
-<style>
-.stAlert { border-radius:12px; border:1px solid var(--brand-600); }
-.stAlert [data-testid="stMarkdown"] p,
-.stAlert [data-testid="stMarkdown"] {
-  color:#111827 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# forçar legibilidade de alerts (mantém os alerts legíveis)
+st.markdown(
+    """
+    <style>
+      .stAlert { border-radius:12px; border:1px solid var(--brand-600); }
+      .stAlert [data-testid="stMarkdown"] p,
+      .stAlert [data-testid="stMarkdown"] {
+        color:#111827 !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # -------- Cabeçalho ----------
 def _render_header():
@@ -1969,6 +1971,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

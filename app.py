@@ -1040,35 +1040,83 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
     KPIs = compute_exec_kpis(df_view, fck_val)
 
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
-    with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
-    with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
-    with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
-    with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
-    with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+    with k1:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Obra</div>'
+            f'<div class="h-kpi">{obra_label}</div></div>',
+            unsafe_allow_html=True
+        )
+    with k2:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div>'
+            f'<div class="h-kpi">{data_label}</div></div>',
+            unsafe_allow_html=True
+        )
+    with k3:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div>'
+            f'<div class="h-kpi">{fck_label}</div></div>',
+            unsafe_allow_html=True
+        )
+    with k4:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div>'
+            f'<div class="h-kpi">±{TOL_MP:.1f}</div></div>',
+            unsafe_allow_html=True
+        )
+    with k5:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div>'
+            f'<div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>',
+            unsafe_allow_html=True
+        )
+    with k6:
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div>'
+            f'<div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>',
+            unsafe_allow_html=True
+        )
 
     e1, e2, e3, e4 = st.columns(4)
     with e1:
         media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Média geral</div><div class="h-kpi">{media_txt}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Média geral</div>'
+            f'<div class="h-kpi">{media_txt}</div></div>',
+            unsafe_allow_html=True
+        )
     with e2:
         dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div><div class="h-kpi">{dp_txt}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div>'
+            f'<div class="h-kpi">{dp_txt}</div></div>',
+            unsafe_allow_html=True
+        )
     with e3:
         n_relatorios = df_view["Relatório"].nunique()
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</analysis
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div>'
+            f'<div class="h-kpi">{n_relatorios}</div></div>',
+            unsafe_allow_html=True
+        )
     with e4:
         snf = _pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
-        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
+        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") \
+            if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
         abat_nf_label = "—"
         if snf is not None and not snf.dropna().empty:
             v = float(snf.dropna().mode().iloc[0])
             if stol is not None and not stol.dropna().empty:
-                t = float(stol.dropna().mode().iloc[0]); abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
+                t = float(stol.dropna().mode().iloc[0])
+                abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
             else:
                 abat_nf_label = f"{v:.0f} mm"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div>'
+            f'<div class="h-kpi">{abat_nf_label}</div></div>',
+            unsafe_allow_html=True
+        )
 
     p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
     score = None
@@ -1917,3 +1965,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

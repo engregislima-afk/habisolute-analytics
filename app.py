@@ -1040,7 +1040,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
     KPIs = compute_exec_kpis(df_view, fck_val)
 
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
     with k1:
         st.markdown(
             f'<div class="h-card"><div class="h-kpi-label">Obra</div>'
@@ -1965,4 +1965,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

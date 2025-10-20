@@ -198,7 +198,7 @@ if s["theme_mode"] == "Escuro moderno":
       --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 56px; max-width: 1300px; }}
+    .block-container{ padding-top:56px; max-width: %(MAX_W)spx; }
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
@@ -1958,5 +1958,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

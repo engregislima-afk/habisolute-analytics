@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
+REVISÃO FCK Projeto 7d + Nome no relatório - 16-10-2025.txt
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
-
-import io, re, os, json, base64, tempfile, zipfile, hashlib
+import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
@@ -27,6 +26,7 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
     ORANGE = colors.HexColor("#f97316")
     BLACK  = colors.black
@@ -235,19 +235,7 @@ else:
     .stExpander > details > summary {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
     </style>
     """
-# forçar legibilidade de alerts (mantém os alerts legíveis)
-st.markdown(
-    """
-    <style>
-      .stAlert { border-radius:12px; border:1px solid var(--brand-600); }
-      .stAlert [data-testid="stMarkdown"] p,
-      .stAlert [data-testid="stMarkdown"] {
-        color:#111827 !important;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown(css, unsafe_allow_html=True)
 
 # -------- Cabeçalho ----------
 def _render_header():
@@ -281,7 +269,7 @@ def _load_users() -> Dict[str, Any]:
             if raw:
                 data = json.loads(raw)
                 if isinstance(data, dict) and isinstance(data.get("users"), dict):
-                    fixed = _bootstrap_admin(data); 
+                    fixed = _bootstrap_admin(data)
                     if fixed is not data: _save_users(fixed)
                     return fixed
                 if isinstance(data, dict):
@@ -428,9 +416,12 @@ st.markdown(
 # =============================================================================
 # Painel de Usuários (somente admin) + Auditoria
 # =============================================================================
-CAN_ADMIN  = bool(s.get("is_admin", False))
-CAN_EXPORT = CAN_ADMIN
 
+# Permissões globais
+CAN_ADMIN  = bool(s.get("is_admin", False))
+CAN_EXPORT = CAN_ADMIN  # somente admin pode exportar
+
+# --- DataFrame vazio "seguro" para caso algum trecho escape fora do Admin
 def _empty_audit_df():
     return pd.DataFrame(columns=["ts", "user", "level", "action", "meta"])
 
@@ -441,6 +432,7 @@ if CAN_ADMIN:
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
 
+        # ===== Aba 1 — Usuários
         with tab1:
             users = user_list()
             if not users:
@@ -469,6 +461,7 @@ if CAN_ADMIN:
                                 user_delete(u["username"])
                                 st.rerun()
 
+        # ===== Aba 2 — Novo usuário
         with tab2:
             st.markdown("### Novo usuário")
             new_u = st.text_input("Usuário (login)")
@@ -490,12 +483,16 @@ if CAN_ADMIN:
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
 
+        # ===== Aba 3 — Auditoria (apenas admin)
         with tab3:
             st.markdown("### Auditoria do Sistema")
-            df_log = read_audit_df()
+
+            df_log = read_audit_df()  # só carrega real dentro do Admin
+
             if df_log.empty:
                 st.info("Sem eventos de auditoria ainda.")
             else:
+                # ---------- Cards-resumo ----------
                 try:
                     _d = pd.to_datetime(df_log["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
                     hoje = datetime.utcnow().date()
@@ -518,6 +515,7 @@ if CAN_ADMIN:
                     unsafe_allow_html=True,
                 )
 
+                # ---------- Filtros ----------
                 c1, c2, c3, c4 = st.columns([1.4, 1.2, 1.6, 1.0])
                 with c1:
                     users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
@@ -537,6 +535,7 @@ if CAN_ADMIN:
                     dt_max = st.date_input("Data final", value=None, key="aud_dfim")
 
                 logv = df_log.copy()
+
                 if f_user and f_user != "(Todos)":
                     logv = logv[logv["user"] == f_user]
                 if f_action:
@@ -544,6 +543,7 @@ if CAN_ADMIN:
                 if f_level and f_level != "(Todos)":
                     logv = logv[logv["level"] == f_level]
 
+                # filtro por data
                 if "ts" in logv.columns:
                     logv["_d"] = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
                     if dt_min:
@@ -554,6 +554,7 @@ if CAN_ADMIN:
 
                 st.caption(f"{len(logv)} evento(s) filtrados)")
 
+                # paginação simples
                 total = len(logv)
                 if total > 0:
                     pcols = st.columns([1, 3, 1])
@@ -565,8 +566,10 @@ if CAN_ADMIN:
                 else:
                     view = logv.copy()
 
+                # render da tabela
                 st.dataframe(view, use_container_width=True)
 
+                # ---------- Exports (apenas admin) ----------
                 try:
                     dts = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dropna()
                     if not dts.empty:
@@ -597,14 +600,19 @@ if CAN_ADMIN:
                         use_container_width=True,
                     )
 else:
+    # Usuário sem permissão de admin: nada de painel/auditoria aqui
     pass
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
 # =============================================================================
+
+# --- GUARDS ---
 TOL_MP    = float(s.get("TOL_MP", 1.0))
 BATCH_MODE = bool(s.get("BATCH_MODE", False))
 
+# =============================================================================
 # Sidebar (opções de relatório)
+# =============================================================================
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
     s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
@@ -617,7 +625,9 @@ with st.sidebar:
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.caption(f"Usuário: **{nome_login}** ({papel})")
 
-# ====================== Utilidades de parsing / limpeza ======================
+# =============================================================================
+# Utilidades de parsing / limpeza
+# =============================================================================
 def _limpa_horas(txt: str) -> str:
     txt = re.sub(r"\b\d{1,2}:\d{2}\b", "", txt)
     txt = re.sub(r"\bàs\s*\d{1,2}:\d{2}\b", "", txt, flags=re.I)
@@ -918,7 +928,9 @@ def extrair_dados_certificado(uploaded_file):
 
     return df, obra, data_relatorio, fck_projeto
 
-# =========================== KPIs e helpers de gráfico =========================
+# =============================================================================
+# KPIs e utilidades gráficas
+# =============================================================================
 def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     def _pct_hit(age):
         if fck_val is None or pd.isna(fck_val): return None
@@ -990,8 +1002,11 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
     """
     st.components.v1.html(html, height=74)
 
-# ============================== Uploader ===============================
+# =============================================================================
+# Cabeçalho e uploader
+# =============================================================================
 st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
+
 up_help = "Carregue 1 PDF (ou vários em modo lote)."
 _uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
 
@@ -1003,7 +1018,9 @@ else:
                            key=_uploader_key, help=up_help)
     uploaded_files = [up1] if up1 is not None else []
 
-# ============================ Função Visão Geral ============================
+# =============================================================================
+# Função da VISÃO GERAL isolada
+# =============================================================================
 def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFrame, TOL_MP: float):
     import pandas as _pd
     from datetime import datetime as _dt
@@ -1047,83 +1064,34 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     KPIs = compute_exec_kpis(df_view, fck_val)
 
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    with k1:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Obra</div>'
-            f'<div class="h-kpi">{obra_label}</div></div>',
-            unsafe_allow_html=True
-        )
-    with k2:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div>'
-            f'<div class="h-kpi">{data_label}</div></div>',
-            unsafe_allow_html=True
-        )
-    with k3:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div>'
-            f'<div class="h-kpi">{fck_label}</div></div>',
-            unsafe_allow_html=True
-        )
-    with k4:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div>'
-            f'<div class="h-kpi">±{TOL_MP:.1f}</div></div>',
-            unsafe_allow_html=True
-        )
-    with k5:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div>'
-            f'<div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>',
-            unsafe_allow_html=True
-        )
-    with k6:
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div>'
-            f'<div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>',
-            unsafe_allow_html=True
-        )
+    with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
+    with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
+    with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
+    with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
+    with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
+    with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
 
     e1, e2, e3, e4 = st.columns(4)
     with e1:
         media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Média geral</div>'
-            f'<div class="h-kpi">{media_txt}</div></div>',
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Média geral</div><div class="h-kpi">{media_txt}</div></div>', unsafe_allow_html=True)
     with e2:
         dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div>'
-            f'<div class="h-kpi">{dp_txt}</div></div>',
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div><div class="h-kpi">{dp_txt}</div></div>', unsafe_allow_html=True)
     with e3:
         n_relatorios = df_view["Relatório"].nunique()
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div>'
-            f'<div class="h-kpi">{n_relatorios}</div></div>',
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div><div class="h-kpi">{n_relatorios}</div></div>', unsafe_allow_html=True)
     with e4:
         snf = _pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
-        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") \
-            if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
+        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
         abat_nf_label = "—"
         if snf is not None and not snf.dropna().empty:
             v = float(snf.dropna().mode().iloc[0])
             if stol is not None and not stol.dropna().empty:
-                t = float(stol.dropna().mode().iloc[0])
-                abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
+                t = float(stol.dropna().mode().iloc[0]); abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
             else:
                 abat_nf_label = f"{v:.0f} mm"
-        st.markdown(
-            f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div>'
-            f'<div class="h-kpi">{abat_nf_label}</div></div>',
-            unsafe_allow_html=True
-        )
-
+        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
     p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
     score = None
     if (p28 is not None) or (p63 is not None):
@@ -1158,7 +1126,10 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     st.dataframe(df_view, use_container_width=True)
     st.write("#### Estatísticas por CP")
     st.dataframe(stats_cp_idade, use_container_width=True)
-# ========================== Helpers de nome de arquivo =========================
+
+# =============================================================================
+# Helpers de NOME DE ARQUIVO (top-level, sem indentação)
+# =============================================================================
 def _slugify_for_filename(text: str) -> str:
     import unicodedata, re as _re
     t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
@@ -1190,6 +1161,13 @@ def _dd_mm_aaaa(d) -> str:
         return ""
 
 def _extract_rel_tail_from_files(uploaded_files: list) -> str | None:
+    """
+    Procura no nome do arquivo: 32004_7d_07_10_2025 → usa os 3 últimos dígitos do número (ex.: 004).
+    Retorna:
+      - 'RRR_7d_dd_mm_aaaa' se achar tudo
+      - 'RRR' se achar só o número
+      - None se nada útil
+    """
     import re as _re
     for f in uploaded_files or []:
         fname = (getattr(f, "name", "") or "").lower()
@@ -1204,6 +1182,7 @@ def _extract_rel_tail_from_files(uploaded_files: list) -> str | None:
     return None
 
 def _extract_rel_tail_from_df(df_view: pd.DataFrame) -> str | None:
+    """ Extrai 'RRR' da coluna 'Relatório' (3 últimos dígitos). """
     import re as _re
     if "Relatório" not in df_view.columns or df_view["Relatório"].dropna().empty:
         return None
@@ -1215,6 +1194,7 @@ def _extract_rel_tail_from_df(df_view: pd.DataFrame) -> str | None:
     return None
 
 def _extract_age_token(df_view: pd.DataFrame) -> str | None:
+    """ Retorna '7d', '28d', etc. (moda de 'Idade (dias)'). """
     if "Idade (dias)" not in df_view.columns or df_view["Idade (dias)"].dropna().empty:
         return None
     ages = pd.to_numeric(df_view["Idade (dias)"], errors="coerce").dropna().astype(int)
@@ -1223,6 +1203,10 @@ def _extract_age_token(df_view: pd.DataFrame) -> str | None:
     return f"{int(age)}d" if age is not None else None
 
 def _extract_cert_date_token(df_view: pd.DataFrame) -> str | None:
+    """
+    Usa 'Data Certificado'. Se houver várias, usa a mínima (início do período).
+    Retorna no formato dd_mm_aaaa.
+    """
     if "Data Certificado" not in df_view.columns:
         return None
     dates = [_to_date_obj(x) for x in df_view["Data Certificado"].dropna().unique().tolist()]
@@ -1231,19 +1215,28 @@ def _extract_cert_date_token(df_view: pd.DataFrame) -> str | None:
     return _dd_mm_aaaa(min(dates))
 
 def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
+    """
+    Formato preferido:
+      Relatorio_analise_certificado_obra_<Obra>_<RRR>_<Idade>d_<dd_mm_aaaa>.pdf
+    Fallbacks graduais se faltar alguma peça.
+    """
+    # Obra
     if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
         obra = _safe_mode(df_view["Obra"].astype(str)) or "Obra"
     else:
         obra = "Obra"
     obra_slug = _slugify_for_filename(obra)
 
-    rel_tail = _extract_rel_tail_from_files(uploaded_files)
+    # Tenta pegar tudo do nome do arquivo
+    rel_tail = _extract_rel_tail_from_files(uploaded_files)  # 'RRR_7d_dd_mm_aaaa' ou 'RRR' ou None
     age_tok  = _extract_age_token(df_view) or ""
     date_tok = _extract_cert_date_token(df_view) or ""
 
+    # Se do arquivo já veio completo, usa direto
     if rel_tail and "_" in rel_tail and rel_tail.count("_") >= 2:
         final_tail = rel_tail
     else:
+        # montar manualmente: RRR + idade + data
         rrr = rel_tail if (rel_tail and rel_tail.isdigit() and len(rel_tail) == 3) else (_extract_rel_tail_from_df(df_view) or "")
         tail_parts = [p for p in [rrr, age_tok, date_tok] if p]
         final_tail = "_".join(tail_parts)
@@ -1256,7 +1249,9 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
     from datetime import datetime as _dt
     return f"{base}_{_dt.utcnow().strftime('%d_%m_%Y')}.pdf"
 
-# ================================ PIPELINE ================================
+# =============================================================================
+# Pipeline principal
+# =============================================================================
 if uploaded_files:
     frames = []
     for f in uploaded_files:
@@ -1273,6 +1268,7 @@ if uploaded_files:
                 df_i["Fck Projeto"] = fck_i
             df_i["Arquivo"] = getattr(f, "name", "arquivo.pdf")
             frames.append(df_i)
+            # auditoria de parsing
             log_event("file_parsed", {
                 "file": getattr(f, "name", "arquivo.pdf"),
                 "rows": int(df_i.shape[0]),
@@ -1286,7 +1282,7 @@ if uploaded_files:
     else:
         df = pd.concat(frames, ignore_index=True)
 
-        # ===== Validações cruzadas NF/Relatório e CP/Relatório
+        # ===== Validações cruze NF/Relatório e CP/Relatório
         if not df.empty:
             nf_rel = df.dropna(subset=["Nota Fiscal","Relatório"]).astype({"Relatório": str})
             nf_multi = (nf_rel.groupby(["Nota Fiscal"])["Relatório"]
@@ -1353,35 +1349,12 @@ if uploaded_files:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
-        # --- Gestão de múltiplos fck (banner legível) ---
+        # Gestão de múltiplos fck
         df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
         fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
         multiple_fck_detected = len(fck_labels) > 1
-
         if multiple_fck_detected:
-            st.markdown("""
-            <style>
-              .hb-multifck {
-                display:flex; align-items:center; gap:10px;
-                background:#FFF3CD;
-                border:1px solid #F59E0B;
-                color:#111827;
-                padding:12px 14px; border-radius:12px;
-                font-weight:700; line-height:1.35;
-                box-shadow:0 2px 8px rgba(0,0,0,.06);
-                margin: 4px 0 8px 0;
-              }
-              .hb-multifck .dot {
-                width:10px; height:10px; border-radius:999px; background:#F59E0B;
-                flex:0 0 auto;
-              }
-            </style>
-            <div class="hb-multifck">
-              <span class="dot"></span>
-              Detectamos <b>múltiplos fck</b> no conjunto selecionado. Escolha qual deseja analisar.
-            </div>
-            """, unsafe_allow_html=True)
-
+            st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
             selected_fck_label = st.selectbox(
                 "fck para análise", fck_labels,
                 format_func=lambda lbl: lbl if lbl != "—" else "Não informado"
@@ -1442,6 +1415,9 @@ if uploaded_files:
         place_right_legend(ax)
         ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         st.pyplot(fig1)
+        if CAN_EXPORT:
+            _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
+            st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
         # ===== Gráfico 2 — Curva Estimada
         st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
@@ -1461,6 +1437,9 @@ if uploaded_files:
             ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
             place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig2)
+            if CAN_EXPORT:
+                _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
         else:
             st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
@@ -1496,6 +1475,9 @@ if uploaded_files:
             ax3.set_title("Comparação Real × Estimado (médias)")
             place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig3)
+            if CAN_EXPORT:
+                _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
 
             def _status_row(delta, tol):
                 if pd.isna(delta): return "⚪ Sem dados"
@@ -1550,12 +1532,15 @@ if uploaded_files:
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig4)
+            if CAN_EXPORT:
+                _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
             st.write("#### 📑 Pareamento ponto-a-ponto")
             st.dataframe(pareamento_df, use_container_width=True)
         else:
             st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
-        # ===== Verificação do fck (Resumo)
+        # ===== Verificação do fck (Resumo + Detalhada)
         st.write("#### ✅ Verificação do fck de Projeto")
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
         fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
@@ -1769,7 +1754,7 @@ if uploaded_files:
             if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
 
             if verif_fck_df is not None and not verif_fck_df.empty:
-                story.append(PageBreak())
+                PageBreak()
                 story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
                 rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
                 for _, r in verif_fck_df.iterrows():
@@ -1864,7 +1849,7 @@ if uploaded_files:
                         (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
                         if _d else "—"
                     ))([d for d in df["_DataObj"].dropna().tolist()] if "_DataObj" in df.columns else []),
-                    (lambda v: "—" if v is None else (f"{v:.2f}".rstrip("0").rstrip(".")))(fck_active),
+                    _format_float_label(fck_active),
                     verif_fck_df if 'verif_fck_df' in locals() else None,
                     cond_df if 'cond_df' in locals() else None,
                     pareamento_df if 'pareamento_df' in locals() else None,
@@ -1971,7 +1956,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-

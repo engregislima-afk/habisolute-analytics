@@ -237,11 +237,15 @@ else:
     """
 # forçar legibilidade de alerts
 css += """
+st.markdown("""
+<style>
 .stAlert { border-radius:12px; border:1px solid var(--brand-600); }
-.stAlert [data-testid="stMarkdown"] p, .stAlert [data-testid="stMarkdown"] { color:#111827 !important; }
-.stAlert div[role="alert"] { color:#111827 !important; }
-"""
-st.markdown(css, unsafe_allow_html=True)
+.stAlert [data-testid="stMarkdown"] p,
+.stAlert [data-testid="stMarkdown"] {
+  color:#111827 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # -------- Cabeçalho ----------
 def _render_header():
@@ -1965,5 +1969,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

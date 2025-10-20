@@ -1353,14 +1353,36 @@ if uploaded_files:
         fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
         multiple_fck_detected = len(fck_labels) > 1
         if multiple_fck_detected:
-            st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
-            selected_fck_label = st.selectbox(
-                "fck para análise", fck_labels,
-                format_func=lambda lbl: lbl if lbl != "—" else "Não informado"
-            )
-            df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
-        else:
-            selected_fck_label = fck_labels[0] if fck_labels else "—"
+    # 🔶 Banner customizado (legível em claro e escuro)
+    st.markdown("""
+    <style>
+      .hb-multifck {
+        display:flex; align-items:center; gap:10px;
+        background:#FFF3CD;                /* amarelo suave */
+        border:1px solid #F59E0B;          /* laranja/amarelo */
+        color:#111827;                     /* quase preto para destacar */
+        padding:12px 14px; border-radius:12px;
+        font-weight:700; line-height:1.35;
+        box-shadow:0 2px 8px rgba(0,0,0,.06);
+      }
+      .hb-multifck .dot {
+        width:10px; height:10px; border-radius:999px; background:#F59E0B;
+        flex:0 0 auto;
+      }
+    </style>
+    <div class="hb-multifck">
+      <span class="dot"></span>
+      Detectamos <b>múltiplos fck</b> no conjunto selecionado. Escolha qual deseja analisar.
+    </div>
+    """, unsafe_allow_html=True)
+
+    selected_fck_label = st.selectbox(
+        "fck para análise", fck_labels,
+        format_func=lambda lbl: lbl if lbl != "—" else "Não informado"
+    )
+    df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
+else:
+    selected_fck_label = fck_labels[0] if fck_labels else "—"
 
         if df_view.empty:
             st.info("Nenhum dado disponível para o fck selecionado.")
@@ -1955,4 +1977,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

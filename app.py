@@ -242,10 +242,6 @@ else:
     """
 st.markdown(css, unsafe_allow_html=True)
 
-# ——— largura dinâmica da área útil (toggle na lateral) ———
-s.setdefault("wide_layout", True)  # deixe True se quiser já começar largo
-MAX_W = 1800 if s.get("wide_layout") else 1300
-
 # -------- Cabeçalho ----------
 def _render_header():
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -1969,6 +1965,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

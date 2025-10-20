@@ -190,30 +190,34 @@ BRAND_MAP = {
 }
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
-plt.rcParams.update({"font.size":10,"axes.titlesize":12,"axes.labelsize":10,"axes.titleweight":"semibold","figure.autolayout":False})
+plt.rcParams.update({
+    "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
+    "axes.titleweight":"semibold","figure.autolayout":False
+})
 
-plt.style.use("dark_background")
-css = f"""
-<style>
-:root {{
-  --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-  --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
-}}
-.stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-.block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
-.h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-.h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
-.pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-.stButton > button, .stDownloadButton > button {{
-  background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
-  padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.18) !important;
-}}
-.stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
-  background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important;
-}}
-.stExpander > details > summary {{ background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
-</style>
-"""
+if s.get("theme_mode") == "Escuro moderno":
+    plt.style.use("dark_background")
+    css = f"""
+    <style>
+    :root {{
+      --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
+      --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
+    }}
+    .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
+    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
+    .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
+    .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
+    .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
+    .stButton > button, .stDownloadButton > button {{
+      background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
+      padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.18) !important;
+    }}
+    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
+      background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important;
+    }}
+    .stExpander > details > summary {{ background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
+    </style>
+    """
 else:
     plt.style.use("default")
     css = f"""
@@ -223,7 +227,7 @@ else:
       --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff; --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 56px; max-width: 1300px; }}
+    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text); font-size:12.5px; }}
@@ -237,6 +241,7 @@ else:
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
+
 # ——— largura dinâmica da área útil (toggle na lateral) ———
 s.setdefault("wide_layout", True)  # deixe True se quiser já começar largo
 MAX_W = 1800 if s.get("wide_layout") else 1300
@@ -1964,6 +1969,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

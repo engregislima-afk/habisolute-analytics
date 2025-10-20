@@ -620,16 +620,34 @@ BATCH_MODE = bool(s.get("BATCH_MODE", False))
 # =============================================================================
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
-    s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)))
-    s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
+
+    s["wide_layout"] = st.toggle(
+        "Tela larga (1800px)",
+        value=bool(s.get("wide_layout", True)),
+        key="opt_wide_layout",   # <<< chave única
+    )
+
+    s["BATCH_MODE"] = st.toggle(
+        "Modo Lote (vários PDFs)",
+        value=bool(s["BATCH_MODE"]),
+        key="opt_batch_mode",    # <<< chave única
+    )
+
     if s["BATCH_MODE"] != s["_prev_batch"]:
         s["_prev_batch"] = s["BATCH_MODE"]
         s["uploader_key"] += 1
-    s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
+
+    s["TOL_MP"] = st.slider(
+        "Tolerância Real × Estimado (MPa)",
+        0.0, 5.0, float(s["TOL_MP"]), 0.1,
+        key="opt_tol_mpa",       # opcional, mas ajuda
+    )
+
     st.markdown("---")
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
     papel = "Admin" if s.get("is_admin") else "Usuário"
     st.caption(f"Usuário: **{nome_login}** ({papel})")
+
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
     s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)))
@@ -1966,6 +1984,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

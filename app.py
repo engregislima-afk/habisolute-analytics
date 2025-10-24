@@ -175,6 +175,9 @@ def _apply_query_prefs():
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
+# Largura dinâmica da área útil
+s.setdefault("wide_layout", True)  # deixe True para começar largo
+MAX_W = 1800 if s.get("wide_layout") else 1300
 
 # =============================================================================
 # Estilo e tema
@@ -187,9 +190,12 @@ BRAND_MAP = {
 }
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
-plt.rcParams.update({"font.size":10,"axes.titlesize":12,"axes.labelsize":10,"axes.titleweight":"semibold","figure.autolayout":False})
+plt.rcParams.update({
+    "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
+    "axes.titleweight":"semibold","figure.autolayout":False
+})
 
-if s["theme_mode"] == "Escuro moderno":
+if s.get("theme_mode") == "Escuro moderno":
     plt.style.use("dark_background")
     css = f"""
     <style>
@@ -198,7 +204,7 @@ if s["theme_mode"] == "Escuro moderno":
       --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 56px; max-width: 1300px; }}
+    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
@@ -221,7 +227,7 @@ else:
       --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff; --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top: 56px; max-width: 1300px; }}
+    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text); font-size:12.5px; }}
@@ -614,15 +620,38 @@ BATCH_MODE = bool(s.get("BATCH_MODE", False))
 # =============================================================================
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
-    s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
+
+    s["wide_layout"] = st.toggle(
+        "Tela larga (1800px)",
+        value=bool(s.get("wide_layout", True)),
+        key="opt_wide_layout",   # <<< chave única
+    )
+
+    s["BATCH_MODE"] = st.toggle(
+        "Modo Lote (vários PDFs)",
+        value=bool(s["BATCH_MODE"]),
+        key="opt_batch_mode",    # <<< chave única
+    )
+
     if s["BATCH_MODE"] != s["_prev_batch"]:
         s["_prev_batch"] = s["BATCH_MODE"]
         s["uploader_key"] += 1
-    s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
+
+    s["TOL_MP"] = st.slider(
+        "Tolerância Real × Estimado (MPa)",
+        0.0, 5.0, float(s["TOL_MP"]), 0.1,
+        key="opt_tol_mpa",       # opcional, mas ajuda
+    )
+
     st.markdown("---")
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
-papel = "Admin" if s.get("is_admin") else "Usuário"
-st.caption(f"Usuário: **{nome_login}** ({papel})")
+    papel = "Admin" if s.get("is_admin") else "Usuário"
+    st.caption(f"Usuário: **{nome_login}** ({papel})")
+
+with st.sidebar:
+    st.markdown("### ⚙️ Opções do relatório")
+    s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)))
+    # ... (resto já existente)
 
 # =============================================================================
 # Utilidades de parsing / limpeza
@@ -1955,3 +1984,11 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+
+
+
+
+
+
+

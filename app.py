@@ -191,8 +191,6 @@ BRAND_MAP = {
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
 plt.rcParams.update({
-    # Cor e estilo da linha de fck (funciona bem no claro e no escuro)
-FCK_LINE_KW = dict(linestyle=":", linewidth=2.4, color="#ef4444")  # vermelho vivo
     "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
     "axes.titleweight":"semibold","figure.autolayout":False
 })

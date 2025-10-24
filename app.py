@@ -175,9 +175,6 @@ def _apply_query_prefs():
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
-# Largura dinâmica da área útil
-s.setdefault("wide_layout", True)  # deixe True para começar largo
-MAX_W = 1800 if s.get("wide_layout") else 1300
 
 # =============================================================================
 # Estilo e tema
@@ -190,12 +187,9 @@ BRAND_MAP = {
 }
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
-plt.rcParams.update({
-    "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
-    "axes.titleweight":"semibold","figure.autolayout":False
-})
+plt.rcParams.update({"font.size":10,"axes.titlesize":12,"axes.labelsize":10,"axes.titleweight":"semibold","figure.autolayout":False})
 
-if s.get("theme_mode") == "Escuro moderno":
+if s["theme_mode"] == "Escuro moderno":
     plt.style.use("dark_background")
     css = f"""
     <style>
@@ -204,7 +198,7 @@ if s.get("theme_mode") == "Escuro moderno":
       --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
+    .block-container{{ padding-top: 56px; max-width: 1300px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
@@ -227,7 +221,7 @@ else:
       --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff; --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
     }}
     .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
+    .block-container{{ padding-top: 56px; max-width: 1300px; }}
     .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
     .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
     .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text); font-size:12.5px; }}
@@ -620,38 +614,15 @@ BATCH_MODE = bool(s.get("BATCH_MODE", False))
 # =============================================================================
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
-
-    s["wide_layout"] = st.toggle(
-        "Tela larga (1800px)",
-        value=bool(s.get("wide_layout", True)),
-        key="opt_wide_layout",   # <<< chave única
-    )
-
-    s["BATCH_MODE"] = st.toggle(
-        "Modo Lote (vários PDFs)",
-        value=bool(s["BATCH_MODE"]),
-        key="opt_batch_mode",    # <<< chave única
-    )
-
+    s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]))
     if s["BATCH_MODE"] != s["_prev_batch"]:
         s["_prev_batch"] = s["BATCH_MODE"]
         s["uploader_key"] += 1
-
-    s["TOL_MP"] = st.slider(
-        "Tolerância Real × Estimado (MPa)",
-        0.0, 5.0, float(s["TOL_MP"]), 0.1,
-        key="opt_tol_mpa",       # opcional, mas ajuda
-    )
-
+    s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1)
     st.markdown("---")
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
-    papel = "Admin" if s.get("is_admin") else "Usuário"
-    st.caption(f"Usuário: **{nome_login}** ({papel})")
-
-with st.sidebar:
-    st.markdown("### ⚙️ Opções do relatório")
-    s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)))
-    # ... (resto já existente)
+papel = "Admin" if s.get("is_admin") else "Usuário"
+st.caption(f"Usuário: **{nome_login}** ({papel})")
 
 # =============================================================================
 # Utilidades de parsing / limpeza
@@ -1437,7 +1408,7 @@ if uploaded_files:
         if not _sdp.empty:
             ax.fill_between(_sdp["Idade (dias)"], _sdp["mean"] - _sdp["std"], _sdp["mean"] + _sdp["std"], alpha=0.2, label="±1 DP")
         if fck_active is not None:
-            ax.axhline(fck_active, **FCK_LINE_KW, label=f"fck projeto ({fck_active:.1f} MPa)")
+            ax.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
         ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
         ax.set_title("Crescimento da resistência por corpo de prova")
         place_right_legend(ax)
@@ -1555,7 +1526,7 @@ if uploaded_files:
                     for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
                         ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
             if fck_active is not None:
-                ax4.axhline(fck_active, **FCK_LINE_KW, label=f"fck projeto ({fck_active:.1f} MPa)")
+                ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
             ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
@@ -1984,13 +1955,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-
-
-
-

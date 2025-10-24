@@ -191,6 +191,8 @@ BRAND_MAP = {
 brand, brand600, brand700 = BRAND_MAP.get(s["brand"], BRAND_MAP["Laranja"])
 
 plt.rcParams.update({
+    # Cor e estilo da linha de fck (funciona bem no claro e no escuro)
+FCK_LINE_KW = dict(linestyle=":", linewidth=2.4, color="#ef4444")  # vermelho vivo
     "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
     "axes.titleweight":"semibold","figure.autolayout":False
 })
@@ -1437,7 +1439,7 @@ if uploaded_files:
         if not _sdp.empty:
             ax.fill_between(_sdp["Idade (dias)"], _sdp["mean"] - _sdp["std"], _sdp["mean"] + _sdp["std"], alpha=0.2, label="±1 DP")
         if fck_active is not None:
-            ax.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+            ax.axhline(fck_active, **FCK_LINE_KW, label=f"fck projeto ({fck_active:.1f} MPa)")
         ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
         ax.set_title("Crescimento da resistência por corpo de prova")
         place_right_legend(ax)
@@ -1555,7 +1557,7 @@ if uploaded_files:
                     for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
                         ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
             if fck_active is not None:
-                ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+                ax4.axhline(fck_active, **FCK_LINE_KW, label=f"fck projeto ({fck_active:.1f} MPa)")
             ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
@@ -1984,6 +1986,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

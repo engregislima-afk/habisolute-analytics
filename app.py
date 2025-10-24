@@ -421,7 +421,6 @@ st.markdown(
 # =============================================================================
 # Painel de Usuários (somente admin) + Auditoria
 # =============================================================================
-
 # Permissões globais
 CAN_ADMIN  = bool(s.get("is_admin", False))
 CAN_EXPORT = CAN_ADMIN  # somente admin pode exportar
@@ -607,6 +606,7 @@ if CAN_ADMIN:
 else:
     # Usuário sem permissão de admin: nada de painel/auditoria aqui
     pass
+
 # =============================================================================
 # >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
 # =============================================================================
@@ -871,15 +871,15 @@ def extrair_dados_certificado(uploaded_file):
                         if 1 <= v <= 120:
                             idade = v; idade_idx = j; break
 
-                resistencia, res_idx = None, None
+                resistência, res_idx = None, None
                 if idade_idx is not None:
                     for j in range(idade_idx + 1, len(partes)):
                         t = partes[j]
                         if float_token.match(t):
-                            resistencia = float(t.replace(",", "."))
+                            resistência = float(t.replace(",", "."))
                             res_idx = j; break
 
-                if idade is None or resistencia is None:
+                if idade is None or resistência is None:
                     continue
 
                 nf, nf_idx = None, None
@@ -909,7 +909,7 @@ def extrair_dados_certificado(uploaded_file):
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
-                    relatorio, cp, idade, resistencia, nf, local,
+                    relatorio, cp, idade, resistência, nf, local,
                     usina_nome,
                     (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
                     abat_nf_tol,
@@ -1154,8 +1154,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     st.dataframe(df_view, use_container_width=True)
     st.write("#### Estatísticas por CP")
     st.dataframe(stats_cp_idade, use_container_width=True)
-
-# =============================================================================
+    # =============================================================================
 # Helpers de NOME DE ARQUIVO (top-level, sem indentação)
 # =============================================================================
 def _slugify_for_filename(text: str) -> str:
@@ -1437,7 +1436,7 @@ if uploaded_files:
         if not _sdp.empty:
             ax.fill_between(_sdp["Idade (dias)"], _sdp["mean"] - _sdp["std"], _sdp["mean"] + _sdp["std"], alpha=0.2, label="±1 DP")
         if fck_active is not None:
-            ax.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+            ax.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
         ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
         ax.set_title("Crescimento da resistência por corpo de prova")
         place_right_legend(ax)
@@ -1498,7 +1497,7 @@ if uploaded_files:
                 ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
             ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
             if fck_active is not None:
-                ax3.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+                ax3.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
             ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
             ax3.set_title("Comparação Real × Estimado (médias)")
             place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
@@ -1555,7 +1554,7 @@ if uploaded_files:
                     for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
                         ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
             if fck_active is not None:
-                ax4.axhline(fck_active, linestyle=":", linewidth=2, label=f"fck projeto ({fck_active:.1f} MPa)")
+                ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
             ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
@@ -1984,11 +1983,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-
 

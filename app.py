@@ -1713,258 +1713,153 @@ if uploaded_files:
         def _doc_id() -> str: return "HAB-" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
         def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3, fig4,
-              obra_label: str, data_label: str, fck_label: str,
-              verif_fck_df: Optional[pd.DataFrame],
-              cond_df: Optional[pd.DataFrame],
-              pareamento_df: Optional[pd.DataFrame],
-              pv_cp_status: Optional[pd.DataFrame],
-              qr_url: str) -> bytes:
-    from copy import deepcopy
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.lib import colors as _C
-    import tempfile, io
+                      obra_label: str, data_label: str, fck_label: str,
+                      verif_fck_df: Optional[pd.DataFrame],
+                      cond_df: Optional[pd.DataFrame],
+                      pareamento_df: Optional[pd.DataFrame],
+                      pv_cp_status: Optional[pd.DataFrame],
+                      qr_url: str) -> bytes:
+            use_landscape = (len(df.columns) >= 8)
+            pagesize = landscape(A4) if use_landscape else A4
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=pagesize, leftMargin=18, rightMargin=18, topMargin=26, bottomMargin=56)
+            styles = getSampleStyleSheet()
+            styles["Title"].fontName = "Helvetica-Bold"; styles["Title"].fontSize = 18
+            styles["Heading2"].fontName = "Helvetica-Bold"; styles["Heading2"].fontSize = 14
+            styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
+            styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
+            story = []
 
-    # (restante da função também identado...)
+            story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
+            story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
+            usina_hdr = _usina_label_from_df(df); abat_nf_hdr = _abat_nf_header_label(df)
+            story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
+            story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
+            story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
+            story.append(Paragraph(f"Usina: {usina_hdr}", styles['Normal']))
+            story.append(Paragraph(f"Abatimento de NF: {abat_nf_hdr}", styles['Normal']))
+            if qr_url: story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
+            story.append(Spacer(1, 8))
 
-    # ---------- helpers de cor ----------
-    def _status_bg(text: str):
-        t = str(text or "").lower()
-        if "informativo" in t:
-            return _C.HexColor("#facc15")   # amarelo
-        if ("não atingiu" in t) or ("nao atingiu" in t) or ("abaixo" in t):
-            return _C.HexColor("#ef4444")   # vermelho
-        if ("atingiu" in t) or ("dentro dos padrões" in t) or ("dentro dos padroes" in t):
-            return _C.HexColor("#16a34a")   # verde
-        if "acima" in t:
-            return _C.HexColor("#3b82f6")   # azul
-        if "sem dados" in t:
-            return _C.HexColor("#e5e7eb")   # cinza claro
-        return None
+            headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"]
+            rows = df[headers].values.tolist()
+            table = Table([headers] + rows, repeatRows=1)
+            table.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                ("GRID",(0,0),(-1,-1),0.5,colors.black),
+                ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                ("FONTSIZE",(0,0),(-1,-1),8.5),
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
+                ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
+            ]))
+            story.append(table); story.append(Spacer(1, 8))
 
-    def _apply_status_colors(table, data_rows, status_col_indexes):
-        ts = []
-        idxs = status_col_indexes if isinstance(status_col_indexes, (list, tuple, set)) else [status_col_indexes]
-        for r, row in enumerate(data_rows, start=1):  # +1 por causa do cabeçalho
-            for c in idxs:
-                if c is None or c < 0 or c >= len(row):
-                    continue
-                bg = _status_bg(row[c])
-                if bg:
-                    ts.append(("BACKGROUND", (c, r), (c, r), bg))
-                    ts.append(("TEXTCOLOR",  (c, r), (c, r), _C.black))
-                    ts.append(("FONTNAME",   (c, r), (c, r), "Helvetica-Bold"))
-        if ts:
-            table.setStyle(TableStyle(ts))
+            if not stats.empty:
+                from copy import deepcopy
+                stt = [["CP","Idade (dias)","Média","DP","n"]] + deepcopy(stats).values.tolist()
+                story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
+                t2 = Table(stt, repeatRows=1)
+                t2.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                    ("GRID",(0,0),(-1,-1),0.5,colors.black),
+                    ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                    ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                    ("FONTSIZE",(0,0),(-1,-1),8.6),
+                ]))
+                story.append(t2); story.append(Spacer(1, 10))
 
-    def _alerta_bg(text: str):
-        t = str(text or "")
-        return _C.HexColor("#f97316") if ("Δ" in t or "delta" in t.lower() or "pares" in t.lower()) else None
+            def _img_from_fig_pdf(_fig, w=620, h=420):
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                return RLImage(tmp.name, width=w, height=h)
 
-    def _apply_alerta_color(table, data_rows, alerta_col_index):
-        ts = []
-        for r, row in enumerate(data_rows, start=1):
-            if 0 <= alerta_col_index < len(row):
-                bg = _alerta_bg(row[alerta_col_index])
-                if bg:
-                    ts.append(("BACKGROUND", (alerta_col_index, r), (alerta_col_index, r), bg))
-                    ts.append(("TEXTCOLOR",  (alerta_col_index, r), (alerta_col_index, r), _C.black))
-                    ts.append(("FONTNAME",   (alerta_col_index, r), (alerta_col_index, r), "Helvetica-Bold"))
-        if ts:
-            table.setStyle(TableStyle(ts))
+            if fig1: story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
+            if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
+            if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
+            if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
 
-    # ---------- layout do documento ----------
-    use_landscape = (len(df.columns) >= 8)
-    pagesize = landscape(A4) if use_landscape else A4
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=pagesize, leftMargin=18, rightMargin=18, topMargin=26, bottomMargin=56)
-    styles = getSampleStyleSheet()
-    styles["Title"].fontName = "Helvetica-Bold";  styles["Title"].fontSize = 18
-    styles["Heading2"].fontName = "Helvetica-Bold"; styles["Heading2"].fontSize = 14
-    styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
-    styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
-    story = []
+            if verif_fck_df is not None and not verif_fck_df.empty:
+                PageBreak()
+                story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
+                rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
+                for _, r in verif_fck_df.iterrows():
+                    rows_v.append([
+                        r["Idade (dias)"],
+                        f"{r['Média Real (MPa)']:.3f}" if pd.notna(r['Média Real (MPa)']) else "—",
+                        f"{r.get('fck Projeto (MPa)', float('nan')):.3f}" if pd.notna(r.get('fck Projeto (MPa)', float('nan'))) else "—",
+                        r.get("Status","—")
+                    ])
+                tv = Table(rows_v, repeatRows=1)
+                tv.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                    ("GRID",(0,0),(-1,-1),0.5,colors.black),
+                    ("ALIGN",(0,0),(-2,-1),"CENTER"),
+                    ("ALIGN",(-1,1),(-1,-1),"LEFT"),
+                    ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                    ("FONTSIZE",(0,0),(-1,-1),8.6),
+                ]))
+                story.append(tv); story.append(Spacer(1, 8))
 
-    # ---------- cabeçalho ----------
-    story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
-    story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
+            if cond_df is not None and not cond_df.empty:
+                story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
+                rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
+                for _, r in cond_df.iterrows():
+                    rows_c.append([
+                        r["Idade (dias)"],
+                        f"{r['Média Real (MPa)']:.3f}" if pd.notna(r['Média Real (MPa)']) else "—",
+                        f"{r['Estimado (MPa)']:.3f}" if pd.notna(r['Estimado (MPa)']) else "—",
+                        f"{r['Δ (Real-Est.)']:.3f}" if pd.notna(r['Δ (Real-Est.)']) else "—",
+                        r["Status"]
+                    ])
+                tc = Table(rows_c, repeatRows=1)
+                tc.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                    ("GRID",(0,0),(-1,-1),0.5,colors.black),
+                    ("ALIGN",(0,0),(-2,-1),"CENTER"),
+                    ("ALIGN",(-1,1),(-1,-1),"LEFT"),
+                    ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                    ("FONTSIZE",(0,0),(-1,-1),8.6),
+                ]))
+                story.append(tc); story.append(Spacer(1, 8))
 
-    def _usina_label_from_df(df_: pd.DataFrame) -> str:
-        if "Usina" not in df_.columns: return "—"
-        seri = df_["Usina"].dropna().astype(str)
-        if seri.empty: return "—"
-        m = seri.mode()
-        return str(m.iat[0]) if not m.empty else "—"
+            if pareamento_df is not None and not pareamento_df.empty:
+                story.append(Paragraph("Pareamento ponto-a-ponto (Real × Estimado, sem médias)", styles["Heading3"]))
+                head = ["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
+                rows_p = pareamento_df[head].values.tolist()
+                tp = Table([head] + rows_p, repeatRows=1)
+                tp.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                    ("GRID",(0,0),(-1,-1),0.5,colors.black),
+                    ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                    ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                    ("FONTSIZE",(0,0),(-1,-1),8.6),
+                ]))
+                story.append(tp); story.append(Spacer(1, 8))
 
-    def _abat_nf_header_label(df_: pd.DataFrame) -> str:
-        snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
-        stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
-        if snf.empty: return "—"
-        v = float(snf.mode().iloc[0]); t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
-        return f"{v:.0f} ± {t:.0f} mm"
+            if pv_cp_status is not None and not pv_cp_status.empty:
+                story.append(PageBreak())
+                story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
+                cols = list(pv_cp_status.columns); tab = [cols] + pv_cp_status.values.tolist()
+                t_det = Table(tab, repeatRows=1)
+                t_det.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+                    ("GRID",(0,0),(-1,-1),0.4,colors.black),
+                    ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                    ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
+                    ("FONTSIZE",(0,0),(-1,-1),8.2),
+                    ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                    ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
+                    ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
+                ]))
+                story.append(t_det); story.append(Spacer(1, 6))
 
-    story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
-    story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
-    story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
-    story.append(Paragraph(f"Usina: {_usina_label_from_df(df)}", styles['Normal']))
-    story.append(Paragraph(f"Abatimento de NF: {_abat_nf_header_label(df)}", styles['Normal']))
-    if qr_url:
-        story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
-    story.append(Spacer(1, 8))
+            story.append(Spacer(1, 10))
+            story.append(Paragraph(f"<b>ID do documento:</b> {_doc_id()}", styles["Normal"]))
 
-    # ---------- tabela principal ----------
-    headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"]
-    rows = df[headers].values.tolist()
-    table = Table([headers] + rows, repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-        ("GRID",(0,0),(-1,-1),0.5,_C.black),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-        ("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
-        ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
-    ]))
-    story.append(table); story.append(Spacer(1, 8))
-
-    # ---------- estatística resumida ----------
-    if stats is not None and not stats.empty:
-        stt = [["CP","Idade (dias)","Média","DP","n"]] + deepcopy(stats).values.tolist()
-        story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
-        t2 = Table(stt, repeatRows=1)
-        t2.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-            ("GRID",(0,0),(-1,-1),0.5,_C.black),
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,0),(-1,-1),8.6),
-        ]))
-        story.append(t2); story.append(Spacer(1, 10))
-
-    # ---------- imagens dos gráficos ----------
-    def _img_from_fig_pdf(_fig, w=620, h=420):
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
-        return RLImage(tmp.name, width=w, height=h)
-
-    if fig1: story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
-    if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
-    if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
-    if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
-
-    # ---------- Verificação do fck (Resumo por idade) ----------
-    if verif_fck_df is not None and not verif_fck_df.empty:
-        story.append(PageBreak())
-        story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
-        rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
-        for _, r in verif_fck_df.iterrows():
-            rows_v.append([
-                r["Idade (dias)"],
-                f"{r['Média Real (MPa)']:.3f}" if pd.notna(r['Média Real (MPa)']) else "—",
-                f"{r.get('fck Projeto (MPa)', float('nan')):.3f}" if pd.notna(r.get('fck Projeto (MPa)', float('nan'))) else "—",
-                r.get("Status","—")
-            ])
-        tv = Table(rows_v, repeatRows=1)
-        tv.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-            ("GRID",(0,0),(-1,-1),0.5,_C.black),
-            ("ALIGN",(0,0),(-2,-1),"CENTER"),
-            ("ALIGN",(-1,1),(-1,-1),"LEFT"),
-            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,0),(-1,-1),8.6),
-        ]))
-        # colorir Status (coluna 3)
-        _apply_status_colors(tv, rows_v[1:], status_col_indexes=3)
-        story.append(tv); story.append(Spacer(1, 8))
-
-    # ---------- Condição Real × Estimado ----------
-    if cond_df is not None and not cond_df.empty:
-        story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
-        rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
-        for _, r in cond_df.iterrows():
-            rows_c.append([
-                r["Idade (dias)"],
-                f"{r['Média Real (MPa)']:.3f}" if pd.notna(r['Média Real (MPa)']) else "—",
-                f"{r['Estimado (MPa)']:.3f}" if pd.notna(r['Estimado (MPa)']) else "—",
-                f"{r['Δ (Real-Est.)']:.3f}" if pd.notna(r['Δ (Real-Est.)']) else "—",
-                r["Status"]
-            ])
-        tc = Table(rows_c, repeatRows=1)
-        tc.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-            ("GRID",(0,0),(-1,-1),0.5,_C.black),
-            ("ALIGN",(0,0),(-2,-1),"CENTER"),
-            ("ALIGN",(-1,1),(-1,-1),"LEFT"),
-            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,0),(-1,-1),8.6),
-        ]))
-        # colorir Status (coluna 4)
-        _apply_status_colors(tc, rows_c[1:], status_col_indexes=4)
-        story.append(tc); story.append(Spacer(1, 8))
-
-    # ---------- Pareamento ponto-a-ponto ----------
-    if pareamento_df is not None and not pareamento_df.empty:
-        story.append(Paragraph("Pareamento ponto-a-ponto (Real × Estimado, sem médias)", styles["Heading3"]))
-        head = ["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
-        rows_p = pareamento_df[head].values.tolist()
-        tp = Table([head] + rows_p, repeatRows=1)
-        tp.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-            ("GRID",(0,0),(-1,-1),0.5,_C.black),
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,0),(-1,-1),8.6),
-        ]))
-        # (opcional) colorir Status pareamento (coluna 5) – usa mesmas regras
-        _apply_status_colors(tp, rows_p, status_col_indexes=5)
-        story.append(tp); story.append(Spacer(1, 8))
-
-    # ---------- Verificação detalhada por CP ----------
-    if pv_cp_status is not None and not pv_cp_status.empty:
-        story.append(PageBreak())
-        story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
-        cols = list(pv_cp_status.columns)
-        tab  = [cols] + pv_cp_status.values.tolist()
-        t_det = Table(tab, repeatRows=1)
-        t_det.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-            ("GRID",(0,0),(-1,-1),0.4,_C.black),
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,0),(-1,-1),8.2),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
-            ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
-        ]))
-        # índices das colunas
-        def _idx(name):
-            try: return cols.index(name)
-            except ValueError: return -1
-        i_s7    = _idx("7 dias — Status")
-        i_s28   = _idx("28 dias — Status")
-        i_s63   = _idx("63 dias — Status")
-        i_alert = _idx("Alerta Pares (Δ>2 MPa)")
-
-        data_rows = tab[1:]
-        _apply_status_colors(t_det, data_rows, [i for i in [i_s7, i_s28, i_s63] if i >= 0])
-        if i_alert >= 0:
-            _apply_alerta_color(t_det, data_rows, i_alert)
-
-        story.append(t_det); story.append(Spacer(1, 6))
-
-    # ---------- ID do documento ----------
-    def _doc_id() -> str:
-        return "HAB-" + datetime.now().strftime("%Y%m%d-%H%M%S")
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(f"<b>ID do documento:</b> {_doc_id()}", styles["Normal"]))
-
-    # ---------- build ----------
-    doc.build(story, canvasmaker=NumberedCanvas)
-    pdf = buffer.getvalue()
-    buffer.close()
-    return pdf
+            doc.build(story, canvasmaker=NumberedCanvas)
+            pdf = buffer.getvalue(); buffer.close(); return pdf
 
         # ===== PDF / Exportações (somente admin)
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
@@ -2088,6 +1983,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 
 

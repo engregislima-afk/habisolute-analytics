@@ -696,25 +696,37 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
     except Exception:
         return None, None
         def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None; abat_obra = None
+    abat_nf: Optional[float] = None
+    abat_obra: Optional[float] = None
+
     for sline in linhas:
+        # normaliza vírgula e símbolo "±"
         s_clean = sline.replace(",", ".").replace("±", "+-")
+
+        # Ex.: "Abatimento NF 100 ± 20 mm" / "Abatimento de NF: 100mm"
         m_nf = re.search(
             r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
             s_clean
         )
         if m_nf and abat_nf is None:
-            try: abat_nf = float(m_nf.group(1))
-            except Exception: pass
+            try:
+                abat_nf = float(m_nf.group(1))
+            except Exception:
+                pass
+
+        # Ex.: "abatimento medido em obra 90 mm" / "abat. obra: 90mm"
         m_obra = re.search(
             r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
             s_clean
         )
         if m_obra and abat_obra is None:
-            try: abat_obra = float(m_obra.group(2))
-            except Exception: pass
+            try:
+                abat_obra = float(m_obra.group(2))
+            except Exception:
+                pass
+
     return abat_nf, abat_obra
 
 def _extract_fck_values(line: str) -> List[float]:
@@ -2015,5 +2027,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

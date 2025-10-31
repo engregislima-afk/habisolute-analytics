@@ -175,9 +175,6 @@ def _apply_query_prefs():
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
-# Largura dinâmica da área útil
-s.setdefault("wide_layout", True)  # deixe True para começar largo
-MAX_W = 1800 if s.get("wide_layout") else 1300
 
 # =============================================================================
 # Estilo e tema
@@ -626,6 +623,8 @@ with st.sidebar:
         value=bool(s.get("wide_layout", True)),
         key="opt_wide_layout",   # <<< chave única
     )
+    s.setdefault("wide_layout", True)
+MAX_W = 1800 if s.get("wide_layout") else 1300
 
     s["BATCH_MODE"] = st.toggle(
         "Modo Lote (vários PDFs)",
@@ -647,11 +646,6 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
     papel = "Admin" if s.get("is_admin") else "Usuário"
     st.caption(f"Usuário: **{nome_login}** ({papel})")
-
-with st.sidebar:
-    st.markdown("### ⚙️ Opções do relatório")
-    s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)))
-    # ... (resto já existente)
 
 # =============================================================================
 # Utilidades de parsing / limpeza
@@ -1983,5 +1977,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

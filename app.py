@@ -1,4 +1,3 @@
-
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
@@ -1858,6 +1857,57 @@ if uploaded_files:
             pdf = buffer.getvalue(); buffer.close(); return pdf
 
         # ===== PDF / Exportações (somente admin)
+        from reportlab.lib import colors as _C
+
+def _status_bg(text: str):
+    t = str(text or "").lower()
+    if "informativo" in t:
+        return _C.HexColor("#facc15")  # amarelo
+    if ("não atingiu" in t) or ("nao atingiu" in t) or ("abaixo" in t):
+        return _C.HexColor("#ef4444")  # vermelho
+    if ("atingiu" in t) or ("dentro dos padrões" in t) or ("dentro dos padroes" in t):
+        return _C.HexColor("#16a34a")  # verde
+    if "acima" in t:
+        return _C.HexColor("#3b82f6")  # azul
+    if "sem dados" in t:
+        return _C.HexColor("#e5e7eb")  # cinza claro
+    return None
+
+def _apply_status_colors(table, data_rows, status_col_indexes):
+    """
+    table: objeto Table do ReportLab
+    data_rows: lista de linhas SEM o cabeçalho
+    status_col_indexes: índice(s) das colunas de Status na tabela (0-based)
+    """
+    ts = []
+    for r, row in enumerate(data_rows, start=1):  # +1 por causa do cabeçalho
+        for c in (status_col_indexes if isinstance(status_col_indexes, (list, tuple, set)) else [status_col_indexes]):
+            if c < 0 or c >= len(row): 
+                continue
+            bg = _status_bg(row[c])
+            if bg:
+                ts.append(("BACKGROUND", (c, r), (c, r), bg))
+                ts.append(("TEXTCOLOR",  (c, r), (c, r), _C.black))
+                ts.append(("FONTNAME",   (c, r), (c, r), "Helvetica-Bold"))
+    if ts:
+        table.setStyle(TableStyle(ts))
+
+def _alerta_bg(text: str):
+    t = str(text or "")
+    return _C.HexColor("#f97316") if ("Δ" in t or "delta" in t.lower() or "pares" in t.lower()) else None
+
+def _apply_alerta_color(table, data_rows, alerta_col_index):
+    ts = []
+    for r, row in enumerate(data_rows, start=1):
+        if 0 <= alerta_col_index < len(row):
+            bg = _alerta_bg(row[alerta_col_index])
+            if bg:
+                ts.append(("BACKGROUND", (alerta_col_index, r), (alerta_col_index, r), bg))
+                ts.append(("TEXTCOLOR",  (alerta_col_index, r), (alerta_col_index, r), _C.black))
+                ts.append(("FONTNAME",   (alerta_col_index, r), (alerta_col_index, r), "Helvetica-Bold"))
+    if ts:
+        table.setStyle(TableStyle(ts))
+
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
         if has_df and CAN_EXPORT:
             try:
@@ -1979,5 +2029,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

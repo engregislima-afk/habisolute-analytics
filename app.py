@@ -684,26 +684,15 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
             if t: return t
     return None
 
-def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
-    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
-    if not m: return None, None
-    try:
-        v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) is not None else None
-        return v, tol
-    except Exception:
-        return None, None
-        def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
+def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
     abat_nf: Optional[float] = None
     abat_obra: Optional[float] = None
 
     for sline in linhas:
-        # normaliza vírgula e símbolo "±"
+        # normaliza vírgula e símbolo ±
         s_clean = sline.replace(",", ".").replace("±", "+-")
 
-        # Ex.: "Abatimento NF 100 ± 20 mm" / "Abatimento de NF: 100mm"
+        # Exemplos que casa: "Abatimento NF 100 ± 20 mm" / "Abatimento de NF: 100mm"
         m_nf = re.search(
             r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
@@ -715,7 +704,7 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
             except Exception:
                 pass
 
-        # Ex.: "abatimento medido em obra 90 mm" / "abat. obra: 90mm"
+        # Exemplos que casa: "abatimento medido em obra 90 mm" / "abat. obra: 90mm"
         m_obra = re.search(
             r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
@@ -2027,6 +2016,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

@@ -1896,6 +1896,79 @@ if uploaded_files:
             pdf = buffer.getvalue()
             buffer.close()
             return pdf
+                          # ---- RESUMO PERCENTUAL: CPs que atingiram o fck (28d obrigatório; se houver 63d, também deve atender)
+from reportlab.lib.styles import ParagraphStyle
+
+def _is_ok(val: Any) -> bool:
+    return isinstance(val, str) and ("Atingiu" in val)
+
+def _has_info(val: Any) -> bool:
+    s = str(val)
+    return (s is not None) and (s.strip() != "") and ("Sem dados" not in s)
+
+pct_msg = None
+pct_color = colors.HexColor("#16a34a")  # verde padrão
+
+try:
+    if pv_cp_status is not None and not pv_cp_status.empty:
+        col_28 = None
+        col_63 = None
+        # nomes normalizados das colunas (você renomeou lá em cima)
+        for c in pv_cp_status.columns:
+            if str(c).strip().lower().startswith("28 dias — status"):
+                col_28 = c
+            if str(c).strip().lower().startswith("63 dias — status"):
+                col_63 = c
+
+        eligible = 0  # CPs com 28d avaliável (obrigatório)
+        hits     = 0  # CPs que atendem 28d e, se houver 63d, também 63d
+
+        for _, row in pv_cp_status.iterrows():
+            st28 = row.get(col_28, None) if col_28 else None
+            st63 = row.get(col_63, None) if col_63 else None
+
+            has28 = _has_info(st28)
+            if not has28:
+                continue  # sem 28d -> não entra no denominador
+
+            eligible += 1
+            ok28 = _is_ok(st28)
+
+            has63 = _has_info(st63)
+            ok63  = _is_ok(st63) if has63 else True  # se não tem 63d, não reprova
+
+            if ok28 and ok63:
+                hits += 1
+
+        if eligible > 0:
+            pct = (hits / eligible) * 100.0
+            # Semáforo de cor (mesmas faixas do app)
+            if pct >= 90:
+                pct_color = colors.HexColor("#16a34a")  # bom
+            elif pct >= 75:
+                pct_color = colors.HexColor("#d97706")  # atenção
+            else:
+                pct_color = colors.HexColor("#ef4444")  # crítico
+
+            pct_msg = f"{pct:.0f}% dos CPs atingiram o fck de projeto " \
+                      f"(critério: 28d obrigatório; se houver 63d, também deve atender)."
+        else:
+            pct_msg = "Sem dados suficientes para calcular o percentual de CPs que atingiram o fck de projeto."
+except Exception:
+    pct_msg = "Não foi possível calcular o percentual de CPs que atingiram o fck de projeto."
+
+if pct_msg:
+    styles.add(ParagraphStyle(
+        name="ResumoFck",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        textColor=pct_color,
+        spaceBefore=6,
+        spaceAfter=4,
+    ))
+    story.append(Paragraph(pct_msg, styles["ResumoFck"]))
+    story.append(Spacer(1, 6))
 
         # ===== PDF / Exportações (somente admin)
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
@@ -2019,6 +2092,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

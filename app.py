@@ -1,3 +1,4 @@
+
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
@@ -175,6 +176,9 @@ def _apply_query_prefs():
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
+# Largura dinâmica da área útil
+s.setdefault("wide_layout", True)  # deixe True para começar largo
+MAX_W = 1800 if s.get("wide_layout") else 1300
 
 # =============================================================================
 # Estilo e tema
@@ -623,7 +627,7 @@ with st.sidebar:
         value=bool(s.get("wide_layout", True)),
         key="opt_wide_layout",   # <<< chave única
     )
-    
+
     s["BATCH_MODE"] = st.toggle(
         "Modo Lote (vários PDFs)",
         value=bool(s["BATCH_MODE"]),
@@ -644,7 +648,7 @@ with st.sidebar:
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
     papel = "Admin" if s.get("is_admin") else "Usuário"
     st.caption(f"Usuário: **{nome_login}** ({papel})")
-    
+
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -1975,8 +1979,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
 
 

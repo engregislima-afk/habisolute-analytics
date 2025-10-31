@@ -27,7 +27,7 @@ FOOTER_BRAND_TEXT = "Sistema Desenvolvido por IA e pela Habisolute Engenharia"
 
 # ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
-    ORANGE = colors.HexColor("#f97316")
+    ORANGE = colors.HexColor("#c6c9cf")
     BLACK  = colors.black
 
     def __init__(self, *args, **kwargs):
@@ -2019,5 +2019,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

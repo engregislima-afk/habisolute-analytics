@@ -1,4 +1,3 @@
-
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
@@ -1720,13 +1719,14 @@ if uploaded_files:
               pareamento_df: Optional[pd.DataFrame],
               pv_cp_status: Optional[pd.DataFrame],
               qr_url: str) -> bytes:
-    # --- imports locais do PDF ---
     from copy import deepcopy
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors as _C
     import tempfile, io
+
+    # (restante da função também identado...)
 
     # ---------- helpers de cor ----------
     def _status_bg(text: str):
@@ -2088,5 +2088,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

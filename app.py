@@ -1713,16 +1713,16 @@ if uploaded_files:
         def _doc_id() -> str: return "HAB-" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
         def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3, fig4,
-              obra_label: str, data_label: str, fck_label: str,
-              verif_fck_df: Optional[pd.DataFrame],
-              cond_df: Optional[pd.DataFrame],
-              pareamento_df: Optional[pd.DataFrame],
-              pv_cp_status: Optional[pd.DataFrame],
+                      obra_label: str, data_label: str, fck_label: str,
+                      verif_fck_df: Optional[pd.DataFrame],
+                      cond_df: Optional[pd.DataFrame],
+                      pareamento_df: Optional[pd.DataFrame],
+                      pv_cp_status: Optional[pd.DataFrame],
               qr_url: str) -> bytes:
-    from copy import deepcopy
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import (
-        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+            from copy import deepcopy
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.platypus import (
+            SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
     )
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors as _C
@@ -2084,6 +2084,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

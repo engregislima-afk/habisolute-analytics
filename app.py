@@ -684,38 +684,37 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
             if t: return t
     return None
 
+def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
+    if not tok: return None, None
+    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
+    if not m: return None, None
+    try:
+        v = float(m.group(1))
+        tol = float(m.group(2)) if m.group(2) is not None else None
+        return v, tol
+    except Exception:
+        return None, None
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf: Optional[float] = None
-    abat_obra: Optional[float] = None
-
+    abat_nf = None; abat_obra = None
     for sline in linhas:
-        # normaliza vírgula e símbolo ±
         s_clean = sline.replace(",", ".").replace("±", "+-")
-
-        # Exemplos que casa: "Abatimento NF 100 ± 20 mm" / "Abatimento de NF: 100mm"
         m_nf = re.search(
             r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
             s_clean
         )
         if m_nf and abat_nf is None:
-            try:
-                abat_nf = float(m_nf.group(1))
-            except Exception:
-                pass
-
-        # Exemplos que casa: "abatimento medido em obra 90 mm" / "abat. obra: 90mm"
+            try: abat_nf = float(m_nf.group(1))
+            except Exception: pass
         m_obra = re.search(
             r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
             s_clean
         )
         if m_obra and abat_obra is None:
-            try:
-                abat_obra = float(m_obra.group(2))
-            except Exception:
-                pass
-
+            try: abat_obra = float(m_obra.group(2))
+            except Exception: pass
     return abat_nf, abat_obra
 
 def _extract_fck_values(line: str) -> List[float]:
@@ -1242,7 +1241,7 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
         return f"{base}_{date_tok}.pdf"
     from datetime import datetime as _dt
     return f"{base}_{_dt.utcnow().strftime('%d_%m_%Y')}.pdf"
-    # =============================================================================
+# =============================================================================
 # Pipeline principal
 # =============================================================================
 if uploaded_files:
@@ -2016,7 +2015,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-

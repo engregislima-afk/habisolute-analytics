@@ -23,7 +23,7 @@ FOOTER_TEXT = (
     "Este documento poderá ser reproduzido somente na íntegra. "
     "Resultados apresentados sem considerar a incerteza de medição +- 0,90Mpa."
 )
-FOOTER_BRAND_TEXT = "Sistema Desenvolvido pela Habisolute Engenharia"
+FOOTER_BRAND_TEXT = "Sistema Desenvolvido por IA e pela Habisolute Engenharia"
 
 # ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
@@ -1978,9 +1978,10 @@ st.markdown("""
 st.markdown(
     """
     <div style="text-align:center; font-size:18px; font-weight:600; opacity:.9; margin-top:10px;">
-      Sistema desenvolvido pela Habisolute Engenharia
+      Sistema desenvolvido por IA e pela Habisolute Engenharia
     </div>
     """,
     unsafe_allow_html=True
 )
+
 

@@ -623,9 +623,7 @@ with st.sidebar:
         value=bool(s.get("wide_layout", True)),
         key="opt_wide_layout",   # <<< chave única
     )
-    s.setdefault("wide_layout", True)
-MAX_W = 1800 if s.get("wide_layout") else 1300
-
+    
     s["BATCH_MODE"] = st.toggle(
         "Modo Lote (vários PDFs)",
         value=bool(s["BATCH_MODE"]),
@@ -646,7 +644,8 @@ MAX_W = 1800 if s.get("wide_layout") else 1300
     nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
     papel = "Admin" if s.get("is_admin") else "Usuário"
     st.caption(f"Usuário: **{nome_login}** ({papel})")
-
+    s.setdefault("wide_layout", True)
+    MAX_W = 1800 if s.get("wide_layout") else 1300
 # =============================================================================
 # Utilidades de parsing / limpeza
 # =============================================================================
@@ -1977,6 +1976,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

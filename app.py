@@ -25,6 +25,7 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido por IA e pela Habisolute Engenharia"
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
     ORANGE = colors.HexColor("#c6c9cf")
     BLACK  = colors.black
@@ -88,11 +89,11 @@ st.set_page_config(page_title="Habisolute — Relatórios", layout="wide")
 
 PREFS_DIR = Path.home() / ".habisolute"; PREFS_DIR.mkdir(parents=True, exist_ok=True)
 PREFS_PATH = PREFS_DIR / "prefs.json"; USERS_DB = PREFS_DIR / "users.json"
-AUDIT_LOG = PREFS_DIR / "audit.jsonl"
 
+# ====== Auditoria (JSONL) ======
+AUDIT_LOG = PREFS_DIR / "audit.jsonl"
 def _now_iso():
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
-
 def log_event(action: str, meta: Dict[str, Any] | None = None, level: str = "INFO"):
     try:
         rec = {
@@ -106,7 +107,6 @@ def log_event(action: str, meta: Dict[str, Any] | None = None, level: str = "INF
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
         pass
-
 def read_audit_df() -> pd.DataFrame:
     if not AUDIT_LOG.exists():
         return pd.DataFrame(columns=["ts","user","level","action","meta"])
@@ -132,21 +132,20 @@ def read_audit_df() -> pd.DataFrame:
         df = df.sort_values("ts", ascending=False, kind="stable").reset_index(drop=True)
     return df
 
+# ----- prefs util -----
 def _save_all_prefs(data: Dict[str, Any]) -> None:
     tmp = PREFS_DIR / "prefs.tmp"
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(PREFS_PATH)
-
 def _load_all_prefs() -> Dict[str, Any]:
     try:
         if PREFS_PATH.exists(): return json.loads(PREFS_PATH.read_text(encoding="utf-8")) or {}
     except Exception: pass
     return {}
-
 def load_user_prefs(key: str = "default") -> Dict[str, Any]: return _load_all_prefs().get(key, {})
-
 def save_user_prefs(prefs: Dict[str, Any], key: str = "default") -> None:
     data = _load_all_prefs(); data[key] = prefs; _save_all_prefs(data)
 
+# ===== Estado =====
 s = st.session_state
 s.setdefault("logged_in", False); s.setdefault("username", None); s.setdefault("is_admin", False)
 s.setdefault("must_change", False)
@@ -156,10 +155,12 @@ s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
 
+# Recupera usuário após refresh se necessário
 if s.get("logged_in") and not s.get("username"):
     _p = load_user_prefs()
     if _p.get("last_user"): s["username"] = _p["last_user"]
 
+# --- preferências via URL ---
 def _apply_query_prefs():
     try:
         qp = st.query_params
@@ -174,10 +175,13 @@ def _apply_query_prefs():
         if qr: s["qr_url"] = qr
     except Exception: pass
 _apply_query_prefs()
-
-s.setdefault("wide_layout", True)
+# Largura dinâmica da área útil
+s.setdefault("wide_layout", True)  # deixe True para começar largo
 MAX_W = 1800 if s.get("wide_layout") else 1300
 
+# =============================================================================
+# Estilo e tema
+# =============================================================================
 BRAND_MAP = {
     "Laranja": ("#f97316", "#ea580c", "#c2410c"),
     "Azul":    ("#3b82f6", "#2563eb", "#1d4ed8"),
@@ -238,12 +242,15 @@ else:
     """
 st.markdown(css, unsafe_allow_html=True)
 
+# -------- Cabeçalho ----------
 def _render_header():
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='app-header'><span class='brand-title' style='font-weight:800; font-size:22px; color: var(--text)'>🏗️ Habisolute IA</span></div>", unsafe_allow_html=True)
     st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
 
-# ====== autenticação (igual ao seu) ======
+# =============================================================================
+# Autenticação & gerenciamento de usuários
+# =============================================================================
 def _hash_password(pw: str) -> str: return hashlib.sha256(("habisolute|" + pw).encode("utf-8")).hexdigest()
 def _verify_password(pw: str, hashed: str) -> bool:
     try: return _hash_password(pw) == hashed
@@ -252,7 +259,6 @@ def _verify_password(pw: str, hashed: str) -> bool:
 def _save_users(data: Dict[str, Any]) -> None:
     tmp = USERS_DB.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"); tmp.replace(USERS_DB)
-
 def _load_users() -> Dict[str, Any]:
     def _bootstrap_admin(db: Dict[str, Any]) -> Dict[str, Any]:
         db.setdefault("users", {})
@@ -351,50 +357,264 @@ def _force_change_password_ui(username: str):
             st.success("Senha atualizada! Redirecionando…"); s["must_change"]=False; st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
+# =============================================================================
+# Tela de login
+# =============================================================================
 if not s["logged_in"]:
     _auth_login_ui()
     st.stop()
 
+# Troca obrigatória de senha
 if s.get("must_change", False):
     _force_change_password_ui(s["username"])
     st.stop()
 
+# >>> Cabeçalho
 _render_header()
+
 # =============================================================================
-# Sidebar (opções do relatório)
+# Toolbar de preferências
+# =============================================================================
+st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
+c1,c2,c3,c4 = st.columns([1.1,1.1,2.5,1.1])
+with c1:
+    s["theme_mode"] = st.radio("Tema", ["Escuro moderno","Claro corporativo"],
+                              index=0 if s.get("theme_mode")=="Escuro moderno" else 1, horizontal=True)
+with c2:
+    s["brand"] = st.selectbox("🎨 Cor da marca", ["Laranja","Azul","Verde","Roxo"],
+                              index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja")))
+with c3:
+    s["qr_url"] = st.text_input("URL do resumo (QR opcional na capa do PDF)", value=s.get("qr_url",""),
+                                placeholder="https://exemplo.com/resumo")
+with c4:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+            save_user_prefs({
+                "theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"],
+                "last_user": s.get("username") or load_user_prefs().get("last_user","")
+            })
+            try:
+                qp = st.query_params; qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
+            except Exception: pass
+            st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
+    with col_b:
+        if st.button("Sair", use_container_width=True, key="k_logout"):
+            log_event("logout", {"username": s.get("username")})
+            s["logged_in"] = False; st.rerun()
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ---- Boas-vindas do usuário
+nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
+papel = "Admin" if s.get("is_admin") else "Usuário"
+st.markdown(
+    f"""
+    <div style="margin:10px 0 4px 0; padding:10px 12px; border-radius:12px;
+                border:1px solid var(--line); background:rgba(148,163,184,.10); font-weight:600;">
+      👋 Olá, <b>{nome_login}</b> — <span style="opacity:.85">{papel}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# =============================================================================
+# Painel de Usuários (somente admin) + Auditoria
+# =============================================================================
+CAN_ADMIN  = bool(s.get("is_admin", False))
+CAN_EXPORT = CAN_ADMIN  # somente admin pode exportar
+
+# --- DataFrame vazio "seguro" para caso algum trecho escape fora do Admin
+def _empty_audit_df():
+    return pd.DataFrame(columns=["ts", "user", "level", "action", "meta"])
+
+df_log = _empty_audit_df()  # evita NameError para não-admin
+
+if CAN_ADMIN:
+    with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
+        st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
+        tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
+
+        # ===== Aba 1 — Usuários
+        with tab1:
+            users = user_list()
+            if not users:
+                st.info("Nenhum usuário cadastrado.")
+            else:
+                for u in users:
+                    colA,colB,colC,colD,colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA.write(f"**{u['username']}**")
+                    colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
+                    colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
+                    colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
+                    with colE:
+                        if u["username"] != "admin":
+                            if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["active"] = not rec.get("active", True)
+                                user_set(u["username"], rec)
+                                st.rerun()
+                            if st.button("Redefinir", key=f"rst_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["password"] = _hash_password("1234")
+                                rec["must_change"] = True
+                                user_set(u["username"], rec)
+                                st.rerun()
+                            if st.button("Excluir", key=f"del_{u['username']}"):
+                                user_delete(u["username"])
+                                st.rerun()
+
+        # ===== Aba 2 — Novo usuário
+        with tab2:
+            st.markdown("### Novo usuário")
+            new_u = st.text_input("Usuário (login)")
+            is_ad = st.checkbox("Admin?", value=False)
+            if st.button("Criar usuário", key="btn_new_user"):
+                if not new_u.strip():
+                    st.error("Informe o nome do usuário.")
+                elif user_exists(new_u.strip()):
+                    st.error("Usuário já existe.")
+                else:
+                    user_set(new_u.strip(), {
+                        "password": _hash_password("1234"),
+                        "is_admin": bool(is_ad),
+                        "active": True,
+                        "must_change": True,
+                        "created_at": datetime.now().isoformat(timespec="seconds")
+                    })
+                    log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
+                    st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
+                    st.rerun()
+
+        # ===== Aba 3 — Auditoria (apenas admin)
+        with tab3:
+            st.markdown("### Auditoria do Sistema")
+
+            df_log = read_audit_df()  # só carrega real dentro do Admin
+
+            if df_log.empty:
+                st.info("Sem eventos de auditoria ainda.")
+            else:
+                try:
+                    _d = pd.to_datetime(df_log["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
+                    hoje = datetime.utcnow().date()
+                    tot_ev = int(len(df_log))
+                    tot_usr = int(df_log["user"].nunique())
+                    tot_act = int(df_log["action"].nunique())
+                    tot_hoje = int((_d == hoje).sum())
+                except Exception:
+                    tot_ev = len(df_log); tot_usr = 0; tot_act = 0; tot_hoje = 0
+
+                st.markdown(
+                    f"""
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px 0">
+                      <div class="h-card"><div class="h-kpi-label">Eventos</div><div class="h-kpi">{tot_ev}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Por usuário</div><div class="h-kpi">{tot_usr}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Por ação</div><div class="h-kpi">{tot_act}</div></div>
+                      <div class="h-card"><div class="h-kpi-label">Hoje</div><div class="h-kpi">{tot_hoje}</div></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                c1, c2, c3, c4 = st.columns([1.4, 1.2, 1.6, 1.0])
+                with c1:
+                    users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
+                    f_user = st.selectbox("Usuário", users_opt, index=0)
+                with c2:
+                    f_action = st.text_input("Ação contém...", "")
+                with c3:
+                    lv_opts = ["(Todos)", "INFO", "WARN", "ERROR"]
+                    f_level = st.selectbox("Nível", lv_opts, index=0)
+                with c4:
+                    page_size = st.selectbox("Linhas", [100, 300, 1000], index=1)
+
+                d1, d2 = st.columns(2)
+                with d1:
+                    dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
+                with d2:
+                    dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+
+                logv = df_log.copy()
+
+                if f_user and f_user != "(Todos)":
+                    logv = logv[logv["user"] == f_user]
+                if f_action:
+                    logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
+                if f_level and f_level != "(Todos)":
+                    logv = logv[logv["level"] == f_level]
+
+                if "ts" in logv.columns:
+                    logv["_d"] = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
+                    if dt_min:
+                        logv = logv[logv["_d"].apply(lambda d: (d is not None) and (d >= dt_min))]
+                    if dt_max:
+                        logv = logv[logv["_d"].apply(lambda d: (d is not None) and (d <= dt_max))]
+                    logv = logv.drop(columns=["_d"], errors="ignore")
+
+                st.caption(f"{len(logv)} evento(s) filtrados)")
+
+                total = len(logv)
+                if total > 0:
+                    pcols = st.columns([1, 3, 1])
+                    with pcols[0]:
+                        page = st.number_input("Página", min_value=1, max_value=max(1, (total - 1) // page_size + 1), value=1, step=1)
+                    start = (int(page) - 1) * int(page_size)
+                    end = start + int(page_size)
+                    view = logv.iloc[start:end].copy()
+                else:
+                    view = logv.copy()
+
+                st.dataframe(view, use_container_width=True)
+
+                try:
+                    dts = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dropna()
+                    if not dts.empty:
+                        pmin = dts.min().strftime("%Y-%m-%d")
+                        pmax = dts.max().strftime("%Y-%m-%d")
+                        periodo = f"{pmin}_{pmax}" if pmin != pmax else pmin
+                    else:
+                        periodo = datetime.utcnow().strftime("%Y-%m-%d")
+                except Exception:
+                    periodo = datetime.utcnow().strftime("%Y-%m-%d")
+                usuario_lbl = s.get("username") or "anon"
+
+                cdl1, cdl2 = st.columns([1, 1])
+                with cdl1:
+                    st.download_button(
+                        "⬇️ CSV (filtro aplicado)",
+                        data=logv.to_csv(index=False).encode("utf-8"),
+                        file_name=f"audit_{periodo}_{usuario_lbl}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                with cdl2:
+                    st.download_button(
+                        "⬇️ JSONL (completo)",
+                        data=AUDIT_LOG.read_bytes() if AUDIT_LOG.exists() else b"",
+                        file_name=f"audit_full_{periodo}.jsonl",
+                        mime="application/json",
+                        use_container_width=True,
+                    )
+else:
+    pass
+
+# =============================================================================
+# >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
+# =============================================================================
+
+# --- GUARDS ---
+TOL_MP    = float(s.get("TOL_MP", 1.0))
+BATCH_MODE = bool(s.get("BATCH_MODE", False))
+
+# =============================================================================
+# Sidebar (opções de relatório) — já foi feita acima (mantida)
 # =============================================================================
 with st.sidebar:
-    st.markdown("### ⚙️ Opções do relatório")
-
-    s["wide_layout"] = st.toggle(
-        "Tela larga (1800px)",
-        value=bool(s.get("wide_layout", True)),
-        key="opt_wide_layout",
-    )
-
-    s["BATCH_MODE"] = st.toggle(
-        "Modo Lote (vários PDFs)",
-        value=bool(s["BATCH_MODE"]),
-        key="opt_batch_mode",
-    )
-
-    if s["BATCH_MODE"] != s["_prev_batch"]:
-        s["_prev_batch"] = s["BATCH_MODE"]
-        s["uploader_key"] += 1
-
-    s["TOL_MP"] = st.slider(
-        "Tolerância Real × Estimado (MPa)",
-        0.0, 5.0, float(s["TOL_MP"]), 0.1,
-        key="opt_tol_mpa",
-    )
-
-    st.markdown("---")
-    nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
-    papel = "Admin" if s.get("is_admin") else "Usuário"
-    st.caption(f"Usuário: **{nome_login}** ({papel})")
+    pass  # já montamos lá em cima
 
 # =============================================================================
-# Funções utilitárias de parsing (iguais às suas)
+# Utilidades de parsing / limpeza (iguais às do seu código)
 # =============================================================================
 def _limpa_horas(txt: str) -> str:
     txt = re.sub(r"\b\d{1,2}:\d{2}\b", "", txt)
@@ -697,7 +917,7 @@ def extrair_dados_certificado(uploaded_file):
     return df, obra, data_relatorio, fck_projeto
 
 # =============================================================================
-# KPIs e visão geral
+# KPIs e utilidades gráficas
 # =============================================================================
 def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     def _pct_hit(age):
@@ -769,12 +989,14 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
     </script>
     """
     st.components.v1.html(html, height=74)
+
 # =============================================================================
 # Cabeçalho e uploader
 # =============================================================================
 st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
-_uploader_key = f"uploader_{'multi' if s['BATCH_MODE'] else 'single'}_{s['uploader_key']}"
-if s["BATCH_MODE"]:
+
+_uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
+if BATCH_MODE:
     uploaded_files = st.file_uploader("📁 PDF(s)", type=["pdf"], accept_multiple_files=True,
                                       key=_uploader_key, help="Carregue 1 PDF (ou vários em modo lote).")
 else:
@@ -782,7 +1004,7 @@ else:
                            key=_uploader_key, help="Carregue 1 PDF (ou vários em modo lote).")
     uploaded_files = [up1] if up1 is not None else []
 
-# Helpers de nome de arquivo
+# ===== Helpers de nome de arquivo =====
 def _slugify_for_filename(text: str) -> str:
     import unicodedata, re as _re
     t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
@@ -912,10 +1134,49 @@ if uploaded_files:
     else:
         df = pd.concat(frames, ignore_index=True)
 
-        # Filtros
+        # ===== Validações
+        if not df.empty:
+            nf_rel = df.dropna(subset=["Nota Fiscal","Relatório"]).astype({"Relatório": str})
+            nf_multi = (nf_rel.groupby(["Nota Fiscal"])["Relatório"]
+                        .nunique().reset_index(name="n_rel"))
+            viol_nf = nf_multi[nf_multi["n_rel"] > 1]["Nota Fiscal"].tolist()
+            if viol_nf:
+                detalhes = (nf_rel[nf_rel["Nota Fiscal"].isin(viol_nf)]
+                            .groupby(["Nota Fiscal","Relatório"])["CP"].nunique().reset_index()
+                           )
+                st.error("🚨 **Nota Fiscal repetida em relatórios diferentes!**")
+                st.dataframe(detalhes.rename(columns={"CP":"#CPs distintos"}), use_container_width=True)
+                try:
+                    log_event("violation_nf_duplicate", {
+                        "nf_list": list(map(str, viol_nf)),
+                        "details": detalhes.to_dict(orient="records")
+                    }, level="WARN")
+                except Exception:
+                    pass
+
+            cp_rel = df.dropna(subset=["CP","Relatório"]).astype({"Relatório": str})
+            cp_multi = (cp_rel.groupby(["CP"])["Relatório"]
+                        .nunique().reset_index(name="n_rel"))
+            viol_cp = cp_multi[cp_multi["n_rel"] > 1]["CP"].tolist()
+            if viol_cp:
+                detalhes_cp = (cp_rel[cp_rel["CP"].isin(viol_cp)]
+                               .groupby(["CP","Relatório"])["Idade (dias)"].count().reset_index(name="#leituras"))
+                st.error("🚨 **CP repetido em relatórios diferentes!**")
+                st.dataframe(detalhes_cp, use_container_width=True)
+                try:
+                    log_event("violation_cp_duplicate", {
+                        "cp_list": list(map(str, viol_cp)),
+                        "details": detalhes_cp.to_dict(orient="records")
+                    }, level="WARN")
+                except Exception:
+                    pass
+
+        # ---------------- Filtros
         st.markdown("#### Filtros")
-        rels = sorted(df["Relatório"].astype(str).unique())
-        sel_rels = st.multiselect("Relatórios", rels, default=rels)
+        fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
+        with fc1:
+            rels = sorted(df["Relatório"].astype(str).unique())
+            sel_rels = st.multiselect("Relatórios", rels, default=rels)
 
         def to_date(d):
             try: return datetime.strptime(str(d), "%d/%m/%Y").date()
@@ -923,15 +1184,17 @@ if uploaded_files:
 
         df["_DataObj"] = df["Data Certificado"].apply(to_date)
         valid_dates = [d for d in df["_DataObj"] if d is not None]
-        if valid_dates:
-            dmin, dmax = min(valid_dates), max(valid_dates)
-            dini, dfim = st.date_input("Intervalo de data do certificado", (dmin, dmax))
-        else:
-            dini, dfim = None, None
-
-        if st.button("🔄 Limpar filtros / Novo upload"):
-            s["uploader_key"] += 1
-            st.rerun()
+        with fc2:
+            if valid_dates:
+                dmin, dmax = min(valid_dates), max(valid_dates)
+                dini, dfim = st.date_input("Intervalo de data do certificado", (dmin, dmax))
+            else:
+                dini, dfim = None, None
+        with fc3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🔄 Limpar filtros / Novo upload", use_container_width=True):
+                s["uploader_key"] += 1
+                st.rerun()
 
         mask = df["Relatório"].astype(str).isin(sel_rels)
         if valid_dates and dini and dfim:
@@ -944,40 +1207,54 @@ if uploaded_files:
         multiple_fck_detected = len(fck_labels) > 1
         if multiple_fck_detected:
             st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
-            selected_fck_label = st.selectbox("fck para análise", fck_labels,
-                                              format_func=lambda lbl: lbl if lbl != "—" else "Não informado")
+            selected_fck_label = st.selectbox(
+                "fck para análise", fck_labels,
+                format_func=lambda lbl: lbl if lbl != "—" else "Não informado"
+            )
             df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
         else:
             selected_fck_label = fck_labels[0] if fck_labels else "—"
-        df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
 
         if df_view.empty:
             st.info("Nenhum dado disponível para o fck selecionado.")
             st.stop()
 
-        # Estatísticas por CP/Idade
+        df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
+
+        # ===== Estatística por CP/Idade
         stats_cp_idade = (
             df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
                   .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
         )
 
-        # VISÃO GERAL
-        # (reusa sua função anterior se quiser; aqui simplificado)
+        # ===== VISÃO GERAL (resumida)
+        st.markdown("#### Visão Geral")
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-        fck_active = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+        fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+        KPIs = compute_exec_kpis(df_view, fck_val)
+        k1,k2,k3,k4,k5,k6 = st.columns(6)
+        with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{_safe_mode(df_view["Obra"]) if "Obra" in df_view.columns else "—"}</div></div>', unsafe_allow_html=True)
+        with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto</div><div class="h-kpi">{_format_float_label(fck_val)}</div></div>', unsafe_allow_html=True)
+        with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
+        with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{"--" if KPIs["pct28"] is None else f"{KPIs["pct28"]:.0f}%"}</div></div>', unsafe_allow_html=True)
+        with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{"--" if KPIs["pct63"] is None else f"{KPIs["pct63"]:.0f}%"}</div></div>', unsafe_allow_html=True)
+        with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div><div class="h-kpi">{df_view["Relatório"].nunique()}</div></div>', unsafe_allow_html=True)
+        st.markdown(f"<div class='pill' style='margin:8px 0 12px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
 
-        st.markdown("#### ✅ Verificação do fck de Projeto")
-        # médias por idade (7/28/63)
+        # ===== Verificação do fck (Resumo + Detalhada)
+        st.write("#### ✅ Verificação do fck de Projeto")
         mean_by_age = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
         m7  = mean_by_age.get(7,  float("nan"))
         m28 = mean_by_age.get(28, float("nan"))
         m63 = mean_by_age.get(63, float("nan"))
+        fck_series_all2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+        fck_active2 = float(fck_series_all2.mode().iloc[0]) if not fck_series_all2.empty else None
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [m7, m28, m63],
             "fck Projeto (MPa)": [float("nan"),
-                                  (fck_active if fck_active is not None else float("nan")),
-                                  (fck_active if fck_active is not None else float("nan"))],
+                                  (fck_active2 if fck_active2 is not None else float("nan")),
+                                  (fck_active2 if fck_active2 is not None else float("nan"))],
         })
         resumo_status = []
         for idade, media, fckp in verif_fck_df.itertuples(index=False):
@@ -991,10 +1268,16 @@ if uploaded_files:
         verif_fck_df["Status"] = resumo_status
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (7/28/63) — aqui nasce o pv_cp_status ====
-        st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
+        # ===== Verificação detalhada por CP (7/28/63 dias) — TELA com fck em amarelo =====
         tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
         pv_cp_status = None
+        # badge amarelo do fck na tela
+        if fck_active2 is not None and not pd.isna(fck_active2):
+            badge_html = f"<span style='background:#facc15; color:#000; padding:3px 10px; border-radius:999px; font-size:12px; margin-left:6px; display:inline-block;'>fck de projeto: {fck_active2:.1f} MPa</span>"
+        else:
+            badge_html = ""
+        st.markdown(f"#### ✅ Verificação detalhada por CP (7/28/63 dias) {badge_html}", unsafe_allow_html=True)
+
         if tmp_v.empty:
             st.info("Sem CPs de 7/28/63 dias no filtro atual.")
         else:
@@ -1002,6 +1285,7 @@ if uploaded_files:
             tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
 
             pv_multi = tmp_v.pivot_table(index="CP", columns=["Idade (dias)", "rep"], values="MPa", aggfunc="first").sort_index(axis=1)
+
             for age in [7, 28, 63]:
                 if age not in pv_multi.columns.get_level_values(0):
                     pv_multi[(age, 1)] = pd.NA
@@ -1024,9 +1308,6 @@ if uploaded_files:
             except Exception:
                 pv["__cp_sort__"] = range(len(pv))
             pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
-
-            fck_series_focus2 = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-            fck_active2 = float(fck_series_focus2.mode().iloc[0]) if not fck_series_focus2.empty else None
 
             def _status_text_media(media_idade, age, fckp):
                 if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp): return "⚪ Sem dados"
@@ -1081,21 +1362,24 @@ if uploaded_files:
             cols_63 = [c for c in pv.columns if c.startswith("63d")]
 
             ordered_cols = (
-                cols_cp + cols_7 + (["Status 7d"] if "Status 7d" in pv.columns else []) +
-                cols_28 + (["Status 28d"] if "Status 28d" in pv.columns else []) +
-                cols_63 + (["Status 63d"] if "Status 63d" in pv.columns else []) +
+                cols_cp + cols_7 + (["7 dias — Status"] if "Status 7d" in pv.columns else []) +
+                cols_28 + (["28 dias — Status"] if "Status 28d" in pv.columns else []) +
+                cols_63 + (["63 dias — Status"] if "Status 63d" in pv.columns else []) +
                 ["Alerta Pares (Δ>2 MPa)"]
             )
-            pv = pv[ordered_cols].rename(columns={
-                "Status 7d":"7 dias — Status",
-                "Status 28d":"28 dias — Status",
-                "Status 63d":"63 dias — Status"
-            })
+            # renomear colunas de status
+            rename_map = {}
+            if "Status 7d" in pv.columns: rename_map["Status 7d"] = "7 dias — Status"
+            if "Status 28d" in pv.columns: rename_map["Status 28d"] = "28 dias — Status"
+            if "Status 63d" in pv.columns: rename_map["Status 63d"] = "63 dias — Status"
+            pv = pv.rename(columns=rename_map)
+            pv = pv[[c for c in ordered_cols if c in pv.columns]]
+
             pv_cp_status = pv.copy()
             st.dataframe(pv_cp_status, use_container_width=True)
 
         # =============================================================================
-        # PDF — com condição nova no título da verificação detalhada
+        # PDF — com fck em amarelo na seção detalhada
         # =============================================================================
         def gerar_pdf(df: pd.DataFrame,
                       stats: pd.DataFrame,
@@ -1106,7 +1390,7 @@ if uploaded_files:
                       fck_label: str,
                       qr_url: str) -> bytes:
             from reportlab.lib import colors as _C
-            import io, tempfile
+            import io
             use_landscape = (len(df.columns) >= 8)
             pagesize = landscape(A4) if use_landscape else A4
             buffer = io.BytesIO()
@@ -1160,7 +1444,7 @@ if uploaded_files:
                 ]))
                 story.append(tv); story.append(Spacer(1, 8))
 
-            # ===== AQUI ENTRA SUA CONDIÇÃO NOVA =====
+            # ===== CONDIÇÃO NOVA NO PDF =====
             if pv_cp_status is not None and not pv_cp_status.empty:
                 story.append(PageBreak())
 
@@ -1199,8 +1483,8 @@ if uploaded_files:
                 i_s63   = _idx("63 dias — Status")
                 i_alert = _idx("Alerta Pares (Δ>2 MPa)")
 
-                # pintar status
                 data_rows = tab[1:]
+                ts_extra = []
                 def _status_bg(text: str):
                     t = str(text or "").lower()
                     if "informativo" in t: return _C.HexColor("#facc15")
@@ -1208,7 +1492,6 @@ if uploaded_files:
                     if "atingiu" in t: return _C.HexColor("#16a34a")
                     if "sem dados" in t: return _C.HexColor("#e5e7eb")
                     return None
-                ts_extra = []
                 for r, row in enumerate(data_rows, start=1):
                     for c in [i_s7, i_s28, i_s63]:
                         if c is None or c < 0: continue
@@ -1227,7 +1510,6 @@ if uploaded_files:
 
                 story.append(t_det); story.append(Spacer(1, 6))
 
-            # ID do documento
             story.append(Spacer(1, 10))
             story.append(Paragraph(f"<b>ID do documento:</b> HAB-{datetime.now().strftime('%Y%m%d-%H%M%S')}", styles["Normal"]))
 
@@ -1236,34 +1518,77 @@ if uploaded_files:
             buffer.close()
             return pdf
 
-        # ===== gerar e baixar =====
-        if s.get("is_admin", False):
-            datas_validas = [d for d in df["_DataObj"].dropna().tolist()] if "_DataObj" in df.columns else []
-            periodo_label = "—"
-            if datas_validas:
-                di, df_ = min(datas_validas), max(datas_validas)
-                periodo_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
-            pdf_bytes = gerar_pdf(
-                df_view,
-                stats_cp_idade,
-                verif_fck_df,
-                pv_cp_status,
-                str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
-                periodo_label,
-                _format_float_label(fck_active),
-                s.get("qr_url","")
-            )
-            file_name_pdf = build_pdf_filename(df_view, uploaded_files)
-            st.download_button("📄 Baixar Relatório (PDF)", data=pdf_bytes,
-                               file_name=file_name_pdf, mime="application/pdf", use_container_width=True)
-            try: render_print_block(pdf_bytes, None, brand, brand600)
-            except Exception: pass
+        # ===== PDF / Exportações (somente admin)
+        has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
+        if has_df and CAN_EXPORT:
+            try:
+                datas_validas = [d for d in df["_DataObj"].dropna().tolist()] if "_DataObj" in df.columns else []
+                if datas_validas:
+                    di, df_ = min(datas_validas), max(datas_validas)
+                    periodo_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
+                else:
+                    periodo_label = "—"
 
+                pdf_bytes = gerar_pdf(
+                    df_view, stats_cp_idade,
+                    verif_fck_df,
+                    pv_cp_status,
+                    str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                    periodo_label,
+                    _format_float_label(fck_val),
+                    s.get("qr_url","")
+                )
+
+                file_name_pdf = build_pdf_filename(df_view, uploaded_files)
+
+                st.download_button(
+                    "📄 Baixar Relatório (PDF)",
+                    data=pdf_bytes,
+                    file_name=file_name_pdf,
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                log_event("export_pdf", {
+                    "rows": int(df_view.shape[0]),
+                    "relatorios": int(df_view["Relatório"].nunique()),
+                    "obra": str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                    "file_name": file_name_pdf,
+                })
+            except Exception as e:
+                st.error(f"Falha ao gerar PDF: {e}")
+
+            if 'pdf_bytes' in locals() and pdf_bytes and CAN_EXPORT:
+                try: render_print_block(pdf_bytes, None, brand, brand600)
+                except Exception: pass
+
+            # ====== EXCEL/ZIP (apenas admin) ======
+            try:
+                stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+                    df_view.to_excel(writer, sheet_name="Individuais", index=False)
+                    stats_cp_idade.to_excel(writer, sheet_name="Médias_DP", index=False)
+                    comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
+                    comp_df.to_excel(writer, sheet_name="Comparação", index=False)
+                st.download_button("📊 Baixar Excel (XLSX)", data=excel_buffer.getvalue(),
+                                   file_name="Relatorio_Graficos.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   use_container_width=True)
+                log_event("export_excel", { "rows": int(df_view.shape[0]) })
+            except Exception:
+                pass
 else:
     st.info("Envie um PDF para visualizar os gráficos, relatório e exportações.")
 
-# Rodapé
+# 5) Ler Novo(s) Certificado(s)
+if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
+    s["uploader_key"] += 1
+    st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("---")
+
+# ===== Rodapé: Normas =====
 st.subheader("📘 Normas de Referência")
 st.markdown("""
 - **NBR 5738** – Concreto: Procedimento para moldagem e cura de corpos de prova

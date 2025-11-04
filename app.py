@@ -1556,9 +1556,9 @@ if uploaded_files:
         st.dataframe(verif_fck_df, use_container_width=True)
 
         # ===== Verificação detalhada por CP (pares Δ>2MPa)
-        st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
-        # --- cabeçalho estilizado igual ao print ---
-# pega o fck mais frequente do filtro atual
+st.markdown("#### ✅ Verificação detalhada por CP (7/28/63 dias)")
+
+# --- cabeçalho estilizado igual ao print ---
 _fcks_pdf = pd.to_numeric(df_view.get("Fck Projeto"), errors="coerce").dropna()
 if not _fcks_pdf.empty:
     _fck_label_bar = f"{float(_fcks_pdf.mode().iloc[0]):.1f} MPa"
@@ -1580,6 +1580,15 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+pv_cp_status = None   # ⬅️ ESTA linha tem que ficar alinhada à esquerda assim
+tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
+if tmp_v.empty:
+    st.info("Sem CPs de 7/28/63 dias no filtro atual.")
+else:
+    # aqui continua exatamente o código que você já tinha...
+    ...
+    st.dataframe(pv_cp_status, use_container_width=True)
         pv_cp_status = None
         tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
         if tmp_v.empty:
@@ -2042,4 +2051,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

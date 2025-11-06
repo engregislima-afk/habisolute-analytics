@@ -1460,8 +1460,8 @@ if uploaded_files:
 
                 def _status_row(delta, tol):
                     if pd.isna(delta): return "⚪ Sem dados"
-                    if abs(delta) <= tol: return "✅ Dentro dos padrões"
-                    return "🔵 Acima do padrão" if delta > 0 else "🔴 Abaixo do padrão"
+                    if abs(delta) <= tol: return "✅ Dentro"
+                    return "🔵 Acima" if delta > 0 else "🔴 Abaixo"
 
                 _TOL = float(s["TOL_MP"])
                 cond_df = pd.DataFrame({
@@ -1541,7 +1541,7 @@ if uploaded_files:
             resumo_status = []
             for idade, media, fckp in verif_fck_df2.itertuples(index=False):
                 if idade == 7:
-                    resumo_status.append("🟡 Informativo (7d)")
+                    resumo_status.append("🟡 Analisando (7d)")
                 else:
                     if pd.isna(media) or pd.isna(fckp):
                         resumo_status.append("⚪ Sem dados")
@@ -1584,7 +1584,7 @@ if uploaded_files:
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
                     if age == 7:
-                        return "🟡 Informativo (7d)"
+                        return "🟡 Analisando (7d)"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
                 fck_active2 = fck_active2
@@ -1676,7 +1676,7 @@ if uploaded_files:
                 # FUNÇÕES auxiliares
                 def _status_bg(text: str):
                     t = str(text or "").lower()
-                    if "informativo" in t: return _C.HexColor("#facc15")
+                    if "analisando" in t: return _C.HexColor("#facc15")
                     if ("não atingiu" in t) or ("nao atingiu" in t) or ("abaixo" in t): return _C.HexColor("#ef4444")
                     if ("atingiu" in t) or ("dentro" in t): return _C.HexColor("#16a34a")
                     if "acima" in t: return _C.HexColor("#3b82f6")
@@ -1948,4 +1948,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

@@ -1941,8 +1941,8 @@ if uploaded_files:
                 if pd.isna(delta):
                     return "⚪ Sem dados"
                 if abs(delta) <= tol:
-                    return "✅ Dentro dos padrões"
-                return "🔵 Acima do padrão" if delta > 0 else "🔴 Abaixo do padrão"
+                    return "✅ Dentro"
+                return "🔵 Acima" if delta > 0 else "🔴 Abaixo"
 
             _TOL = float(TOL_MP)
             cond_df = pd.DataFrame(
@@ -2679,3 +2679,4 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+

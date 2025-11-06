@@ -848,42 +848,107 @@ if uploaded_files:
         else:
             st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-        # ===== Gráfico 4 — Pareamento ponto-a-ponto (mantido no SISTEMA)
+                # ===== Gráfico 4 — Pareamento ponto-a-ponto
         st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
         fig4, pareamento_df = None, None
-        if 'est_df' in locals() and est_df is not None and not est_df.empty:
+        if est_df is not None and not est_df.empty:
+            # mapa idade -> estimado
             est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
             pares = []
-            for cp, sub in df_plot.groupby("CP"):
-                for _, r in sub.iterrows():
-                    idade = int(r["Idade (dias)"])
-                    if idade in est_map:
-                        real = float(r["Resistência (MPa)"]); est  = float(est_map[idade]); delta = real - est
-                        _TOL = float(TOL_MP)
-                        status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
-                        pares.append([str(cp), idade, real, est, delta, status])
-            pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
+
             fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+
+            # para cada CP vamos ligar os pontos em ordem de idade
             for cp, sub in df_plot.groupby("CP"):
                 sub = sub.sort_values("Idade (dias)")
-                x = sub["Idade (dias)"].tolist(); y_real = sub["Resistência (MPa)"].tolist()
-                x_est = [i for i in x if i in est_map]; y_est = [est_map[i] for i in x_est]
-                ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
-                if x_est:
-                    ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
-                    for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
-                        ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
+                idades_cp = sub["Idade (dias)"].tolist()
+                reais_cp  = sub["Resistência (MPa)"].tolist()
+                real_map_cp = dict(zip(idades_cp, reais_cp))
+
+                # linha REAL (igual ao gráfico 1: linha contínua com marcadores)
+                ax4.plot(
+                    idades_cp,
+                    reais_cp,
+                    marker="o",
+                    linewidth=1.6,
+                    label=f"CP {cp} — Real"
+                )
+
+                # linha ESTIMADA para as mesmas idades em que existe estimativa
+                idades_est_cp = []
+                estimados_cp  = []
+                for idade in idades_cp:
+                    if idade in est_map:
+                        idades_est_cp.append(idade)
+                        estimados_cp.append(est_map[idade])
+                        real_val = real_map_cp.get(idade)
+                        delta = float(real_val) - float(est_map[idade])
+                        status = (
+                            "✅ OK" if abs(delta) <= float(TOL_MP)
+                            else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                        )
+                        pares.append([
+                            str(cp),
+                            int(idade),
+                            float(real_val),
+                            float(est_map[idade]),
+                            float(delta),
+                            status,
+                        ])
+
+                # aqui a gente também LIGA os estimados (linha tracejada) — isso é o que você pediu
+                if idades_est_cp:
+                    ax4.plot(
+                        idades_est_cp,
+                        estimados_cp,
+                        marker="^",
+                        linestyle="--",
+                        linewidth=1.6,
+                        label=f"CP {cp} — Est."
+                    )
+
+                    # desenha as “perninhas” verticais real x estimado
+                    for idade in idades_est_cp:
+                        yr = real_map_cp.get(idade)
+                        ye = est_map.get(idade)
+                        if yr is not None and ye is not None:
+                            ax4.vlines(idade, min(yr, ye), max(yr, ye),
+                                       linestyles=":", linewidth=1)
+
+            # fck de projeto
             if fck_active is not None:
-                ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
-            ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
+                ax4.axhline(
+                    fck_active,
+                    linestyle=":",
+                    linewidth=2,
+                    color="#ef4444",
+                    label=f"fck projeto ({fck_active:.1f} MPa)"
+                )
+
+            ax4.set_xlabel("Idade (dias)")
+            ax4.set_ylabel("Resistência (MPa)")
             ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
-            place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
+            place_right_legend(ax4)
+            ax4.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig4)
-            if CAN_EXPORT:
-                _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
-                st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
+
+            # tabela de pareamento
+            pareamento_df = pd.DataFrame(
+                pares,
+                columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
+            ).sort_values(["CP","Idade (dias)"])
             st.write("#### 📑 Pareamento ponto-a-ponto")
             st.dataframe(pareamento_df, use_container_width=True)
+
+            if CAN_EXPORT:
+                _buf4 = io.BytesIO()
+                fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                st.download_button(
+                    "🖼️ Baixar Gráfico 4 (PNG)",
+                    data=_buf4.getvalue(),
+                    file_name="grafico4_pareamento.png",
+                    mime="image/png"
+                )
         else:
             st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
@@ -1413,3 +1478,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

@@ -2077,7 +2077,7 @@ if uploaded_files:
         resumo_status = []
         for idade, media, fckp in verif_fck_df.itertuples(index=False):
             if idade == 7:
-                resumo_status.append("🟡 Informativo (7d)")
+                resumo_status.append("🟡 Em análise (7d)")
             else:
                 if pd.isna(media) or pd.isna(fckp):
                     resumo_status.append("⚪ Sem dados")
@@ -2152,7 +2152,7 @@ if uploaded_files:
                 if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                     return "⚪ Sem dados"
                 if age == 7:
-                    return "🟡 Informativo (7d)"
+                    return "🟡 Em análise (7d)"
                 return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
             media_7 = pv_multi[7].mean(axis=1) if 7 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
@@ -2679,4 +2679,5 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 

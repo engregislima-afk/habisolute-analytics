@@ -1572,6 +1572,55 @@ if uploaded_files:
             st.dataframe(cond_df, use_container_width=True)
         else:
             st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
+                    # ===== Gráfico 4 — Dispersão Real × Estimado por idade
+        st.write("##### Gráfico 4 — Dispersão Real × Estimado por idade")
+        if est_df is not None:
+            fig4, ax4 = plt.subplots(figsize=(9.0, 4.6))
+
+            # pontos reais
+            for idade, sub in df_plot.groupby("Idade (dias)"):
+                ax4.scatter(
+                    [idade] * len(sub),
+                    sub["Resistência (MPa)"],
+                    label=f"Real {idade}d" if idade in (7, 28, 63) else f"Real {idade}d",
+                    alpha=0.55,
+                    s=38,
+                )
+
+            # linha estimada
+            ax4.plot(
+                est_df["Idade (dias)"],
+                est_df["Resistência (MPa)"],
+                linestyle="--",
+                linewidth=2.0,
+                marker="o",
+                label=f"Estimado ({s.get('estim_model', 'fib 2010')})"
+            )
+
+            # fck
+            if fck_active is not None:
+                ax4.axhline(fck_active, label=f"fck projeto ({fck_active:.1f} MPa)", **FCK_LINE_KW)
+
+            ax4.set_xlabel("Idade (dias)")
+            ax4.set_ylabel("Resistência (MPa)")
+            ax4.set_title("Dispersão dos resultados reais em relação ao modelo")
+            place_right_legend(ax4)
+            ax4.grid(True, linestyle="--", alpha=0.4)
+            ax4.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+            st.pyplot(fig4)
+
+            if CAN_EXPORT:
+                _buf4 = io.BytesIO()
+                fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                st.download_button(
+                    "🖼️ Baixar Gráfico 4 (PNG)",
+                    data=_buf4.getvalue(),
+                    file_name="grafico4_dispersao.png",
+                    mime="image/png"
+                )
+        else:
+            st.info("Sem curva estimada → não é possível montar o Gráfico 4 de dispersão.")
 
         # ===== ✅ Verificação do fck de Projeto (tabela já feita acima)
         st.write("#### ✅ Verificação do fck de Projeto")
@@ -2069,3 +2118,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

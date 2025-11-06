@@ -1,6 +1,4 @@
 # app.py — Habisolute Analytics (login + painel + tema + header + pipeline + validações + auditoria)
-# versão: 2025-11 — com estimativa por modelo (fib/ACI/NBR) e sem pareamento ponto-a-ponto
-
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +7,6 @@ from typing import Optional, Tuple, List, Dict, Any
 import streamlit as st
 import pandas as pd
 import pdfplumber
-import numpy as np  # para ajuste / modelos de crescimento
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
@@ -28,6 +25,7 @@ FOOTER_TEXT = (
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido por IA e pela Habisolute Engenharia"
 
+# ===== Rodapé, Cabeçalho e numeração do PDF (com faixas ajustadas) =====
 class NumberedCanvas(pdfcanvas.Canvas):
     ORANGE = colors.HexColor("#c6c9cf")
     BLACK  = colors.black
@@ -156,7 +154,6 @@ s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
-s.setdefault("estim_model", "fib 2010")  # novo: modelo de estimativa
 
 # Recupera usuário após refresh se necessário
 if s.get("logged_in") and not s.get("username"):
@@ -179,7 +176,7 @@ def _apply_query_prefs():
     except Exception: pass
 _apply_query_prefs()
 # Largura dinâmica da área útil
-s.setdefault("wide_layout", True)
+s.setdefault("wide_layout", True)  # deixe True para começar largo
 MAX_W = 1800 if s.get("wide_layout") else 1300
 
 # =============================================================================
@@ -197,13 +194,6 @@ plt.rcParams.update({
     "font.size":10,"axes.titlesize":12,"axes.labelsize":10,
     "axes.titleweight":"semibold","figure.autolayout":False
 })
-
-# Config padrão da linha de fck nos gráficos
-FCK_LINE_KW = {
-    "linestyle": ":",
-    "linewidth": 2.4,
-    "color": "#ef4444",  # vermelho vivo
-}
 
 if s.get("theme_mode") == "Escuro moderno":
     plt.style.use("dark_background")
@@ -252,11 +242,11 @@ else:
     """
 st.markdown(css, unsafe_allow_html=True)
 
+# -------- Cabeçalho ----------
 def _render_header():
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='app-header'><span class='brand-title' style='font-weight:800; font-size:22px; color: var(--text)'>🏗️ Habisolute IA</span></div>", unsafe_allow_html=True)
     st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
-
 # =============================================================================
 # Autenticação & gerenciamento de usuários
 # =============================================================================
@@ -373,6 +363,7 @@ if not s["logged_in"]:
     _auth_login_ui()
     st.stop()
 
+# Troca obrigatória de senha
 if s.get("must_change", False):
     _force_change_password_ui(s["username"])
     st.stop()
@@ -432,10 +423,11 @@ st.markdown(
 CAN_ADMIN  = bool(s.get("is_admin", False))
 CAN_EXPORT = CAN_ADMIN  # somente admin pode exportar
 
+# --- DataFrame vazio "seguro" para caso algum trecho escape fora do Admin
 def _empty_audit_df():
     return pd.DataFrame(columns=["ts", "user", "level", "action", "meta"])
 
-df_log = _empty_audit_df()
+df_log = _empty_audit_df()  # evita NameError para não-admin
 
 if CAN_ADMIN:
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
@@ -461,13 +453,13 @@ if CAN_ADMIN:
                                 rec["active"] = not rec.get("active", True)
                                 user_set(u["username"], rec)
                                 st.rerun()
-                            if st.button("Redefinir", key=f"rst_{u['username']}"):
+                            if st.button("Redefinir", key=f"rst_{u['username']}"]:
                                 rec = user_get(u["username"]) or {}
                                 rec["password"] = _hash_password("1234")
                                 rec["must_change"] = True
                                 user_set(u["username"], rec)
                                 st.rerun()
-                            if st.button("Excluir", key=f"del_{u['username']}"):
+                            if st.button("Excluir", key=f"del_{u['username']}"]:
                                 user_delete(u["username"])
                                 st.rerun()
 
@@ -493,11 +485,11 @@ if CAN_ADMIN:
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
 
-        # ===== Aba 3 — Auditoria
+        # ===== Aba 3 — Auditoria (apenas admin)
         with tab3:
             st.markdown("### Auditoria do Sistema")
 
-            df_log = read_audit_df()
+            df_log = read_audit_df()  # só carrega real dentro do Admin
 
             if df_log.empty:
                 st.info("Sem eventos de auditoria ainda.")
@@ -605,718 +597,6 @@ if CAN_ADMIN:
                     )
 else:
     pass
-# =============================================================================
-# >>> DAQUI PRA BAIXO (PIPELINE): uploader, parsing, gráficos, PDF, etc.
-# =============================================================================
-
-TOL_MP    = float(s.get("TOL_MP", 1.0))
-BATCH_MODE = bool(s.get("BATCH_MODE", False))
-
-# =============================================================================
-# Sidebar (opções de relatório)
-# =============================================================================
-with st.sidebar:
-    st.markdown("### ⚙️ Opções do relatório")
-
-    s["wide_layout"] = st.toggle(
-        "Tela larga (1800px)",
-        value=bool(s.get("wide_layout", True)),
-        key="opt_wide_layout",
-    )
-
-    s["BATCH_MODE"] = st.toggle(
-        "Modo Lote (vários PDFs)",
-        value=bool(s["BATCH_MODE"]),
-        key="opt_batch_mode",
-    )
-
-    if s["BATCH_MODE"] != s["_prev_batch"]:
-        s["_prev_batch"] = s["BATCH_MODE"]
-        s["uploader_key"] += 1
-
-    s["TOL_MP"] = st.slider(
-        "Tolerância Real × Estimado (MPa)",
-        0.0, 5.0, float(s["TOL_MP"]), 0.1,
-        key="opt_tol_mpa",
-    )
-
-    # modelo de estimativa novo
-    s["estim_model"] = st.selectbox(
-        "Modelo de estimativa",
-        ["fib 2010", "ACI 209", "NBR 6118", "Regra antiga"],
-        index=["fib 2010", "ACI 209", "NBR 6118", "Regra antiga"].index(s.get("estim_model", "fib 2010"))
-    )
-
-    st.markdown("---")
-    nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
-    papel = "Admin" if s.get("is_admin") else "Usuário"
-    st.caption(f"Usuário: **{nome_login}** ({papel})")
-
-# =============================================================================
-# Utilidades de parsing / limpeza
-# =============================================================================
-def _limpa_horas(txt: str) -> str:
-    txt = re.sub(r"\b\d{1,2}:\d{2}\b", "", txt)
-    txt = re.sub(r"\bàs\s*\d{1,2}:\d{2}\b", "", txt, flags=re.I)
-    return re.sub(r"\s{2,}", " ", txt).strip(" -•:;,.") 
-
-def _limpa_usina_extra(txt: Optional[str]) -> Optional[str]:
-    if not txt: return txt
-    t = _limpa_horas(str(txt))
-    t = re.sub(r"(?i)relat[óo]rio:\s*\d+\s*", "", t)
-    t = re.sub(r"(?i)\busina:\s*", "", t)
-    t = re.sub(r"(?i)\bsa[ií]da\s+da\s+usina\b.*$", "", t)
-    t = re.sub(r"\s{2,}", " ", t).strip(" -•:;,.")
-    return t or None
-
-def _detecta_usina(linhas: List[str]) -> Optional[str]:
-    for sline in linhas:
-        if re.search(r"(?i)\busina:", sline):
-            s0 = _limpa_horas(sline)
-            m = re.search(r"(?i)usina:\s*([A-Za-zÀ-ÿ0-9 .\-]+?)(?:\s+sa[ií]da\s+da\s+usina\b|$)", s0)
-            if m: return _limpa_usina_extra(m.group(1)) or _limpa_usina_extra(m.group(0))
-            return _limpa_usina_extra(s0)
-    for sline in linhas:
-        if re.search(r"(?i)\busina\b", sline) or re.search(r"(?i)sa[ií]da da usina", sline):
-            t = _limpa_horas(sline)
-            t2 = re.sub(r"(?i)^.*\busina\b[:\-]?\s*", "", t).strip()
-            if t2: return t2
-            if t: return t
-    return None
-
-def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
-    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
-    if not m: return None, None
-    try:
-        v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) is not None else None
-        return v, tol
-    except Exception:
-        return None, None
-
-def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None; abat_obra = None
-    for sline in linhas:
-        s_clean = sline.replace(",", ".").replace("±", "+-")
-        m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
-            r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
-            s_clean
-        )
-        if m_nf and abat_nf is None:
-            try: abat_nf = float(m_nf.group(1))
-            except Exception: pass
-        m_obra = re.search(
-            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
-            r"(\d+(?:\.\d+)?)\s*mm",
-            s_clean
-        )
-        if m_obra and abat_obra is None:
-            try: abat_obra = float(m_obra.group(2))
-            except Exception: pass
-    return abat_nf, abat_obra
-
-def _extract_fck_values(line: str) -> List[float]:
-    if not line or "fck" not in line.lower(): return []
-    sanitized = line.replace(",", ".")
-    parts = re.split(r"(?i)fck", sanitized)[1:]
-    if not parts: return []
-    values: List[float] = []
-    age_with_suffix = re.compile(r"^(\d{1,3})(?:\s*(?:dias?|d))\b\s*[:=]?", re.I)
-    age_plain       = re.compile(r"^(\d{1,3})\b\s*[:=]?", re.I)
-    age_tokens = {3, 7, 14, 21, 28, 56, 63, 90}
-    cut_keywords = ("mpa","abatimento","slump","nota","usina","relatório","relatorio","consumo","traço","traco","cimento","dosagem")
-    for segment in parts:
-        starts_immediate = bool(segment) and not segment[0].isspace()
-        seg = segment.lstrip(" :=;-()[]")
-        changed = True
-        while changed:
-            changed = False
-            m = age_with_suffix.match(seg)
-            if m:
-                age_val = int(m.group(1))
-                if age_val in age_tokens:
-                    seg = seg[m.end():].lstrip(" :=;-()[]"); changed = True; continue
-            if starts_immediate:
-                m2 = age_plain.match(seg)
-                if m2:
-                    age_val = int(m2.group(1))
-                    if age_val in age_tokens:
-                        seg = seg[m2.end():].lstrip(" :=;-()[]"); changed = True; continue
-        lower_seg = seg.lower()
-        cut_at = len(seg)
-        for kw in cut_keywords:
-            idx = lower_seg.find(kw)
-            if idx != -1: cut_at = min(cut_at, idx)
-        seg = seg[:cut_at]
-        for num in re.findall(r"\d+(?:\.\d+)?", seg):
-            try: val = float(num)
-            except ValueError: continue
-            if 3 <= val <= 120 and val not in values:
-                values.append(val)
-    return values
-
-def _to_float_or_none(value: Any) -> Optional[float]:
-    try: val = float(value)
-    except (TypeError, ValueError): return None
-    return None if pd.isna(val) else val
-
-def _format_float_label(value: Optional[float]) -> str:
-    if value is None or pd.isna(value): return "—"
-    num = float(value); label = f"{num:.2f}".rstrip("0").rstrip(".")
-    return label or f"{num:.2f}"
-
-def _normalize_fck_label(value: Any) -> str:
-    normalized = _to_float_or_none(value)
-    if normalized is not None: return _format_float_label(normalized)
-    raw = str(value).strip()
-    if not raw or raw.lower() == 'nan': return "—"
-    return raw
-
-def extrair_dados_certificado(uploaded_file):
-    try:
-        raw = uploaded_file.read()
-        uploaded_file.seek(0)
-    except Exception:
-        raw = uploaded_file.getvalue()
-
-    linhas_todas = []
-    try:
-        with pdfplumber.open(io.BytesIO(raw)) as pdf:
-            for page in pdf.pages:
-                txt = page.extract_text() or ""
-                txt = re.sub(r"[“”]", "\"", txt)
-                txt = re.sub(r"[’´`]", "'", txt)
-                linhas_todas.extend([l.strip() for l in txt.split("\n") if l.strip() ])
-    except Exception:
-        return (pd.DataFrame(columns=[
-            "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
-        ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
-
-    cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
-    data_regex = re.compile(r"\d{2}/\d{2}/\d{4}")
-    data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-    tipo_token = re.compile(r"^A\d$", re.I)
-    float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
-    pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
-
-    obra = "NÃO IDENTIFICADA"
-    data_relatorio = "NÃO IDENTIFICADA"
-    fck_projeto = "NÃO IDENTIFICADO"
-    local_por_relatorio: Dict[str, str] = {}
-    relatorio_atual = None
-    fck_por_relatorio: Dict[str, List[float]] = {}
-    fck_valores_globais: List[float] = []
-
-    for sline in linhas_todas:
-        if sline.startswith("Obra:"):
-            obra = sline.replace("Obra:", "").strip().split(" Data")[0]
-        m_data = data_regex.search(sline)
-        if m_data and data_relatorio == "NÃO IDENTIFICADA":
-            data_relatorio = m_data.group()
-        if sline.startswith("Relatório:"):
-            m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel:
-                relatorio_atual = m_rel.group(1)
-        m_pecas = pecas_regex.search(sline)
-        if m_pecas and relatorio_atual:
-            local_por_relatorio[relatorio_atual] = m_pecas.group(1).strip().rstrip(".")
-        if "fck" in sline.lower():
-            valores_fck = _extract_fck_values(sline)
-            if valores_fck:
-                if relatorio_atual:
-                    fck_por_relatorio.setdefault(relatorio_atual, []).extend(valores_fck)
-                else:
-                    fck_valores_globais.extend(valores_fck)
-                if not isinstance(fck_projeto, (int, float)):
-                    try: fck_projeto = float(valores_fck[0])
-                    except Exception: pass
-
-    usina_nome = _limpa_usina_extra(_detecta_usina(linhas_todas))
-    abat_nf_pdf, abat_obra_pdf = _detecta_abatimentos(linhas_todas)
-
-    dados = []
-    relatorio_cabecalho = None
-
-    for sline in linhas_todas:
-        partes = sline.split()
-
-        if sline.startswith("Relatório:"):
-            m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel: relatorio_cabecalho = m_rel.group(1)
-            continue
-
-        if len(partes) >= 5 and cp_regex.match(partes[0]):
-            try:
-                cp = partes[0]
-                relatorio = relatorio_cabecalho or "NÃO IDENTIFICADO"
-
-                i_data = next((i for i, t in enumerate(partes) if data_token.match(t)), None)
-                if i_data is not None:
-                    i_tipo = next((i for i in range(i_data + 1, len(partes)) if tipo_token.match(partes[i])), None)
-                    start = (i_tipo + 1) if i_tipo is not None else (i_data + 1)
-                else:
-                    start = 1
-
-                idade_idx, idade = None, None
-                for j in range(start, len(partes)):
-                    t = partes[j]
-                    if t.isdigit():
-                        v = int(t)
-                        if 1 <= v <= 120:
-                            idade = v; idade_idx = j; break
-
-                resistência, res_idx = None, None
-                if idade_idx is not None:
-                    for j in range(idade_idx + 1, len(partes)):
-                        t = partes[j]
-                        if float_token.match(t):
-                            resistência = float(t.replace(",", "."))
-                            res_idx = j; break
-
-                if idade is None or resistência is None:
-                    continue
-
-                nf, nf_idx = None, None
-                start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-                for j in range(start_nf, len(partes)):
-                    tok = partes[j]
-                    if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
-
-                abat_obra_val = None
-                if i_data is not None:
-                    for j in range(i_data - 1, max(-1, i_data - 6), -1):
-                        tok = partes[j]
-                        if re.fullmatch(r"\d{2,3}", tok):
-                            v = int(tok)
-                            if 20 <= v <= 250:
-                                abat_obra_val = float(v); break
-
-                abat_nf_val, abat_nf_tol = None, None
-                if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
-                        v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 250:
-                            abat_nf_val = float(v)
-                            abat_nf_tol = float(tol) if tol is not None else None
-                            break
-
-                local = local_por_relatorio.get(relatorio)
-                dados.append([
-                    relatorio, cp, idade, resistência, nf, local,
-                    usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
-                    abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
-                ])
-            except Exception:
-                pass
-
-    df = pd.DataFrame(dados, columns=[
-        "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-        "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
-    ])
-
-    if not df.empty:
-        rel_map = {}
-        for rel, valores in fck_por_relatorio.items():
-            uniques = []
-            for valor in valores:
-                try:
-                    val_f = float(valor)
-                except Exception:
-                    continue
-                if val_f not in uniques: uniques.append(val_f)
-            if uniques: rel_map[rel] = uniques[0]
-
-        fallback_fck = None
-        if isinstance(fck_projeto, (int, float)):
-            fallback_fck = float(fck_projeto)
-        else:
-            candidatos = []
-            for valores in fck_por_relatorio.values(): candidatos.extend(valores)
-            candidatos.extend(fck_valores_globais)
-            for cand in candidatos:
-                try:
-                    fallback_fck = float(cand); break
-                except Exception:
-                    continue
-
-        if rel_map or fallback_fck is not None:
-            df["Relatório"] = df["Relatório"].astype(str)
-            df["Fck Projeto"] = df["Relatório"].map(rel_map)
-            if fallback_fck is not None:
-                df["Fck Projeto"] = df["Fck Projeto"].fillna(fallback_fck)
-
-    return df, obra, data_relatorio, fck_projeto
-
-# =============================================================================
-# KPIs e utilidades gráficas
-# =============================================================================
-def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
-    def _pct_hit(age):
-        if fck_val is None or pd.isna(fck_val): return None
-        g = df_view[df_view["Idade (dias)"] == age].groupby("CP")["Resistência (MPa)"].mean()
-        if g.empty: return None
-        return float((g >= fck_val).mean() * 100.0)
-    pct28 = _pct_hit(28)
-    pct63 = _pct_hit(63)
-    media_geral = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").mean()) if not df_view.empty else None
-    dp_geral   = float(pd.to_numeric(df_view["Resistência (MPa)"], errors="coerce").std())  if not df_view.empty else None
-    n_rel      = df_view["Relatório"].nunique()
-    def _semaforo(p28, p63):
-        if (p28 is None) and (p63 is None): return ("Sem dados", "#9ca3af")
-        score = 0.0
-        if p28 is not None: score += float(p28) * 0.6
-        if p63 is not None: score += float(p63) * 0.4
-        if score >= 90: return ("✅ Bom", "#16a34a")
-        if score >= 75: return ("⚠️ Atenção", "#d97706")
-        return ("🔴 Crítico", "#ef4444")
-    status_txt, status_cor = _semaforo(pct28, pct63)
-    return {"pct28": pct28, "pct63": pct63, "media": media_geral, "dp": dp_geral, "n_rel": n_rel, "status_txt": status_txt, "status_cor": status_cor}
-
-def place_right_legend(ax):
-    handles, labels = ax.get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys(), loc="upper left", bbox_to_anchor=(1.02, 1.0),
-              frameon=False, ncol=1, handlelength=2.2, handletextpad=0.8, labelspacing=0.35, prop={"size": 9})
-    plt.subplots_adjust(right=0.80)
-
-def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
-    b64_all = base64.b64encode(pdf_all).decode()
-    cp_btn = ""
-    if pdf_cp:
-        b64_cp = base64.b64encode(pdf_cp).decode()
-        cp_btn = f'<button class="h-print-btn" onclick="habiPrint(\'{b64_cp}\')">🖨️ Imprimir — CP focado</button>'
-    html = f"""
-    <style>
-      :root {{ --brand:{brand}; --brand-600:{brand600}; }}
-      .printbar {{ display:flex; flex-wrap:wrap; gap:12px; margin:10px 0 6px 0; }}
-      .h-print-btn {{
-        background: linear-gradient(180deg, var(--brand), var(--brand-600));
-        color:#fff; border:0; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer;
-        box-shadow:0 10px 20px rgba(0,0,0,.10);
-      }}
-    </style>
-    <div class="printbar">
-      <button class="h-print-btn" onclick="habiPrint('{b64_all}')">🖨️ Imprimir — Tudo</button>
-      {cp_btn}
-      <span style="font-size:12px;color:#6b7280">Permita pop-ups para imprimir</span>
-    </div>
-    <script>
-      function habiPrint(b64) {{
-        try {{
-          var bin=atob(b64), len=bin.length, bytes=new Uint8Array(len);
-          for (var i=0;i<len;i++) bytes[i]=bin.charCodeAt(i);
-          var blob=new Blob([bytes], {{type:'application/pdf'}});
-          var url=URL.createObjectURL(blob);
-          var w=window.open('', '_blank');
-          if(!w){{ alert('Habilite pop-ups para imprimir.'); return; }}
-          w.document.write('<!doctype html><html><head><title>Imprimir</title>'+
-            '<style>html,body{{margin:0;height:100%}}</style></head><body>'+
-            '<iframe id="__pf" style="width:100%;height:100%;border:0"></iframe>'+
-            '<script>var f=document.getElementById("__pf");f.onload=function(){{try{{f.contentWindow.focus();f.contentWindow.print();}}catch(e){{}}}};f.src="'+url+'#zoom=page-width";<\/script>'+
-            '</body></html>');
-          w.document.close();
-        }} catch(e) {{ alert('Falha ao preparar impressão: '+e); }}
-      }}
-    </script>
-    """
-    st.components.v1.html(html, height=74)
-
-# =============================================================================
-# Cabeçalho e uploader
-# =============================================================================
-st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
-
-up_help = "Carregue 1 PDF (ou vários em modo lote)."
-_uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
-
-if BATCH_MODE:
-    uploaded_files = st.file_uploader("📁 PDF(s)", type=["pdf"], accept_multiple_files=True,
-                                      key=_uploader_key, help=up_help)
-else:
-    up1 = st.file_uploader("📁 PDF (1 arquivo)", type=["pdf"], accept_multiple_files=False,
-                           key=_uploader_key, help=up_help)
-    uploaded_files = [up1] if up1 is not None else []
-
-# =============================================================================
-# Função da VISÃO GERAL isolada
-# =============================================================================
-def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFrame, TOL_MP: float):
-    import pandas as _pd
-    from datetime import datetime as _dt
-
-    st.markdown("#### Visão Geral")
-
-    def _format_float_label(value: Optional[float]) -> str:
-        if value is None or _pd.isna(value): return "—"
-        num = float(value); label = f"{num:.2f}".rstrip("0").rstrip(".")
-        return label or f"{num:.2f}"
-
-    def _to_date(d):
-        try: return _dt.strptime(str(d), "%d/%m/%Y").date()
-        except Exception: return None
-
-    obra_label = "—"; data_label = "—"; fck_label = "—"
-
-    if not df_view.empty:
-        ob = sorted(set(df_view["Obra"].astype(str)))
-        obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
-        fck_candidates: List[str] = []
-        for raw in df_view["Fck Projeto"].tolist():
-            normalized = _to_float_or_none(raw)
-            if normalized is not None:
-                formatted = _format_float_label(normalized)
-                if formatted != "—": fck_candidates.append(formatted)
-            else:
-                raw_str = str(raw).strip()
-                if raw_str and raw_str.lower() != "nan": fck_candidates.append(raw_str)
-        if fck_candidates: fck_label = ", ".join(dict.fromkeys(fck_candidates))
-        datas_validas = [_to_date(x) for x in df_view["Data Certificado"].unique()]
-        datas_validas = [d for d in datas_validas if d is not None]
-        if datas_validas:
-            di, df_ = min(datas_validas), max(datas_validas)
-            data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
-
-    def _fmt_pct(v): return "--" if v is None else f"{v:.0f}%"
-
-    fck_series_all = _pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-    fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-    KPIs = compute_exec_kpis(df_view, fck_val)
-
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
-    with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Data da moldagem</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
-    with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
-    with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
-    with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
-    with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
-
-    e1, e2, e3, e4 = st.columns(4)
-    with e1:
-        media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Média geral</div><div class="h-kpi">{media_txt}</div></div>', unsafe_allow_html=True)
-    with e2:
-        dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div><div class="h-kpi">{dp_txt}</div></div>', unsafe_allow_html=True)
-    with e3:
-        n_relatorios = df_view["Relatório"].nunique()
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div><div class="h-kpi">{n_relatorios}</div></div>', unsafe_allow_html=True)
-    with e4:
-        snf = _pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
-        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
-        abat_nf_label = "—"
-        if snf is not None and not snf.dropna().empty:
-            v = float(snf.dropna().mode().iloc[0])
-            if stol is not None and not stol.dropna().empty:
-                t = float(stol.dropna().mode().iloc[0]); abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
-            else:
-                abat_nf_label = f"{v:.0f} mm"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
-
-    p28 = KPIs.get("pct28"); p63 = KPIs.get("pct63")
-    score = None
-    if (p28 is not None) or (p63 is not None):
-        score = (0 if p28 is None else 0.6 * p28) + (0 if p63 is None else 0.4 * p63)
-
-    def _hits(df_src, age, fck):
-        if fck is None or _pd.isna(fck): return (0, 0)
-        sub = df_src[df_src["Idade (dias)"] == age].groupby("CP")["Resistência (MPa)"].mean()
-        return int((sub >= fck).sum()), int(sub.shape[0])
-
-    h28, t28 = _hits(df_view, 28, fck_val)
-    h63, t63 = _hits(df_view, 63, fck_val)
-
-    st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
-    explic_html = (
-        "<div class='kpi-help' style='margin:8px 0 14px 0; line-height:1.45'>"
-        "<div style='display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px'>"
-        "<span class='pill'>Cálculo do semáforo</span><span class='pill'>28d = 60%</span><span class='pill'>63d = 40%</span>"
-        "</div>"
-        f"<div style='font-size:13px'>"
-        f"<div>28 dias: <b>{'--' if p28 is None else f'{p28:.0f}%'}</b> ({h28}/{t28} CPs ≥ fck)</div>"
-        f"<div>63 dias: <b>{'--' if p63 is None else f'{p63:.0f}%'}</b> ({h63}/{t63} CPs ≥ fck)</div>"
-        f"<div style='margin-top:6px'>Score ponderado = <b>{'-' if score is None else f'{score:.0f}%'}</b> "
-        f"&rarr; <b style='color:{KPIs['status_cor']}'>{KPIs['status_txt']}</b></div>"
-        "<div style='margin-top:4px'>Faixas: <b>≥90</b> ✅Bom • <b>≥75</b> ⚠️Atenção • <b>&lt;75</b> 🔴Crítico.</div>"
-        "</div></div>"
-    )
-    st.markdown(explic_html, unsafe_allow_html=True)
-
-    st.write("#### Resultados Individuais")
-    st.dataframe(df_view, use_container_width=True)
-    st.write("#### Estatísticas por CP")
-    st.dataframe(stats_cp_idade, use_container_width=True)
-
-# =============================================================================
-# Helpers de NOME DE ARQUIVO
-# =============================================================================
-def _slugify_for_filename(text: str) -> str:
-    import unicodedata, re as _re
-    t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("ascii")
-    t = _re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_")
-    return t or "relatorio"
-
-def _safe_mode(series: pd.Series):
-    if series is None or series.dropna().empty:
-        return None
-    try:
-        m = series.mode()
-        return None if m.empty else m.iat[0]
-    except Exception:
-        return series.dropna().iloc[0]
-
-def _to_date_obj(d: str):
-    from datetime import datetime as _dt
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            return _dt.strptime(str(d), fmt).date()
-        except Exception:
-            pass
-    return None
-
-def _dd_mm_aaaa(d) -> str:
-    try:
-        return f"{int(d.day):02d}_{int(d.month):02d}_{int(d.year):04d}"
-    except Exception:
-        return ""
-
-def _extract_rel_tail_from_files(uploaded_files: list) -> str | None:
-    import re as _re
-    for f in uploaded_files or []:
-        fname = (getattr(f, "name", "") or "").lower()
-        m = _re.search(r"(\d{3,6})[_\-]([0-9]{1,2}d)[_\-](\d{2}[_\-]\d{2}[_\-]\d{4})", fname)
-        if m:
-            rid = int(m.group(1)) % 1000
-            return f"{rid:03d}_{m.group(2)}_{m.group(3).replace('-', '_')}"
-        m2 = _re.search(r"(\d{3,6})", fname)
-        if m2:
-            rid = int(m2.group(1)) % 1000
-            return f"{rid:03d}"
-    return None
-
-def _extract_rel_tail_from_df(df_view: pd.DataFrame) -> str | None:
-    import re as _re
-    if "Relatório" not in df_view.columns or df_view["Relatório"].dropna().empty:
-        return None
-    rel_mode = str(_safe_mode(df_view["Relatório"]))
-    m = _re.search(r"(\d{3,})", rel_mode)
-    if m:
-        rid = int(m.group(1)) % 1000
-        return f"{rid:03d}"
-    return None
-
-def _extract_age_token(df_view: pd.DataFrame) -> str | None:
-    if "Idade (dias)" not in df_view.columns or df_view["Idade (dias)"].dropna().empty:
-        return None
-    ages = pd.to_numeric(df_view["Idade (dias)"], errors="coerce").dropna().astype(int)
-    if ages.empty: return None
-    age = _safe_mode(ages)
-    return f"{int(age)}d" if age is not None else None
-
-def _extract_cert_date_token(df_view: pd.DataFrame) -> str | None:
-    if "Data Certificado" not in df_view.columns:
-        return None
-    dates = [_to_date_obj(x) for x in df_view["Data Certificado"].dropna().unique().tolist()]
-    dates = [d for d in dates if d is not None]
-    if not dates: return None
-    return _dd_mm_aaaa(min(dates))
-
-def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
-    if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty:
-        obra = _safe_mode(df_view["Obra"].astype(str)) or "Obra"
-    else:
-        obra = "Obra"
-    obra_slug = _slugify_for_filename(obra)
-
-    rel_tail = _extract_rel_tail_from_files(uploaded_files)
-    age_tok  = _extract_age_token(df_view) or ""
-    date_tok = _extract_cert_date_token(df_view) or ""
-
-    if rel_tail and "_" in rel_tail and rel_tail.count("_") >= 2:
-        final_tail = rel_tail
-    else:
-        rrr = rel_tail if (rel_tail and rel_tail.isdigit() and len(rel_tail) == 3) else (_extract_rel_tail_from_df(df_view) or "")
-        tail_parts = [p for p in [rrr, age_tok, date_tok] if p]
-        final_tail = "_".join(tail_parts)
-
-    base = f"Relatorio_analise_certificado_obra_{obra_slug}"
-    if final_tail:
-        return f"{base}_{final_tail}.pdf"
-    if date_tok:
-        return f"{base}_{date_tok}.pdf"
-    from datetime import datetime as _dt
-    return f"{base}_{_dt.utcnow().strftime('%d_%m_%Y')}.pdf"
-
-# =============================================================================
-# Funções de estimativa mais realistas
-# =============================================================================
-def estimativa_fib(f28: float, dias: List[int], s: float = 0.25) -> pd.DataFrame:
-    vals = []
-    for t in dias:
-        if t < 1:
-            beta = 0.0
-        else:
-            beta = float(np.exp(s * (1 - (28.0 / t) ** 0.5)))
-        vals.append(f28 * beta)
-    return pd.DataFrame({"Idade (dias)": dias, "Resistência (MPa)": vals})
-
-def estimativa_aci(f28: float, dias: List[int]) -> pd.DataFrame:
-    # modelo simples inspirado em ACI: normaliza para 28d = 1
-    vals = []
-    for t in dias:
-        k = t / (4 + 0.85 * t)  # cresce rápido e achata
-        k28 = 28 / (4 + 0.85 * 28)
-        vals.append(f28 * (k / k28))
-    return pd.DataFrame({"Idade (dias)": dias, "Resistência (MPa)": vals})
-
-def estimativa_nbr6118(f28: float, dias: List[int]) -> pd.DataFrame:
-    coef = {
-        1: 0.25, 2: 0.35, 3: 0.45, 7: 0.65, 14: 0.80, 21: 0.90, 28: 1.00,
-        56: 1.10, 63: 1.12, 90: 1.15
-    }
-    vals = []
-    for t in dias:
-        c = coef.get(t, 1.0 if t >= 28 else 0.5)
-        vals.append(f28 * c)
-    return pd.DataFrame({"Idade (dias)": dias, "Resistência (MPa)": vals})
-
-def estimativa_regra_antiga(f28: float, dias: List[int]) -> pd.DataFrame:
-    # mantém sua lógica antiga como fallback
-    d2v = {}
-    for d in dias:
-        if d == 7:
-            d2v[d] = f28 * 0.65
-        elif d == 28:
-            d2v[d] = f28
-        elif d == 63:
-            d2v[d] = f28 * 1.15
-        else:
-            d2v[d] = f28
-    return pd.DataFrame({"Idade (dias)": dias, "Resistência (MPa)": [d2v[d] for d in dias]})
-
-def gerar_curva_estimativa(df_plot: pd.DataFrame, modelo: str, fck_fallback: Optional[float]) -> Optional[pd.DataFrame]:
-    # tenta pegar média real de 28d
-    f28_real = df_plot.loc[df_plot["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
-    if pd.isna(f28_real):
-        f28_real = fck_fallback
-    if f28_real is None or pd.isna(f28_real):
-        return None
-    dias_alvo = [3, 7, 14, 21, 28, 56, 63, 90]
-    if modelo == "fib 2010":
-        return estimativa_fib(float(f28_real), dias_alvo, s=0.25)
-    elif modelo == "ACI 209":
-        return estimativa_aci(float(f28_real), dias_alvo)
-    elif modelo == "NBR 6118":
-        return estimativa_nbr6118(float(f28_real), dias_alvo)
-    else:
-        return estimativa_regra_antiga(float(f28_real), dias_alvo)
 # =============================================================================
 # Pipeline principal
 # =============================================================================
@@ -1445,7 +725,7 @@ if uploaded_files:
         # ===== VISÃO GERAL
         render_overview_and_tables(df_view, stats_cp_idade, TOL_MP)
 
-        # ---------------- Gráficos
+        # ---------------- Gráficos (ficam como estavam, inclusive o 4 🤝)
         st.markdown("---")
         st.markdown("### Gráficos")
         st.sidebar.subheader("🎯 Foco nos gráficos")
@@ -1464,7 +744,7 @@ if uploaded_files:
         stats_all_focus = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index()
 
         # ===== Gráfico 1 — Crescimento Real
-        st.write("##### Gráfico 1 — Crescimento da resistência por corpo de prova")
+        st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
         fig1, ax = plt.subplots(figsize=(9.6, 4.9))
         for cp, sub in df_plot.groupby("CP"):
             sub = sub.sort_values("Idade (dias)")
@@ -1476,7 +756,7 @@ if uploaded_files:
         if not _sdp.empty:
             ax.fill_between(_sdp["Idade (dias)"], _sdp["mean"] - _sdp["std"], _sdp["mean"] + _sdp["std"], alpha=0.2, label="±1 DP")
         if fck_active is not None:
-            ax.axhline(fck_active, label=f"fck projeto ({fck_active:.1f} MPa)", **FCK_LINE_KW)
+            ax.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
         ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
         ax.set_title("Crescimento da resistência por corpo de prova")
         place_right_legend(ax)
@@ -1486,16 +766,21 @@ if uploaded_files:
             _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
             st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
-        # ===== Gráfico 2 — Curva Estimada (com modelo)
-        st.write("##### Gráfico 2 — Curva Estimada (modelo selecionado)")
+        # ===== Gráfico 2 — Curva Estimada
+        st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
         fig2, est_df = None, None
-        est_df = gerar_curva_estimativa(df_plot, s.get("estim_model", "fib 2010"), fck_active)
+        fck28 = df_plot.loc[df_plot["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
+        fck7  = df_plot.loc[df_plot["Idade (dias)"] == 7,  "Resistência (MPa)"].mean()
+        if pd.notna(fck28):
+            est_df = pd.DataFrame({"Idade (dias)": [7, 28, 63], "Resistência (MPa)": [fck28*0.65, fck28, fck28*1.15]})
+        elif pd.notna(fck7):
+            _f28 = fck7 / 0.70
+            est_df = pd.DataFrame({"Idade (dias)": [7, 28, 63], "Resistência (MPa)": [float(fck7), float(_f28), float(_f28)*1.15]})
         if est_df is not None:
             fig2, ax2 = plt.subplots(figsize=(7.8, 4.8))
-            ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label=s.get("estim_model", "fib 2010"))
-            for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
-                ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
-            ax2.set_title("Curva estimada (ajustada ao modelo escolhido)")
+            ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
+            for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]): ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
+            ax2.set_title("Curva estimada (referência técnica, não critério normativo)")
             ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
             place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig2)
@@ -1503,19 +788,114 @@ if uploaded_files:
                 _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
         else:
-            st.info("Não foi possível calcular a curva estimada (sem base de 28d ou fck).")
+            st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
-        # ===== Gráfico 3 — Comparação Real × Estimado (médias)
+        # ===== Gráfico 3 — Comparação médias
         st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
-        fig3, cond_df = None, None
+        fig3, cond_df, verif_fck_df = None, None, None
         mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
         m7  = mean_by_age.get(7,  float("nan"))
         m28 = mean_by_age.get(28, float("nan"))
         m63 = mean_by_age.get(63, float("nan"))
 
-        # tabela de verificação de fck (resumo)
+        verif_fck_df = pd.DataFrame({
+            "Idade (dias)": [7, 28, 63],
+            "Média Real (MPa)": [m7, m28, m63],
+            "fck Projeto (MPa)": [
+                float("nan"),
+                (fck_active if fck_active is not None else float("nan")),
+                (fck_active if fck_active is not None else float("nan")),
+            ],
+        })
+
+        if est_df is not None:
+            sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
+            fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
+            ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
+            _sa_dp = sa[sa["count"] >= 2].copy()
+            if not _sa_dp.empty:
+                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
+            ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
+            if fck_active is not None:
+                ax3.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
+            ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
+            ax3.set_title("Comparação Real × Estimado (médias)")
+            place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
+            st.pyplot(fig3)
+            if CAN_EXPORT:
+                _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
+
+            def _status_row(delta, tol):
+                if pd.isna(delta): return "⚪ Sem dados"
+                if abs(delta) <= tol: return "✅ Dentro dos padrões"
+                return "🔵 Acima do padrão" if delta > 0 else "🔴 Abaixo do padrão"
+
+            _TOL = float(TOL_MP)
+            cond_df = pd.DataFrame({
+                "Idade (dias)": [7, 28, 63],
+                "Média Real (MPa)": [
+                    sa.loc[sa["Idade (dias)"] == 7,  "mean"].mean(),
+                    sa.loc[sa["Idade (dias)"] == 28, "mean"].mean(),
+                    sa.loc[sa["Idade (dias)"] == 63, "mean"].mean(),
+                ],
+                "Estimado (MPa)": est_df.set_index("Idade (dias)")["Resistência (MPa)"].reindex([7, 28, 63]).values
+            })
+            cond_df["Δ (Real-Est.)"] = cond_df["Média Real (MPa)"] - cond_df["Estimado (MPa)"]
+            cond_df["Status"] = [_status_row(d, _TOL) for d in cond_df["Δ (Real-Est.)"]]
+            st.write("#### 📊 Condição Real × Estimado (médias)")
+            st.dataframe(cond_df, use_container_width=True)
+        else:
+            st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
+
+        # ===== Gráfico 4 — Pareamento ponto-a-ponto (mantido no SISTEMA)
+        st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (sem médias)")
+        fig4, pareamento_df = None, None
+        if 'est_df' in locals() and est_df is not None and not est_df.empty:
+            est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
+            pares = []
+            for cp, sub in df_plot.groupby("CP"):
+                for _, r in sub.iterrows():
+                    idade = int(r["Idade (dias)"])
+                    if idade in est_map:
+                        real = float(r["Resistência (MPa)"]); est  = float(est_map[idade]); delta = real - est
+                        _TOL = float(TOL_MP)
+                        status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                        pares.append([str(cp), idade, real, est, delta, status])
+            pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
+            fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+            for cp, sub in df_plot.groupby("CP"):
+                sub = sub.sort_values("Idade (dias)")
+                x = sub["Idade (dias)"].tolist(); y_real = sub["Resistência (MPa)"].tolist()
+                x_est = [i for i in x if i in est_map]; y_est = [est_map[i] for i in x_est]
+                ax4.plot(x, y_real, marker="o", linewidth=1.6, label=f"CP {cp} — Real")
+                if x_est:
+                    ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
+                    for xx, yr, ye in zip(x_est, [rv for i, rv in zip(x, y_real) if i in est_map], y_est):
+                        ax4.vlines(xx, min(yr, ye), max(yr, ye), linestyles=":", linewidth=1)
+            if fck_active is not None:
+                ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
+            ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
+            ax4.set_title("Pareamento Real × Estimado por CP (sem médias)")
+            place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
+            st.pyplot(fig4)
+            if CAN_EXPORT:
+                _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
+            st.write("#### 📑 Pareamento ponto-a-ponto")
+            st.dataframe(pareamento_df, use_container_width=True)
+        else:
+            st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+
+        # ===== Verificação do fck (Resumo + Detalhada)
+        st.write("#### ✅ Verificação do fck de Projeto")
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
         fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+
+        mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+        m7  = mean_by_age.get(7,  float("nan"))
+        m28 = mean_by_age.get(28, float("nan"))
+        m63 = mean_by_age.get(63, float("nan"))
         verif_fck_df = pd.DataFrame({
             "Idade (dias)": [7, 28, 63],
             "Média Real (MPa)": [m7, m28, m63],
@@ -1531,102 +911,9 @@ if uploaded_files:
                 else:
                     resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
         verif_fck_df["Status"] = resumo_status
-
-        if est_df is not None:
-            sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
-            fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
-            ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
-            _sa_dp = sa[sa["count"] >= 2].copy()
-            if not _sa_dp.empty:
-                ax3.fill_between(_sa_dp["Idade (dias)"], _sa_dp["mean"] - _sa_dp["std"], _sa_dp["mean"] + _sa_dp["std"], alpha=0.2, label="Real ±1 DP")
-            ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Estimado")
-            if fck_active is not None:
-                ax3.axhline(fck_active, label=f"fck projeto ({fck_active:.1f} MPa)", **FCK_LINE_KW)
-            ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
-            ax3.set_title("Comparação Real × Estimado (médias)")
-            place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
-            st.pyplot(fig3)
-            if CAN_EXPORT:
-                _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
-                st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
-
-            # tabela Condição Real x Estimado
-            _TOL = float(TOL_MP)
-            cond_df = pd.DataFrame({
-                "Idade (dias)": [7, 28, 63],
-                "Média Real (MPa)": [
-                    sa.loc[sa["Idade (dias)"] == 7,  "mean"].mean(),
-                    sa.loc[sa["Idade (dias)"] == 28, "mean"].mean(),
-                    sa.loc[sa["Idade (dias)"] == 63, "mean"].mean(),
-                ],
-            })
-            est_map = est_df.set_index("Idade (dias)")["Resistência (MPa)"]
-            cond_df["Estimado (MPa)"] = cond_df["Idade (dias)"].map(est_map).astype(float)
-            cond_df["Δ (Real-Est.)"] = cond_df["Média Real (MPa)"] - cond_df["Estimado (MPa)"]
-            def _status_row(delta, tol):
-                if pd.isna(delta): return "⚪ Sem dados"
-                if abs(delta) <= tol: return "✅ Dentro dos padrões"
-                return "🔵 Acima do padrão" if delta > 0 else "🔴 Abaixo do padrão"
-            cond_df["Status"] = [ _status_row(d, _TOL) for d in cond_df["Δ (Real-Est.)"] ]
-            st.write("#### 📊 Condição Real × Estimado (médias)")
-            st.dataframe(cond_df, use_container_width=True)
-        else:
-            st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
-                    # ===== Gráfico 4 — Dispersão Real × Estimado por idade
-        st.write("##### Gráfico 4 — Dispersão Real × Estimado por idade")
-        if est_df is not None:
-            fig4, ax4 = plt.subplots(figsize=(9.0, 4.6))
-
-            # pontos reais
-            for idade, sub in df_plot.groupby("Idade (dias)"):
-                ax4.scatter(
-                    [idade] * len(sub),
-                    sub["Resistência (MPa)"],
-                    label=f"Real {idade}d" if idade in (7, 28, 63) else f"Real {idade}d",
-                    alpha=0.55,
-                    s=38,
-                )
-
-            # linha estimada
-            ax4.plot(
-                est_df["Idade (dias)"],
-                est_df["Resistência (MPa)"],
-                linestyle="--",
-                linewidth=2.0,
-                marker="o",
-                label=f"Estimado ({s.get('estim_model', 'fib 2010')})"
-            )
-
-            # fck
-            if fck_active is not None:
-                ax4.axhline(fck_active, label=f"fck projeto ({fck_active:.1f} MPa)", **FCK_LINE_KW)
-
-            ax4.set_xlabel("Idade (dias)")
-            ax4.set_ylabel("Resistência (MPa)")
-            ax4.set_title("Dispersão dos resultados reais em relação ao modelo")
-            place_right_legend(ax4)
-            ax4.grid(True, linestyle="--", alpha=0.4)
-            ax4.xaxis.set_major_locator(MaxNLocator(integer=True))
-
-            st.pyplot(fig4)
-
-            if CAN_EXPORT:
-                _buf4 = io.BytesIO()
-                fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
-                st.download_button(
-                    "🖼️ Baixar Gráfico 4 (PNG)",
-                    data=_buf4.getvalue(),
-                    file_name="grafico4_dispersao.png",
-                    mime="image/png"
-                )
-        else:
-            st.info("Sem curva estimada → não é possível montar o Gráfico 4 de dispersão.")
-
-        # ===== ✅ Verificação do fck de Projeto (tabela já feita acima)
-        st.write("#### ✅ Verificação do fck de Projeto")
         st.dataframe(verif_fck_df, use_container_width=True)
 
-        # ===== Verificação detalhada por CP (7/28/63 dias) — mantém
+        # ===== Verificação detalhada por CP (pares Δ>2MPa) — mesmo código que você tinha
         _fcks_pdf = pd.to_numeric(df_view.get("Fck Projeto"), errors="coerce").dropna()
         if not _fcks_pdf.empty:
             _fck_label_bar = f"{float(_fcks_pdf.mode().iloc[0]):.1f} MPa"
@@ -1777,12 +1064,13 @@ if uploaded_files:
             st.dataframe(pv_cp_status, use_container_width=True)
 
         # =============================================================================
-        # PDF — sem pareamento ponto-a-ponto
+        # PDF — AJUSTADO: sem pareamento ponto a ponto
         # =============================================================================
-        def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3,
+        def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3, fig4,
                       obra_label: str, data_label: str, fck_label: str,
                       verif_fck_df: Optional[pd.DataFrame],
                       cond_df: Optional[pd.DataFrame],
+                      pareamento_df: Optional[pd.DataFrame],   # <== ainda recebe, mas não usa
                       pv_cp_status: Optional[pd.DataFrame],
                       qr_url: str) -> bytes:
             from copy import deepcopy
@@ -1794,6 +1082,7 @@ if uploaded_files:
             from reportlab.lib import colors as _C
             import tempfile, io
 
+            # ---------- helpers de cor ----------
             def _status_bg(text: str):
                 t = str(text or "").lower()
                 if "informativo" in t:
@@ -1880,7 +1169,7 @@ if uploaded_files:
             table = Table([headers] + rows, repeatRows=1)
             table.setStyle(TableStyle([
                 ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                ("GRID",(0,0),(-1,-1),0.7,_C.black),
+                ("GRID",(0,0),(-1,-1),0.5,_C.black),
                 ("ALIGN",(0,0),(-1,-1),"CENTER"),
                 ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                 ("FONTSIZE",(0,0),(-1,-1),8.5),
@@ -1896,7 +1185,7 @@ if uploaded_files:
                 t2 = Table(stt, repeatRows=1)
                 t2.setStyle(TableStyle([
                     ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                    ("GRID",(0,0),(-1,-1),0.7,_C.black),
+                    ("GRID",(0,0),(-1,-1),0.5,_C.black),
                     ("ALIGN",(0,0),(-1,-1),"CENTER"),
                     ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                     ("FONTSIZE",(0,0),(-1,-1),8.6),
@@ -1911,6 +1200,7 @@ if uploaded_files:
             if fig1: story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
             if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
             if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
+            # <- AQUI a gente NÃO coloca fig4 no PDF MAIS
 
             if verif_fck_df is not None and not verif_fck_df.empty:
                 story.append(PageBreak())
@@ -1926,7 +1216,7 @@ if uploaded_files:
                 tv = Table(rows_v, repeatRows=1)
                 tv.setStyle(TableStyle([
                     ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                    ("GRID",(0,0),(-1,-1),0.7,_C.black),
+                    ("GRID",(0,0),(-1,-1),0.5,_C.black),
                     ("ALIGN",(0,0),(-2,-1),"CENTER"),
                     ("ALIGN",(-1,1),(-1,-1),"LEFT"),
                     ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
@@ -1949,7 +1239,7 @@ if uploaded_files:
                 tc = Table(rows_c, repeatRows=1)
                 tc.setStyle(TableStyle([
                     ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                    ("GRID",(0,0),(-1,-1),0.7,_C.black),
+                    ("GRID",(0,0),(-1,-1),0.5,_C.black),
                     ("ALIGN",(0,0),(-2,-1),"CENTER"),
                     ("ALIGN",(-1,1),(-1,-1),"LEFT"),
                     ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
@@ -1957,6 +1247,8 @@ if uploaded_files:
                 ]))
                 _apply_status_colors(tc, rows_c[1:], status_col_indexes=4)
                 story.append(tc); story.append(Spacer(1, 8))
+
+            # <<< REMOVIDO: bloco "Pareamento ponto-a-ponto" do PDF >>>
 
             if pv_cp_status is not None and not pv_cp_status.empty:
                 story.append(PageBreak())
@@ -1966,7 +1258,7 @@ if uploaded_files:
                 t_det = Table(tab, repeatRows=1)
                 t_det.setStyle(TableStyle([
                     ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                    ("GRID",(0,0),(-1,-1),0.7,_C.black),
+                    ("GRID",(0,0),(-1,-1),0.4,_C.black),
                     ("ALIGN",(0,0),(-1,-1),"CENTER"),
                     ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                     ("FONTSIZE",(0,0),(-1,-1),8.2),
@@ -1999,6 +1291,7 @@ if uploaded_files:
             buffer.close()
             return pdf
 
+        # ===== PDF / Exportações (somente admin)
         has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
         if has_df and CAN_EXPORT:
             try:
@@ -2007,6 +1300,7 @@ if uploaded_files:
                     fig1 if 'fig1' in locals() else None,
                     fig2 if 'fig2' in locals() else None,
                     fig3 if 'fig3' in locals() else None,
+                    fig4 if 'fig4' in locals() else None,   # <== passa, mas lá dentro não desenha
                     str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
                     (lambda _d: (
                         (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
@@ -2015,6 +1309,7 @@ if uploaded_files:
                     _format_float_label(fck_active),
                     verif_fck_df if 'verif_fck_df' in locals() else None,
                     cond_df if 'cond_df' in locals() else None,
+                    pareamento_df if 'pareamento_df' in locals() else None,   # <== passa, mas PDF ignora
                     pv_cp_status if 'pv_cp_status' in locals() else None,
                     s.get("qr_url","")
                 )
@@ -2041,7 +1336,7 @@ if uploaded_files:
                 try: render_print_block(pdf_bytes, None, brand, brand600)
                 except Exception: pass
 
-            # ====== EXCEL/ZIP ======
+            # ====== EXCEL/ZIP (apenas admin) ======
             try:
                 stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
                 excel_buffer = io.BytesIO()
@@ -2049,24 +1344,24 @@ if uploaded_files:
                     df_view.to_excel(writer, sheet_name="Individuais", index=False)
                     stats_cp_idade.to_excel(writer, sheet_name="Médias_DP", index=False)
                     comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
-                    if isinstance(est_df, pd.DataFrame) and (not est_df.empty):
-                        comp_df = comp_df.merge(est_df.rename(columns={"Resistência (MPa)": "Estimado"}), on="Idade (dias)", how="outer").sort_values("Idade (dias)")
+                    _est_df = locals().get("est_df")
+                    if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                        comp_df = comp_df.merge(_est_df.rename(columns={"Resistência (MPa)": "Estimado"}), on="Idade (dias)", how="outer").sort_values("Idade (dias)")
                         comp_df.to_excel(writer, sheet_name="Comparação", index=False)
                     else:
                         comp_df.to_excel(writer, sheet_name="Comparação", index=False)
-
                     try:
                         ws_md = writer.sheets.get("Médias_DP")
-                        if ws_md is not None and fig1 is not None:
+                        if ws_md is not None and "fig1" in locals() and fig1 is not None:
                             img1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig1.savefig(img1.name, dpi=150, bbox_inches="tight")
                             ws_md.insert_image("H2", img1.name, {"x_scale": 0.7, "y_scale": 0.7})
                     except Exception: pass
                     try:
                         ws_comp = writer.sheets.get("Comparação")
-                        if ws_comp is not None and fig2 is not None:
+                        if ws_comp is not None and "fig2" in locals() and fig2 is not None:
                             img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig2.savefig(img2.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H20", img2.name, {"x_scale": 0.7, "y_scale": 0.7})
-                        if ws_comp is not None and fig3 is not None:
+                        if ws_comp is not None and "fig3" in locals() and fig3 is not None:
                             img3 = tempfile.NamedTemporaryFile(delete=False, suffix=".png"); fig3.savefig(img3.name, dpi=150, bbox_inches="tight")
                             ws_comp.insert_image("H38", img3.name, {"x_scale": 0.7, "y_scale": 0.7})
                     except Exception: pass
@@ -2081,8 +1376,8 @@ if uploaded_files:
                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                     z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
                     z.writestr("Medias_DP.csv", stats_cp_idade.to_csv(index=False, sep=";"))
-                    if isinstance(est_df, pd.DataFrame) and (not est_df.empty):
-                        z.writestr("Estimativas.csv", est_df.to_csv(index=False, sep=";"))
+                    if isinstance(_est_df, pd.DataFrame) and (not _est_df.empty):
+                        z.writestr("Estimativas.csv", _est_df.to_csv(index=False, sep=";"))
                     if "comp_df" in locals():
                         z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
                 st.download_button("🗃️ Baixar CSVs (ZIP)", data=zip_buf.getvalue(),
@@ -2118,4 +1413,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

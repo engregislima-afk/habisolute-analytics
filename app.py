@@ -164,7 +164,6 @@ s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
-# para lembrar últimos filtros
 s.setdefault("last_sel_rels", [])
 s.setdefault("last_date_range", None)
 
@@ -942,6 +941,7 @@ def extrair_dados_certificado(uploaded_file):
                 df["Fck Projeto"] = df["Fck Projeto"].fillna(fallback_fck)
 
     return df, obra, data_relatorio, fck_projeto
+
 # =============================================================================
 # KPIs e utilidades
 # =============================================================================
@@ -1031,7 +1031,6 @@ else:
     up1 = st.file_uploader("📁 PDF (1 arquivo)", type=["pdf"], accept_multiple_files=False,
                            key=_uploader_key, help="Carregue 1 PDF.")
     uploaded_files = [up1] if up1 is not None else []
-
 # =============================================================================
 # Helpers de nome de arquivo
 # =============================================================================
@@ -1296,8 +1295,10 @@ if uploaded_files:
         fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
         with fc1:
             rels = sorted(df["Relatório"].astype(str).unique())
-            default_rels = s.get("last_sel_rels") or rels
-            sel_rels = st.multiselect("Relatórios", rels, default=default_rels)
+            last_sel = s.get("last_sel_rels") or rels
+            # BLINDAGEM: só defaults que existem em rels
+            valid_defaults = [r for r in last_sel if r in rels]
+            sel_rels = st.multiselect("Relatórios", rels, default=valid_defaults)
         def to_date(d):
             try: return datetime.strptime(str(d), "%d/%m/%Y").date()
             except Exception: return None
@@ -1354,7 +1355,6 @@ if uploaded_files:
         # ---------------------------------------------------------------
         with st.expander("1) 📦 Dados lidos / visão geral", expanded=True):
             render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]))
-
         # ---------------------------------------------------------------
         # SEÇÃO 2 — gráficos
         # ---------------------------------------------------------------
@@ -1480,7 +1480,7 @@ if uploaded_files:
             else:
                 st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-            # === Gráfico 4 — pareamento ponto-a-ponto (melhorado)
+            # === Gráfico 4 — pareamento ponto-a-ponto (melhorado, com linha)
             st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
             fig4, pareamento_df = None, None
             if est_df is not None and not est_df.empty:
@@ -1502,7 +1502,6 @@ if uploaded_files:
                             _TOL = float(s["TOL_MP"])
                             status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
                             pares.append([str(cp), idade, real, estv, delta, status])
-                            # linha vertical entre real e estimado
                             ax4.vlines(idade, min(real, estv), max(real, estv), linestyles=":", linewidth=1)
                     if x_est:
                         ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
@@ -1515,7 +1514,6 @@ if uploaded_files:
                 if CAN_EXPORT:
                     _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
-                # dataframe apenas para a tela (PDF não vai ter essa tabela agora)
                 pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
                 st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
                 st.dataframe(pareamento_df, use_container_width=True)
@@ -1550,7 +1548,6 @@ if uploaded_files:
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
-            # detalhado por CP (mesmo que antes)
             tmp_v = df_view[df_view["Idade (dias)"].isin([7, 28, 63])].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1579,14 +1576,6 @@ if uploaded_files:
                     pv["__cp_sort__"] = range(len(pv))
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-                # status columns
-                def _status_text_media(media_idade, age, fckp):
-                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
-                        return "⚪ Sem dados"
-                    if age == 7:
-                        return "🟡 Analisando (7d)"
-                    return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
-
                 fck_active2 = fck_active2
                 media_7 = pv_multi[7].mean(axis=1) if 7 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
                 media_63 = pv_multi[63].mean(axis=1) if 63 in pv_multi.columns.get_level_values(0) else pd.Series(pd.NA, index=pv_multi.index)
@@ -1609,18 +1598,12 @@ if uploaded_files:
 
                 status_df = pd.DataFrame(
                     {
-                        "Status 7d": [_status_text_media(v, 7, fck_active2) for v in media_7.reindex(pv_multi.index)],
+                        "Status 7d": ["🟡 Analisando (7d)" if not pd.isna(v) else "⚪ Sem dados" for v in media_7.reindex(pv_multi.index)],
                         "Status 28d": [_status_from_ok(v) for v in ok28.reindex(pv_multi.index)],
-                        "Status 63d": [_status_text_media(v, 63, fck_active2) for v in media_63.reindex(pv_multi.index)],
+                        "Status 63d": ["🟢 Atingiu fck" if (not pd.isna(v) and fck_active2 is not None and v >= fck_active2) else ("⚪ Sem dados" if pd.isna(v) else "🔴 Não atingiu fck") for v in media_63.reindex(pv_multi.index)],
                     },
                     index=pv_multi.index,
                 )
-
-                def _delta_flag(row_vals: pd.Series) -> bool:
-                    vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
-                    if vals.empty:
-                        return False
-                    return (vals.max() - vals.min()) > 2.0
 
                 alerta_pares = []
                 for idx in pv_multi.index:
@@ -1630,7 +1613,8 @@ if uploaded_files:
                         if not cols:
                             continue
                         series_age = pv_multi.loc[idx, cols]
-                        if _delta_flag(series_age):
+                        vals = pd.to_numeric(series_age.dropna(), errors="coerce").dropna()
+                        if not vals.empty and (vals.max() - vals.min()) > 2.0:
                             flag = True
                             break
                     alerta_pares.append("🟠 Δ pares > 2 MPa" if flag else "")
@@ -1658,12 +1642,11 @@ if uploaded_files:
                 )
                 pv_cp_status = pv.copy()
                 st.dataframe(pv_cp_status, use_container_width=True)
-            # guardaremos pv_cp_status e verif_fck_df2 pra PDF
+
         # ---------------------------------------------------------------
         # SEÇÃO 4 — exportações
         # ---------------------------------------------------------------
         with st.expander("4) ⬇️ Exportações", expanded=True):
-            # ===== PDF
             def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3, fig4,
                           obra_label: str, data_label: str, fck_label: str,
                           verif_fck_df: Optional[pd.DataFrame],
@@ -1673,7 +1656,6 @@ if uploaded_files:
                 from reportlab.lib import colors as _C
                 import tempfile, io
 
-                # FUNÇÕES auxiliares
                 def _status_bg(text: str):
                     t = str(text or "").lower()
                     if "analisando" in t: return _C.HexColor("#facc15")
@@ -1786,7 +1768,6 @@ if uploaded_files:
                     tv.setStyle(TableStyle(ts))
                     story.append(tv); story.append(Spacer(1, 8))
 
-                # condição real x estimado (médias)
                 if cond_df is not None and not cond_df.empty:
                     story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
                     rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
@@ -1814,7 +1795,6 @@ if uploaded_files:
                     tc.setStyle(TableStyle(ts2))
                     story.append(tc); story.append(Spacer(1, 8))
 
-                # verificação detalhada por CP
                 if pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (7/28/63 dias)", styles["Heading3"]))
@@ -1831,7 +1811,6 @@ if uploaded_files:
                         ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
                         ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
                     ]))
-                    # colorir status
                     for r_i, row in enumerate(tab[1:], start=1):
                         for c_i, col_name in enumerate(cols):
                             if "Status" in col_name:
@@ -1891,7 +1870,6 @@ if uploaded_files:
                 except Exception as e:
                     st.error(f"Falha ao gerar PDF: {e}")
 
-            # ===== EXCEL / ZIP =====
             if has_df and CAN_EXPORT:
                 try:
                     stats_all_full = (df_view.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index())
@@ -1925,7 +1903,6 @@ if uploaded_files:
                 except Exception:
                     pass
 
-        # botão ler novo
         if st.button("📂 Ler Novo(s) Certificado(s)", use_container_width=True, key="btn_novo"):
             s["uploader_key"] += 1
             st.rerun()
@@ -1948,5 +1925,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-

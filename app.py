@@ -1249,47 +1249,66 @@ if uploaded_files:
                 except Exception:
                     pass
 
-        # ---------------- Filtros
+                # ---------------- Filtros
         st.markdown("#### Filtros")
         fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
+
         with fc1:
+            # opções reais dos relatórios deste upload
             rels = sorted(df["Relatório"].astype(str).unique())
-            default_rels = s.get("last_sel_rels") or rels
+
+            # o que estava salvo na sessão
+            saved_rels = s.get("last_sel_rels") or []
+
+            # garante que o default só tenha valores que existem em rels
+            default_rels = [r for r in saved_rels if r in rels]
+            if not default_rels:
+                default_rels = rels  # se nada bater, usa todos
+
             sel_rels = st.multiselect("Relatórios", rels, default=default_rels)
+
         def to_date(d):
-            try: return datetime.strptime(str(d), "%d/%m/%Y").date()
-            except Exception: return None
+            try:
+                return datetime.strptime(str(d), "%d/%m/%Y").date()
+            except Exception:
+                return None
+
         df["_DataObj"] = df["Data Certificado"].apply(to_date)
         valid_dates = [d for d in df["_DataObj"] if d is not None]
+
         with fc2:
             if valid_dates:
                 dmin, dmax = min(valid_dates), max(valid_dates)
-                last_range = s.get("last_date_range") or (dmin, dmax)
+                # recupera range anterior e valida contra o range atual
+                last_range = s.get("last_date_range")
+                if last_range:
+                    ld_ini, ld_fim = last_range
+                    # se o range salvo não está mais dentro do novo, ajusta
+                    if ld_ini < dmin or ld_ini > dmax or ld_fim < dmin or ld_fim > dmax:
+                        last_range = (dmin, dmax)
+                else:
+                    last_range = (dmin, dmax)
                 dini, dfim = st.date_input("Intervalo de data do certificado", last_range)
             else:
                 dini, dfim = None, None
+
         with fc3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             if st.button("🔄 Limpar filtros / Novo upload", use_container_width=True):
                 s["uploader_key"] += 1
                 st.rerun()
+
+        # salva seleção atual na sessão (já válida)
         s["last_sel_rels"] = sel_rels
         if dini and dfim:
             s["last_date_range"] = (dini, dfim)
+
+        # aplica filtros
         mask = df["Relatório"].astype(str).isin(sel_rels)
         if valid_dates and dini and dfim:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
-        df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
 
-        # múltiplos fck
-        df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
-        fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
-        multiple_fck_detected = len(fck_labels) > 1
-        if multiple_fck_detected:
-            st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
-            selected_fck_label = st.selectbox("fck para análise", fck_labels,
-                                              format_func=lambda lbl: lbl if lbl != "—" else "Não informado")
-            df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
+        df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
         else:
             selected_fck_label = fck_labels[0] if fck_labels else "—"
         df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
@@ -1895,3 +1914,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

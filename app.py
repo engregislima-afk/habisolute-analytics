@@ -1,4 +1,4 @@
-# app.py — Habisolute Analytics (atualizado para verificação detalhada 3/7/14/28/63)
+# app.py — Habisolute Analytics (corrigido: multiselect e verificação 3/7/14/28/63)
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
@@ -321,7 +321,7 @@ def _load_users() -> Dict[str, Any]:
                             users_map[uname] = {
                                 "password": _hash_password("1234"),
                                 "is_admin": bool(item.get("is_admin", uname == "admin")),
-                                "active": True,
+                                "active": bool(item.get("active", True)),
                                 "must_change": True,
                                 "created_at": item.get("created_at", datetime.now().isoformat(timespec="seconds"))
                             }
@@ -444,7 +444,7 @@ with c4:
             s["logged_in"] = False; st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Boas-vindas
+# ---- Boas-vindas do usuário
 nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
 papel = "Admin" if s.get("is_admin") else "Usuário"
 st.markdown(
@@ -469,6 +469,7 @@ if CAN_ADMIN:
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
+
         with tab1:
             users = user_list()
             if not users:
@@ -496,6 +497,7 @@ if CAN_ADMIN:
                             if st.button("Excluir", key=f"del_{u['username']}"):
                                 user_delete(u["username"])
                                 st.rerun()
+
         with tab2:
             st.markdown("### Novo usuário")
             new_u = st.text_input("Usuário (login)")
@@ -516,6 +518,7 @@ if CAN_ADMIN:
                     log_event("user_created", {"created_user": new_u.strip(), "is_admin": bool(is_ad)})
                     st.success("Usuário criado com senha inicial 1234 (forçará troca no primeiro acesso).")
                     st.rerun()
+
         with tab3:
             st.markdown("### Auditoria do Sistema")
             df_log = read_audit_df()
@@ -531,6 +534,7 @@ if CAN_ADMIN:
                     tot_hoje = int((_d == hoje).sum())
                 except Exception:
                     tot_ev = len(df_log); tot_usr = 0; tot_act = 0; tot_hoje = 0
+
                 st.markdown(
                     f"""
                     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px 0">
@@ -542,22 +546,25 @@ if CAN_ADMIN:
                     """,
                     unsafe_allow_html=True,
                 )
-                c1, c2, c3, c4 = st.columns([1.4, 1.2, 1.6, 1.0])
-                with c1:
+
+                c1_, c2_, c3_, c4_ = st.columns([1.4, 1.2, 1.6, 1.0])
+                with c1_:
                     users_opt = ["(Todos)"] + sorted([u for u in df_log["user"].dropna().unique().tolist()])
                     f_user = st.selectbox("Usuário", users_opt, index=0)
-                with c2:
+                with c2_:
                     f_action = st.text_input("Ação contém...", "")
-                with c3:
+                with c3_:
                     lv_opts = ["(Todos)", "INFO", "WARN", "ERROR"]
                     f_level = st.selectbox("Nível", lv_opts, index=0)
-                with c4:
+                with c4_:
                     page_size = st.selectbox("Linhas", [100, 300, 1000], index=1)
-                d1, d2 = st.columns(2)
-                with d1:
+
+                d1_, d2_ = st.columns(2)
+                with d1_:
                     dt_min = st.date_input("Data inicial", value=None, key="aud_dini")
-                with d2:
+                with d2_:
                     dt_max = st.date_input("Data final", value=None, key="aud_dfim")
+
                 logv = df_log.copy()
                 if f_user and f_user != "(Todos)":
                     logv = logv[logv["user"] == f_user]
@@ -565,6 +572,7 @@ if CAN_ADMIN:
                     logv = logv[logv["action"].str.contains(f_action, case=False, na=False)]
                 if f_level and f_level != "(Todos)":
                     logv = logv[logv["level"] == f_level]
+
                 if "ts" in logv.columns:
                     logv["_d"] = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dt.date
                     if dt_min:
@@ -572,7 +580,9 @@ if CAN_ADMIN:
                     if dt_max:
                         logv = logv[logv["_d"].apply(lambda d: (d is not None) and (d <= dt_max))]
                     logv = logv.drop(columns=["_d"], errors="ignore")
+
                 st.caption(f"{len(logv)} evento(s) filtrados)")
+
                 total = len(logv)
                 if total > 0:
                     pcols = st.columns([1, 3, 1])
@@ -583,6 +593,7 @@ if CAN_ADMIN:
                 else:
                     view = logv.copy()
                 st.dataframe(view, use_container_width=True)
+
                 try:
                     dts = pd.to_datetime(logv["ts"].str.replace("Z", "", regex=False), errors="coerce").dropna()
                     if not dts.empty:
@@ -593,6 +604,7 @@ if CAN_ADMIN:
                 except Exception:
                     periodo = datetime.utcnow().strftime("%Y-%m-%d")
                 usuario_lbl = s.get("username") or "anon"
+
                 cdl1, cdl2 = st.columns([1, 1])
                 with cdl1:
                     st.download_button(
@@ -610,7 +622,6 @@ if CAN_ADMIN:
                         mime="application/json",
                         use_container_width=True,
                     )
-
 # =============================================================================
 # Sidebar
 # =============================================================================
@@ -750,7 +761,7 @@ def _normalize_fck_label(value: Any) -> str:
     return raw
 
 def extrair_dados_certificado(uploaded_file):
-    # igual ao seu, mantendo extrações
+    # mesmo do teu, já preparado para pegar idades variadas
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -768,7 +779,8 @@ def extrair_dados_certificado(uploaded_file):
     except Exception:
         return (pd.DataFrame(columns=[
             "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
+            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
+        ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
 
     cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
     data_regex = re.compile(r"\d{2}/\d{2}/\d{4}")
@@ -819,20 +831,24 @@ def extrair_dados_certificado(uploaded_file):
 
     for sline in linhas_todas:
         partes = sline.split()
+
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
             if m_rel: relatorio_cabecalho = m_rel.group(1)
             continue
+
         if len(partes) >= 5 and cp_regex.match(partes[0]):
             try:
                 cp = partes[0]
                 relatorio = relatorio_cabecalho or "NÃO IDENTIFICADO"
+
                 i_data = next((i for i, t in enumerate(partes) if data_token.match(t)), None)
                 if i_data is not None:
                     i_tipo = next((i for i in range(i_data + 1, len(partes)) if tipo_token.match(partes[i])), None)
                     start = (i_tipo + 1) if i_tipo is not None else (i_data + 1)
                 else:
                     start = 1
+
                 idade_idx, idade = None, None
                 for j in range(start, len(partes)):
                     t = partes[j]
@@ -840,6 +856,7 @@ def extrair_dados_certificado(uploaded_file):
                         v = int(t)
                         if 1 <= v <= 120:
                             idade = v; idade_idx = j; break
+
                 resistência, res_idx = None, None
                 if idade_idx is not None:
                     for j in range(idade_idx + 1, len(partes)):
@@ -847,14 +864,17 @@ def extrair_dados_certificado(uploaded_file):
                         if float_token.match(t):
                             resistência = float(t.replace(",", "."))
                             res_idx = j; break
+
                 if idade is None or resistência is None:
                     continue
+
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
                     tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
                         nf = tok; nf_idx = j; break
+
                 abat_obra_val = None
                 if i_data is not None:
                     for j in range(i_data - 1, max(-1, i_data - 6), -1):
@@ -863,6 +883,7 @@ def extrair_dados_certificado(uploaded_file):
                             v = int(tok)
                             if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
+
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
@@ -871,6 +892,7 @@ def extrair_dados_certificado(uploaded_file):
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
+
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
                     relatorio, cp, idade, resistência, nf, local,
@@ -896,6 +918,7 @@ def extrair_dados_certificado(uploaded_file):
                 except Exception: continue
                 if val_f not in uniques: uniques.append(val_f)
             if uniques: rel_map[rel] = uniques[0]
+
         fallback_fck = None
         if isinstance(fck_projeto, (int, float)):
             fallback_fck = float(fck_projeto)
@@ -908,11 +931,13 @@ def extrair_dados_certificado(uploaded_file):
                     fallback_fck = float(cand); break
                 except Exception:
                     continue
+
         if rel_map or fallback_fck is not None:
             df["Relatório"] = df["Relatório"].astype(str)
             df["Fck Projeto"] = df["Relatório"].map(rel_map)
             if fallback_fck is not None:
                 df["Fck Projeto"] = df["Fck Projeto"].fillna(fallback_fck)
+
     return df, obra, data_relatorio, fck_projeto
 
 # =============================================================================
@@ -1085,15 +1110,18 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
     else:
         obra = "Obra"
     obra_slug = _slugify_for_filename(obra)
+
     rel_tail = _extract_rel_tail_from_files(uploaded_files)
     age_tok  = _extract_age_token(df_view) or ""
     date_tok = _extract_cert_date_token(df_view) or ""
+
     if rel_tail and "_" in rel_tail and rel_tail.count("_") >= 2:
         final_tail = rel_tail
     else:
         rrr = rel_tail if (rel_tail and rel_tail.isdigit() and len(rel_tail) == 3) else (_extract_rel_tail_from_df(df_view) or "")
         tail_parts = [p for p in [rrr, age_tok, date_tok] if p]
         final_tail = "_".join(tail_parts)
+
     base = f"Relatorio_analise_certificado_obra_{obra_slug}"
     if final_tail:
         return f"{base}_{final_tail}.pdf"
@@ -1108,15 +1136,20 @@ def build_pdf_filename(df_view: pd.DataFrame, uploaded_files: list) -> str:
 def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFrame, TOL_MP: float):
     import pandas as _pd
     from datetime import datetime as _dt
+
     st.markdown("#### Visão Geral")
+
     def _format_float_label(value: Optional[float]) -> str:
         if value is None or _pd.isna(value): return "—"
         num = float(value); label = f"{num:.2f}".rstrip("0").rstrip(".")
         return label or f"{num:.2f}"
+
     def _to_date(d):
         try: return _dt.strptime(str(d), "%d/%m/%Y").date()
         except Exception: return None
+
     obra_label = "—"; data_label = "—"; fck_label = "—"
+
     if not df_view.empty:
         ob = sorted(set(df_view["Obra"].astype(str)))
         obra_label = ob[0] if len(ob) == 1 else f"Múltiplas ({len(ob)})"
@@ -1135,10 +1168,13 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
         if datas_validas:
             di, df_ = min(datas_validas), max(datas_validas)
             data_label = di.strftime('%d/%m/%Y') if di == df_ else f"{di.strftime('%d/%m/%Y')} — {df_.strftime('%d/%m/%Y')}"
+
     def _fmt_pct(v): return "--" if v is None else f"{v:.0f}%"
+
     fck_series_all = _pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
     fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
     KPIs = compute_exec_kpis(df_view, fck_val)
+
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
     with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Datas dos certificados</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
@@ -1146,6 +1182,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
     with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
     with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+
     e1, e2, e3, e4 = st.columns(4)
     with e1:
         media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
@@ -1167,6 +1204,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
             else:
                 abat_nf_label = f"{v:.0f} mm"
         st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+
     st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
     st.markdown(
         f"""
@@ -1176,11 +1214,11 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
         """,
         unsafe_allow_html=True
     )
+
     st.write("#### Resultados Individuais")
     st.dataframe(df_view, use_container_width=True)
     st.write("#### Estatísticas por CP")
     st.dataframe(stats_cp_idade, use_container_width=True)
-
 # =============================================================================
 # Pipeline principal
 # =============================================================================
@@ -1233,6 +1271,7 @@ if uploaded_files:
                     }, level="WARN")
                 except Exception:
                     pass
+
             cp_rel = df.dropna(subset=["CP","Relatório"]).astype({"Relatório": str})
             cp_multi = (cp_rel.groupby(["CP"])["Relatório"].nunique().reset_index(name="n_rel"))
             viol_cp = cp_multi[cp_multi["n_rel"] > 1]["CP"].tolist()
@@ -1249,41 +1288,34 @@ if uploaded_files:
                 except Exception:
                     pass
 
-                # ---------------- Filtros
+        # ---------------- Filtros (corrigido p/ não quebrar)
         st.markdown("#### Filtros")
         fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
 
         with fc1:
-            # opções reais dos relatórios deste upload
             rels = sorted(df["Relatório"].astype(str).unique())
-
-            # o que estava salvo na sessão
             saved_rels = s.get("last_sel_rels") or []
-
-            # garante que o default só tenha valores que existem em rels
-            default_rels = [r for r in saved_rels if r in rels]
+            # garante que o default só tenha opções válidas
+            default_rels = [str(r) for r in saved_rels if str(r) in rels]
             if not default_rels:
-                default_rels = rels  # se nada bater, usa todos
-
-            sel_rels = st.multiselect("Relatórios", rels, default=default_rels)
+                default_rels = rels  # se nada bate, usa todos
+            if rels:
+                sel_rels = st.multiselect("Relatórios", rels, default=default_rels)
+            else:
+                sel_rels = st.multiselect("Relatórios", [], default=[])
 
         def to_date(d):
-            try:
-                return datetime.strptime(str(d), "%d/%m/%Y").date()
-            except Exception:
-                return None
-
+            try: return datetime.strptime(str(d), "%d/%m/%Y").date()
+            except Exception: return None
         df["_DataObj"] = df["Data Certificado"].apply(to_date)
         valid_dates = [d for d in df["_DataObj"] if d is not None]
 
         with fc2:
             if valid_dates:
                 dmin, dmax = min(valid_dates), max(valid_dates)
-                # recupera range anterior e valida contra o range atual
                 last_range = s.get("last_date_range")
                 if last_range:
                     ld_ini, ld_fim = last_range
-                    # se o range salvo não está mais dentro do novo, ajusta
                     if ld_ini < dmin or ld_ini > dmax or ld_fim < dmin or ld_fim > dmax:
                         last_range = (dmin, dmax)
                 else:
@@ -1298,17 +1330,24 @@ if uploaded_files:
                 s["uploader_key"] += 1
                 st.rerun()
 
-        # salva seleção atual na sessão (já válida)
         s["last_sel_rels"] = sel_rels
         if dini and dfim:
             s["last_date_range"] = (dini, dfim)
 
-        # aplica filtros
-        mask = df["Relatório"].astype(str).isin(sel_rels)
+        mask = df["Relatório"].astype(str).isin(sel_rels) if sel_rels else df["Relatório"].astype(str).isin(rels)
         if valid_dates and dini and dfim:
             mask = mask & df["_DataObj"].apply(lambda d: d is not None and dini <= d <= dfim)
-
         df_view = df.loc[mask].drop(columns=["_DataObj"]).copy()
+
+        # Gestão de múltiplos fck
+        df_view["_FckLabel"] = df_view["Fck Projeto"].apply(_normalize_fck_label)
+        fck_labels = list(dict.fromkeys(df_view["_FckLabel"]))
+        multiple_fck_detected = len(fck_labels) > 1
+        if multiple_fck_detected:
+            st.warning("Detectamos múltiplos fck no conjunto selecionado. Escolha qual deseja analisar.")
+            selected_fck_label = st.selectbox("fck para análise", fck_labels,
+                                              format_func=lambda lbl: lbl if lbl != "—" else "Não informado")
+            df_view = df_view[df_view["_FckLabel"] == selected_fck_label].copy()
         else:
             selected_fck_label = fck_labels[0] if fck_labels else "—"
         df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
@@ -1400,18 +1439,24 @@ if uploaded_files:
             st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+            m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
+            m14 = mean_by_age.get(14, float("nan"))
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
+
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [7, 28, 63],
-                "Média Real (MPa)": [m7, m28, m63],
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
+                    (fck_active if fck_active is not None else float("nan")),
+                    (fck_active if fck_active is not None else float("nan")),
                 ],
             })
+
             if est_df is not None:
                 sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
                 fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
@@ -1452,7 +1497,7 @@ if uploaded_files:
             else:
                 st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-            # === Gráfico 4 — Real × Estimado ponto-a-ponto com linhas (melhorado)
+            # === Gráfico 4 — pareamento ponto-a-ponto (melhorado)
             st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
             fig4, pareamento_df = None, None
             if est_df is not None and not est_df.empty:
@@ -1489,54 +1534,53 @@ if uploaded_files:
                 st.dataframe(pareamento_df, use_container_width=True)
             else:
                 st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+
         # ---------------------------------------------------------------
-        # SEÇÃO 3 — ✅ Verificação do fck / CP detalhado
-        # (CORRIGIDO para considerar 3, 7, 14, 28 e 63 dias quando existirem)
+        # SEÇÃO 3 — verificação do fck
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto")
-
-            # resumo por idade (igual antes)
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
             fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-
-            mean_by_age_all = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-            m7  = mean_by_age_all.get(7,  float("nan"))
-            m28 = mean_by_age_all.get(28, float("nan"))
-            m63 = mean_by_age_all.get(63, float("nan"))
+            mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+            m3  = mean_by_age.get(3,  float("nan"))
+            m7  = mean_by_age.get(7,  float("nan"))
+            m14 = mean_by_age.get(14, float("nan"))
+            m28 = mean_by_age.get(28, float("nan"))
+            m63 = mean_by_age.get(63, float("nan"))
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [7, 28, 63],
-                "Média Real (MPa)": [m7, m28, m63],
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
                 ],
             })
+
             resumo_status = []
             for idade, media, fckp in verif_fck_df2.itertuples(index=False):
-                if idade == 7:
-                    resumo_status.append("🟡 Analisando (7d)")
+                if pd.isna(media) or (pd.isna(fckp) and idade != 3):
+                    resumo_status.append("⚪ Sem dados")
                 else:
-                    if pd.isna(media) or pd.isna(fckp):
-                        resumo_status.append("⚪ Sem dados")
+                    if idade in (3, 7):
+                        resumo_status.append("🟡 Analisando")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
-            # ======= DETALHADO POR CP (agora dinâmico 3/7/14/28/63) =======
-            tmp_v = df_view[df_view["Idade (dias)"].isin([3, 7, 14, 28, 63])].copy()
+            # detalhado por CP — agora incluindo 3 e 14
+            idades_interesse = [3, 7, 14, 28, 63]
+            tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
                 st.info("Sem CPs de 3/7/14/28/63 dias no filtro atual.")
             else:
                 tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
                 tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
-
-                IDADES_ALVO = [3, 7, 14, 28, 63]
-                idades_encontradas = [i for i in IDADES_ALVO if i in tmp_v["Idade (dias)"].unique()]
-
                 pv_multi = tmp_v.pivot_table(
                     index="CP",
                     columns=["Idade (dias)", "rep"],
@@ -1544,8 +1588,7 @@ if uploaded_files:
                     aggfunc="first"
                 ).sort_index(axis=1)
 
-                # garante ao menos uma coluna por idade que apareceu
-                for age in idades_encontradas:
+                for age in idades_interesse:
                     if age not in pv_multi.columns.get_level_values(0):
                         pv_multi[(age, 1)] = pd.NA
 
@@ -1556,60 +1599,36 @@ if uploaded_files:
                 pv = pv_multi.copy()
                 pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
                 pv = pv.reset_index()
-
-                # ordenar CP
                 try:
                     pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
                 except Exception:
                     pv["__cp_sort__"] = range(len(pv))
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-                # média por idade (sobre as reps)
-                medias_por_idade = {}
-                for age in idades_encontradas:
-                    cols_age = [c for c in pv_multi.columns if c[0] == age]
-                    medias_por_idade[age] = pv_multi[cols_age].mean(axis=1)
-
-                # fck para comparar 28/63
-                fck_for_compare = fck_active2
-
-                # para 28d: checar se TODAS as reps bateram
-                if 28 in idades_encontradas and fck_for_compare is not None and not pd.isna(fck_for_compare):
-                    cols28 = [c for c in pv_multi.columns if c[0] == 28]
-                    def _all_reps_ok(row):
-                        vals = row.dropna().astype(float)
-                        if vals.empty:
-                            return None
-                        return bool((vals >= float(fck_for_compare)).all())
-                    ok28 = pv_multi[cols28].apply(_all_reps_ok, axis=1)
-                else:
-                    ok28 = pd.Series([None] * pv_multi.shape[0], index=pv_multi.index)
-
-                # montar colunas de status
+                # status columns por idade
                 def _status_text_media(media_idade, age, fckp):
-                    if age in (3, 7, 14):
-                        return "🟡 Analisando"
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
+                    if age in (3, 7, 14):
+                        return "🟡 Analisando"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
-                status_cols = {}
-                for age in idades_encontradas:
-                    if age == 28 and not ok28.isna().all():
-                        def _status_from_ok(v):
-                            if v is None:
-                                return "⚪ Sem dados"
-                            return "🟢 Atingiu fck" if v else "🔴 Não atingiu fck"
-                        status_cols[f"Status {age}d"] = ok28.apply(_status_from_ok).values
+                media_by_age = {}
+                for age in idades_interesse:
+                    if age in pv_multi.columns.get_level_values(0):
+                        media_by_age[age] = pv_multi[age].mean(axis=1)
                     else:
-                        status_cols[f"Status {age}d"] = [
-                            _status_text_media(medias_por_idade[age].reindex(pv_multi.index).iloc[i], age, fck_for_compare)
-                            for i in range(len(pv_multi.index))
-                        ]
+                        media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
 
-                status_df = pd.DataFrame(status_cols, index=pv_multi.index)
+                status_df = pd.DataFrame(index=pv_multi.index)
+                for age in idades_interesse:
+                    colname = f"Status {age}d"
+                    status_df[colname] = [
+                        _status_text_media(media_by_age[age].reindex(pv_multi.index).iloc[i], age, fck_active2)
+                        for i in range(len(pv_multi.index))
+                    ]
 
-                # alerta de repetições com delta > 2 MPa
+                # alerta de pares
                 def _delta_flag(row_vals: pd.Series) -> bool:
                     vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
                     if vals.empty:
@@ -1617,13 +1636,13 @@ if uploaded_files:
                     return (vals.max() - vals.min()) > 2.0
 
                 alerta_pares = []
-                for idx in pv_multi.index:
+                for idx_ in pv_multi.index:
                     flag = False
-                    for age in idades_encontradas:
-                        cols_age = [c for c in pv_multi.columns if c[0] == age]
-                        if not cols_age:
+                    for age in idades_interesse:
+                        cols = [c for c in pv_multi.columns if c[0] == age]
+                        if not cols:
                             continue
-                        series_age = pv_multi.loc[idx, cols_age]
+                        series_age = pv_multi.loc[idx_, cols]
                         if _delta_flag(series_age):
                             flag = True
                             break
@@ -1632,28 +1651,32 @@ if uploaded_files:
                 pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
                 pv["Alerta Pares (Δ>2 MPa)"] = alerta_pares
 
-                # ordem de colunas: CP → idades → status → alerta
+                # ordem de colunas
                 cols_cp = ["CP"]
-                cols_idades = []
-                cols_status = []
-                for age in idades_encontradas:
-                    cols_idades += [c for c in pv.columns if c.startswith(f"{age}d")]
-                    col_status = f"Status {age}d"
-                    if col_status in pv.columns:
-                        cols_status.append(col_status)
-                ordered_cols = cols_cp + cols_idades + cols_status + ["Alerta Pares (Δ>2 MPa)"]
+                def _cols_age(age):
+                    base = [c for c in pv.columns if c.startswith(f"{age}d")]
+                    status_col = f"Status {age}d"
+                    if status_col in pv.columns:
+                        base = base + [status_col]
+                    return base
+                ordered_cols = (
+                    cols_cp
+                    + _cols_age(3)
+                    + _cols_age(7)
+                    + _cols_age(14)
+                    + _cols_age(28)
+                    + _cols_age(63)
+                    + ["Alerta Pares (Δ>2 MPa)"]
+                )
                 pv = pv[ordered_cols]
-
-                rename_map = {f"Status {age}d": f"{age} dias — Status" for age in idades_encontradas}
-                pv = pv.rename(columns=rename_map)
-
                 pv_cp_status = pv.copy()
                 st.dataframe(pv_cp_status, use_container_width=True)
 
         # ---------------------------------------------------------------
-        # SEÇÃO 4 — ⬇️ Exportações
+        # SEÇÃO 4 — exportações
         # ---------------------------------------------------------------
         with st.expander("4) ⬇️ Exportações", expanded=True):
+
             def gerar_pdf(df: pd.DataFrame, stats: pd.DataFrame, fig1, fig2, fig3, fig4,
                           obra_label: str, data_label: str, fck_label: str,
                           verif_fck_df: Optional[pd.DataFrame],
@@ -1662,6 +1685,7 @@ if uploaded_files:
                           qr_url: str) -> bytes:
                 from reportlab.lib import colors as _C
                 import tempfile, io
+
                 def _status_bg(text: str):
                     t = str(text or "").lower()
                     if "analisando" in t: return _C.HexColor("#facc15")
@@ -1670,6 +1694,7 @@ if uploaded_files:
                     if "acima" in t: return _C.HexColor("#3b82f6")
                     if "sem dados" in t: return _C.HexColor("#e5e7eb")
                     return None
+
                 use_landscape = (len(df.columns) >= 8)
                 pagesize = landscape(A4) if use_landscape else A4
                 buffer = io.BytesIO()
@@ -1680,20 +1705,24 @@ if uploaded_files:
                 styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
                 styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
                 story = []
+
                 story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
                 story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
+
                 def _usina_label_from_df(df_: pd.DataFrame) -> str:
                     if "Usina" not in df_.columns: return "—"
                     seri = df_["Usina"].dropna().astype(str)
                     if seri.empty: return "—"
                     m = seri.mode()
                     return str(m.iat[0]) if not m.empty else "—"
+
                 def _abat_nf_header_label(df_: pd.DataFrame) -> str:
                     snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
                     stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
                     if snf.empty: return "—"
                     v = float(snf.mode().iloc[0]); t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
                     return f"{v:.0f} ± {t:.0f} mm"
+
                 story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
                 story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
@@ -1702,6 +1731,7 @@ if uploaded_files:
                 if qr_url:
                     story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
                 story.append(Spacer(1, 8))
+
                 headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)"]
                 rows = df[headers].values.tolist()
                 table = Table([headers] + rows, repeatRows=1)
@@ -1716,6 +1746,7 @@ if uploaded_files:
                     ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
                 ]))
                 story.append(table); story.append(Spacer(1, 8))
+
                 if stats is not None and not stats.empty:
                     stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
                     story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
@@ -1728,14 +1759,17 @@ if uploaded_files:
                         ("FONTSIZE",(0,0),(-1,-1),8.6),
                     ]))
                     story.append(t2); story.append(Spacer(1, 10))
+
                 def _img_from_fig_pdf(_fig, w=620, h=420):
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
                     _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
                     return RLImage(tmp.name, width=w, height=h)
+
                 if fig1: story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
                 if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
                 if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
                 if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
+
                 if verif_fck_df is not None and not verif_fck_df.empty:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
@@ -1762,6 +1796,7 @@ if uploaded_files:
                             ts.append(("BACKGROUND", (3, i), (3, i), bg))
                     tv.setStyle(TableStyle(ts))
                     story.append(tv); story.append(Spacer(1, 8))
+
                 if cond_df is not None and not cond_df.empty:
                     story.append(Paragraph("Condição Real × Estimado (médias)", styles["Heading3"]))
                     rows_c = [["Idade (dias)","Média Real (MPa)","Estimado (MPa)","Δ (Real-Est.)","Status"]]
@@ -1788,6 +1823,7 @@ if uploaded_files:
                             ts2.append(("BACKGROUND", (4, i), (4, i), bg))
                     tc.setStyle(TableStyle(ts2))
                     story.append(tc); story.append(Spacer(1, 8))
+
                 if pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
@@ -1813,8 +1849,10 @@ if uploaded_files:
                                         ("BACKGROUND", (c_i, r_i), (c_i, r_i), bg)
                                     ]))
                     story.append(t_det); story.append(Spacer(1, 6))
+
                 story.append(Spacer(1, 10))
                 story.append(Paragraph(f"<b>ID do documento:</b> HAB-{datetime.now().strftime('%Y%m%d-%H%M%S')}", styles["Normal"]))
+
                 doc.build(story, canvasmaker=NumberedCanvas)
                 pdf = buffer.getvalue()
                 buffer.close()
@@ -1840,6 +1878,7 @@ if uploaded_files:
                         pv_cp_status if 'pv_cp_status' in locals() else None,
                         s.get("qr_url","")
                     )
+
                     file_name_pdf = build_pdf_filename(df_view, uploaded_files)
                     st.download_button(
                         "📄 Baixar Relatório (PDF)",
@@ -1878,6 +1917,7 @@ if uploaded_files:
                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                        use_container_width=True)
                     log_event("export_excel", { "rows": int(df_view.shape[0]) })
+
                     zip_buf = io.BytesIO()
                     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                         z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
@@ -1914,4 +1954,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

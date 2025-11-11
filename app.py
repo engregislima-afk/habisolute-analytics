@@ -1256,7 +1256,7 @@ def render_historico_page():
     if f_user != "(Todos)":
         v = v[v["parsed_by"].astype(str) == f_user]
 
-    st.caption(f"{len(v)} registro(s) no filtro atual)
+    st.caption(f"{len(v)} registro(s) no filtro atual)")
 
     # KPIs do histórico
     k1, k2, k3, k4 = st.columns(4)
@@ -2156,3 +2156,4 @@ else:
         """,
         unsafe_allow_html=True
     )
+

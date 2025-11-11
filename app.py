@@ -20,9 +20,6 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas
 
-# ===== Idades de interesse centralizadas =====
-AGES_OF_INTEREST = [3, 7, 14, 28, 63]
-
 # ===== Rodapé e numeração do PDF =====
 FOOTER_TEXT = (
     "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
@@ -1228,6 +1225,8 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
 if uploaded_files:
     frames = []
     progress_holder = st.empty()
+    # >>> melhoria visual: área de status dos certificados lidos
+    status_area = st.container()
     for idx, f in enumerate(uploaded_files, start=1):
         if f is None: continue
         progress_holder.info(f"📥 Lendo PDF {idx}/{len(uploaded_files)}: {getattr(f,'name','arquivo.pdf')}")
@@ -1250,11 +1249,20 @@ if uploaded_files:
                 "obra": obra_i,
                 "data_cert": data_i,
             })
+            # >>> aqui mostra o "Certificado lido com sucesso"
+            with status_area:
+                st.success(f"✅ Certificado '{getattr(f,'name','arquivo.pdf')}' lido com sucesso — {df_i.shape[0]} linha(s) extraídas.")
+        else:
+            # >>> se não achou CPs, avisa também
+            with status_area:
+                st.warning(f"⚠️ Certificado '{getattr(f,'name','arquivo.pdf')}' não trouxe CPs válidos.")
     progress_holder.empty()
 
     if not frames:
         st.error("⚠️ Não encontrei CPs válidos nos PDFs enviados.")
     else:
+        # >>> aviso geral após todos
+        st.success("📦 Todos os certificados enviados foram processados. Use os filtros abaixo para analisar.")
         df = pd.concat(frames, ignore_index=True)
 
         # ===== Validações
@@ -1324,14 +1332,6 @@ if uploaded_files:
                 else:
                     last_range = (dmin, dmax)
                 dini, dfim = st.date_input("Intervalo de data do certificado", last_range)
-
-                # ==== melhoria: garantir que o retorno seja sempre par de datas ====
-                if isinstance(dini, (list, tuple)):
-                    if len(dini) == 2:
-                        dini, dfim = dini
-                    elif len(dini) == 1:
-                        dini, dfim = dini[0], dini[0]
-                # ==================================================================
             else:
                 dini, dfim = None, None
 
@@ -1457,7 +1457,7 @@ if uploaded_files:
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": AGES_OF_INTEREST,
+                "Idade (dias)": [3, 7, 14, 28, 63],
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1560,7 +1560,7 @@ if uploaded_files:
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": AGES_OF_INTEREST,
+                "Idade (dias)": [3, 7, 14, 28, 63],
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1584,7 +1584,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — agora incluindo 3 e 14
-            idades_interesse = AGES_OF_INTEREST
+            idades_interesse = [3, 7, 14, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:

@@ -20,6 +20,9 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas
 
+# ===== Idades de interesse centralizadas =====
+AGES_OF_INTEREST = [3, 7, 14, 28, 63]
+
 # ===== Rodapé e numeração do PDF =====
 FOOTER_TEXT = (
     "Estes resultados referem-se exclusivamente às amostras ensaiadas. "
@@ -1321,6 +1324,14 @@ if uploaded_files:
                 else:
                     last_range = (dmin, dmax)
                 dini, dfim = st.date_input("Intervalo de data do certificado", last_range)
+
+                # ==== melhoria: garantir que o retorno seja sempre par de datas ====
+                if isinstance(dini, (list, tuple)):
+                    if len(dini) == 2:
+                        dini, dfim = dini
+                    elif len(dini) == 1:
+                        dini, dfim = dini[0], dini[0]
+                # ==================================================================
             else:
                 dini, dfim = None, None
 
@@ -1446,7 +1457,7 @@ if uploaded_files:
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Idade (dias)": AGES_OF_INTEREST,
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1549,7 +1560,7 @@ if uploaded_files:
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Idade (dias)": AGES_OF_INTEREST,
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1573,7 +1584,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — agora incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 28, 63]
+            idades_interesse = AGES_OF_INTEREST
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:

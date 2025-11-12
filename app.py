@@ -1579,7 +1579,7 @@ if uploaded_files:
                 st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-    st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+        st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
 
     # usa SEMPRE o df_view, não o df_plot
     fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -2073,4 +2073,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

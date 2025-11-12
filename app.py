@@ -392,7 +392,27 @@ def _force_change_password_ui(username: str):
             st.error("Use ao menos 4 caracteres.")
         elif p1 != p2:
             st.error("As senhas não conferem.")
-        else:# =============================================================================
+        else:
+            rec = user_get(username) or {}
+            rec["password"] = _hash_password(p1); rec["must_change"] = False; user_set(username, rec)
+            log_event("password_changed", {"username": username})
+            st.success("Senha atualizada! Redirecionando…"); s["must_change"] = False; st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# =============================================================================
+# Tela de login
+# =============================================================================
+if not s["logged_in"]:
+    _auth_login_ui()
+    st.stop()
+
+if s.get("must_change", False):
+    _force_change_password_ui(s["username"])
+    st.stop()
+
+# Cabeçalho
+_render_header()
+# =============================================================================
 # Painel Admin (opcional) e saudação
 # =============================================================================
 def _empty_audit_df():
@@ -880,27 +900,7 @@ def extrair_dados_certificado(uploaded_file):
                 df["Fck Projeto"] = df["Fck Projeto"].fillna(fallback_fck)
 
     return df, obra, data_relatorio, fck_projeto
-
-            rec = user_get(username) or {}
-            rec["password"] = _hash_password(p1); rec["must_change"] = False; user_set(username, rec)
-            log_event("password_changed", {"username": username})
-            st.success("Senha atualizada! Redirecionando…"); s["must_change"] = False; st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# =============================================================================
-# Tela de login
-# =============================================================================
-if not s["logged_in"]:
-    _auth_login_ui()
-    st.stop()
-
-if s.get("must_change", False):
-    _force_change_password_ui(s["username"])
-    st.stop()
-
-# Cabeçalho
-_render_header()
-# =============================================================================
+    # =============================================================================
 # Uploader
 # =============================================================================
 st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")

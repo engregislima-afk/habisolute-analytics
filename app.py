@@ -1260,6 +1260,29 @@ if uploaded_files:
             # fck ativo (do filtro)
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
             fck_active = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+            # coloca isso antes de usar place_right_legend
+
+from matplotlib.ticker import MaxNLocator  # se ainda não tiver nessa parte
+
+def place_right_legend(ax):
+    # pega o que já está no gráfico
+    handles, labels = ax.get_legend_handles_labels()
+    # remove duplicados mantendo a ordem
+    by_label = dict(zip(labels, handles))
+    ax.legend(
+        by_label.values(),
+        by_label.keys(),
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        frameon=False,
+        ncol=1,
+        handlelength=2.2,
+        handletextpad=0.8,
+        labelspacing=0.35,
+        prop={"size": 9},
+    )
+    # dá um espaço à direita pro legend não cortar
+    plt.subplots_adjust(right=0.80)
 
             # ===== Gráfico 1
             st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
@@ -1683,5 +1706,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

@@ -1541,43 +1541,92 @@ if uploaded_files:
             else:
                 st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-            # === Gráfico 4 — pareamento ponto-a-ponto (melhorado)
-            st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
-            fig4, pareamento_df = None, None
-            if est_df is not None and not est_df.empty:
-                est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
-                pares = []
-                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
-                for cp, sub in df_plot.groupby("CP"):
-                    sub = sub.sort_values("Idade (dias)")
-                    ax4.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp} — Real")
-                    x_est = []; y_est = []
-                    for _, r in sub.iterrows():
-                        idade = int(r["Idade (dias)"])
-                        if idade in est_map:
-                            x_est.append(idade); y_est.append(float(est_map[idade]))
-                            real = float(r["Resistência (MPa)"]); estv = float(est_map[idade])
-                            delta = real - estv
-                            _TOL = float(s["TOL_MP"])
-                            status = "✅ OK" if abs(delta) <= _TOL else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
-                            pares.append([str(cp), idade, real, estv, delta, status])
-                            ax4.vlines(idade, min(real, estv), max(real, estv), linestyles=":", linewidth=1)
-                    if x_est:
-                        ax4.plot(x_est, y_est, marker="^", linestyle="--", linewidth=1.6, label=f"CP {cp} — Est.")
-                if fck_active is not None:
-                    ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
-                ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
-                ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
-                place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig4)
-                if CAN_EXPORT:
-                    _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
-                    st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
-                pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
-                st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
-                st.dataframe(pareamento_df, use_container_width=True)
-            else:
-                st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+            # === Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)
+st.write("##### Gráfico 4 — Real × Estimado por CP (com ligação de pontos)")
+
+fig4, pareamento_df = None, None
+if est_df is not None and not est_df.empty:
+    est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
+    pares = []
+    fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+
+    showed_est_label = False  # pra não lotar a legenda
+
+    for cp, sub in df_plot.groupby("CP"):
+        sub = sub.sort_values("Idade (dias)")
+
+        # 1) linha REAL (colorida)
+        ax4.plot(
+            sub["Idade (dias)"],
+            sub["Resistência (MPa)"],
+            marker="o",
+            linewidth=1.6,
+            label=f"CP {cp} — Real",
+        )
+
+        # 2) linha ESTIMADA por CP (mesmos x, mas cinza claro)
+        x_est, y_est = [], []
+        for _, r in sub.iterrows():
+            idade = int(r["Idade (dias)"])
+            if idade in est_map:
+                x_est.append(idade)
+                y_est.append(float(est_map[idade]))
+
+                # registra p/ tabela
+                real = float(r["Resistência (MPa)"])
+                estv = float(est_map[idade])
+                delta = real - estv
+                tol = float(s["TOL_MP"])
+                status = "✅ OK" if abs(delta) <= tol else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                pares.append([str(cp), idade, real, estv, delta, status])
+
+        if x_est:
+            ax4.plot(
+                x_est,
+                y_est,
+                linestyle="--",
+                marker="^",
+                linewidth=1.0,
+                color="#e5e7eb",          # cinza bem claro
+                alpha=0.6,
+                label="Estimado (ref.)" if not showed_est_label else None,
+            )
+            showed_est_label = True
+
+            # ligando real x estimado em cada ponto
+            for xe, ye, xr, yr in zip(x_est, y_est, sub["Idade (dias)"], sub["Resistência (MPa)"]):
+                ax4.vlines(xe, min(ye, yr), max(ye, yr), linestyles=":", linewidth=0.8, alpha=0.4)
+
+    # linha de fck, se tiver
+    fck_series_all_g = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+    fck_active = float(fck_series_all_g.mode().iloc[0]) if not fck_series_all_g.empty else None
+    if fck_active is not None:
+        ax4.axhline(
+            fck_active,
+            linestyle=":",
+            linewidth=2,
+            color="#ef4444",
+            label=f"fck projeto ({fck_active:.1f} MPa)",
+        )
+
+    ax4.set_xlabel("Idade (dias)")
+    ax4.set_ylabel("Resistência (MPa)")
+    ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
+
+    place_right_legend(ax4)
+    ax4.grid(True, linestyle="--", alpha=0.5)
+    st.pyplot(fig4)
+
+    # tabela abaixo
+    pareamento_df = (
+        pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"])
+          .sort_values(["CP","Idade (dias)"])
+    )
+    st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
+    st.dataframe(pareamento_df, use_container_width=True)
+
+else:
+    st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
         # ---------------------------------------------------------------
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
@@ -2097,3 +2146,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

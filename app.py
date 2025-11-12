@@ -1578,51 +1578,46 @@ if uploaded_files:
             else:
                 st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
+        # ---------------------------------------------------------------
+        # SEÇÃO 3 — verificação do fck
+        # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-        st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+            fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+            mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+            m3  = mean_by_age.get(3,  float("nan"))
+            m7  = mean_by_age.get(7,  float("nan"))
+            m14 = mean_by_age.get(14, float("nan"))
+            m28 = mean_by_age.get(28, float("nan"))
+            m63 = mean_by_age.get(63, float("nan"))
+            verif_fck_df2 = pd.DataFrame({
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "fck Projeto (MPa)": [
+                    float("nan"),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
+                ],
+            })
 
-    # usa SEMPRE o df_view, não o df_plot
-    fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-    fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
+            resumo_status = []
+            for idade, media, fckp in verif_fck_df2.itertuples(index=False):
+                if pd.isna(media) or (pd.isna(fckp) and idade != 3):
+                    resumo_status.append("⚪ Sem dados")
+                else:
+                    if idade in (3, 7):
+                        resumo_status.append("🟡 Analisando")
+                    else:
+                        resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
+            verif_fck_df2["Status"] = resumo_status
+            st.dataframe(verif_fck_df2, use_container_width=True)
 
-    # médias por idade usando TODOS os CPs do filtro atual
-    mean_by_age = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-
-    m3  = mean_by_age.get(3,  float("nan"))
-    m7  = mean_by_age.get(7,  float("nan"))
-    m14 = mean_by_age.get(14, float("nan"))
-    m28 = mean_by_age.get(28, float("nan"))
-    m63 = mean_by_age.get(63, float("nan"))
-
-    verif_fck_df2 = pd.DataFrame({
-        "Idade (dias)": [3, 7, 14, 28, 63],
-        "Média Real (MPa)": [m3, m7, m14, m28, m63],
-        "fck Projeto (MPa)": [
-            float("nan"),
-            (fck_active2 if fck_active2 is not None else float("nan")),
-            (fck_active2 if fck_active2 is not None else float("nan")),
-            (fck_active2 if fck_active2 is not None else float("nan")),
-            (fck_active2 if fck_active2 is not None else float("nan")),
-        ],
-    })
-
-    resumo_status = []
-    for idade, media, fckp in verif_fck_df2.itertuples(index=False):
-        if pd.isna(media) or (pd.isna(fckp) and idade != 3):
-            resumo_status.append("⚪ Sem dados")
-        else:
-            if idade in (3, 7):
-                resumo_status.append("🟡 Analisando")
-            else:
-                resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
-    verif_fck_df2["Status"] = resumo_status
-
-    st.dataframe(verif_fck_df2, use_container_width=True)
-
-    # o restante (tabela por CP) pode ficar igual, porque ali você já estava usando df_view
-    idades_interesse = [3, 7, 14, 28, 63]
-    tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
-    ...
+            # detalhado por CP — agora incluindo 3 e 14
+            idades_interesse = [3, 7, 14, 28, 63]
+            tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
                 st.info("Sem CPs de 3/7/14/28/63 dias no filtro atual.")
@@ -2073,5 +2068,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-

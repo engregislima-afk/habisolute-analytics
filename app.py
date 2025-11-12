@@ -1,4 +1,5 @@
-# app.py — Habisolute Analytics (corrigido + melhorias dinâmicas)
+# app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + fix verificação 3d)
+
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
 from pathlib import Path
@@ -1579,18 +1580,24 @@ if uploaded_files:
                 st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
         # ---------------------------------------------------------------
-        # SEÇÃO 3 — verificação do fck
+        # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
             st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+
+            # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
             fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-            mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-            m3  = mean_by_age.get(3,  float("nan"))
-            m7  = mean_by_age.get(7,  float("nan"))
-            m14 = mean_by_age.get(14, float("nan"))
-            m28 = mean_by_age.get(28, float("nan"))
-            m63 = mean_by_age.get(63, float("nan"))
+
+            # MÉDIAS POR IDADE EM CIMA DE TODOS OS CPs VISÍVEIS
+            mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+
+            m3  = mean_by_age_all.get(3,  float("nan"))
+            m7  = mean_by_age_all.get(7,  float("nan"))
+            m14 = mean_by_age_all.get(14, float("nan"))
+            m28 = mean_by_age_all.get(28, float("nan"))
+            m63 = mean_by_age_all.get(63, float("nan"))
+
             verif_fck_df2 = pd.DataFrame({
                 "Idade (dias)": [3, 7, 14, 28, 63],
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
@@ -1608,14 +1615,14 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7):
+                    if idade in (3, 7, 14):
                         resumo_status.append("🟡 Analisando")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
-            # detalhado por CP — agora incluindo 3 e 14
+            # detalhado por CP — incluindo 3 e 14
             idades_interesse = [3, 7, 14, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
@@ -1876,10 +1883,18 @@ if uploaded_files:
                         ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                         ("FONTSIZE",(0,0),(-1,-1),8.6),
                     ]
+                    # colorir status
                     for i, row in enumerate(rows_v[1:], start=1):
-                        bg = _status_bg(row[3])
-                        if bg:
-                            ts.append(("BACKGROUND", (3, i), (3, i), bg))
+                        txt = str(row[3]).lower()
+                        if "analisando" in txt:   ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#facc15")))
+                        elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                            ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#ef4444")))
+                        elif "atingiu" in txt or "dentro" in txt:
+                            ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#16a34a")))
+                        elif "acima" in txt:
+                            ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#3b82f6")))
+                        elif "sem dados" in txt:
+                            ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#e5e7eb")))
                     tv.setStyle(TableStyle(ts))
                     story.append(tv); story.append(Spacer(1, 8))
 
@@ -1903,10 +1918,18 @@ if uploaded_files:
                         ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                         ("FONTSIZE",(0,0),(-1,-1),8.6),
                     ]
+                    # colorir status
                     for i, row in enumerate(rows_c[1:], start=1):
-                        bg = _status_bg(row[4])
-                        if bg:
-                            ts2.append(("BACKGROUND", (4, i), (4, i), bg))
+                        txt = str(row[4]).lower()
+                        if "analisando" in txt:   ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#facc15")))
+                        elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                            ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#ef4444")))
+                        elif "atingiu" in txt or "dentro" in txt:
+                            ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#16a34a")))
+                        elif "acima" in txt:
+                            ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#3b82f6")))
+                        elif "sem dados" in txt:
+                            ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#e5e7eb")))
                     tc.setStyle(TableStyle(ts2))
                     story.append(tc); story.append(Spacer(1, 8))
 
@@ -1926,14 +1949,20 @@ if uploaded_files:
                         ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
                         ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
                     ]))
+                    # destaca status
                     for r_i, row in enumerate(tab[1:], start=1):
                         for c_i, col_name in enumerate(cols):
                             if "Status" in col_name:
-                                bg = _status_bg(row[c_i])
-                                if bg:
-                                    t_det.setStyle(TableStyle([
-                                        ("BACKGROUND", (c_i, r_i), (c_i, r_i), bg)
-                                    ]))
+                                txt = str(row[c_i]).lower()
+                                if "analisando" in txt:   t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#facc15"))]))
+                                elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#ef4444"))]))
+                                elif "atingiu" in txt or "dentro" in txt:
+                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#16a34a"))]))
+                                elif "acima" in txt:
+                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#3b82f6"))]))
+                                elif "sem dados" in txt:
+                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#e5e7eb"))]))
                     story.append(t_det); story.append(Spacer(1, 6))
 
                 story.append(Spacer(1, 10))
@@ -1958,7 +1987,7 @@ if uploaded_files:
                             (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
                             if _d else "—"
                         ))([_to_date_obj(x) for x in df_view["Data Certificado"].dropna().tolist()]),
-                        _format_float_label(fck_active),
+                        _format_float_label(fck_active) if 'fck_active' in locals() and fck_active is not None else "—",
                         verif_fck_df2 if 'verif_fck_df2' in locals() else None,
                         cond_df if 'cond_df' in locals() else None,
                         pv_cp_status if 'pv_cp_status' in locals() else None,
@@ -1998,7 +2027,7 @@ if uploaded_files:
                         df_view.to_excel(writer, sheet_name="Individuais", index=False)
                         stats_cp_idade.to_excel(writer, sheet_name="Médias_DP", index=False)
                         comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
-                        if isinstance(est_df, pd.DataFrame) and (not est_df.empty):
+                        if 'est_df' in locals() and isinstance(est_df, pd.DataFrame) and (not est_df.empty):
                             comp_df = comp_df.merge(est_df.rename(columns={"Resistência (MPa)": "Estimado"}), on="Idade (dias)", how="outer").sort_values("Idade (dias)")
                             comp_df.to_excel(writer, sheet_name="Comparação", index=False)
                         else:
@@ -2014,7 +2043,7 @@ if uploaded_files:
                     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                         z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
                         z.writestr("Medias_DP.csv", stats_cp_idade.to_csv(index=False, sep=";"))
-                        if isinstance(est_df, pd.DataFrame) and (not est_df.empty):
+                        if 'est_df' in locals() and isinstance(est_df, pd.DataFrame) and (not est_df.empty):
                             z.writestr("Estimativas.csv", est_df.to_csv(index=False, sep=";"))
                         z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))
                     st.download_button("🗃️ Baixar CSVs (ZIP)", data=zip_buf.getvalue(),

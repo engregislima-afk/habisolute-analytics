@@ -1469,7 +1469,7 @@ if uploaded_files:
                 ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
                 for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
                     ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
-                ax2.set_title("Curva estimada (referência técnica, não critério normativo)")
+                ax2.set_title("Curva estimada (referência técnica)")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
                 place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig2)
@@ -1620,7 +1620,7 @@ if uploaded_files:
 
             ax4.set_xlabel("Idade (dias)")
             ax4.set_ylabel("Resistência (MPa)")
-            ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
+            ax4.set_title("Comparação Real × Estimado por CP")
             place_right_legend(ax4)
             ax4.grid(True, linestyle="--", alpha=0.5)
             st.pyplot(fig4)
@@ -1633,7 +1633,7 @@ if uploaded_files:
                 )
                 .sort_values(["CP", "Idade (dias)"])
             )
-            st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
+            st.write("#### 📑 Resistência Obtida")
             st.dataframe(pareamento_df, use_container_width=True)
 
         else:
@@ -1643,7 +1643,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -2157,5 +2157,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 

@@ -1205,11 +1205,11 @@ if uploaded_files:
             st.success("✅ Certificados lidos com sucesso e dados estruturados.")
             render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df)
 
-        # =============================================================================
-        # Seção 2 — Gráficos
-        # =============================================================================
+                # ---------------------------------------------------------------
+        # SEÇÃO 2 — gráficos
+        # ---------------------------------------------------------------
         with st.expander("2) 📊 Análises e gráficos (4 gráficos)", expanded=True):
-            # controles de foco
+            # controles de foco no CP
             st.sidebar.subheader("🎯 Foco nos gráficos")
             cp_foco_manual = st.sidebar.text_input("Digitar CP p/ gráficos (opcional)", "", key="cp_manual")
             cp_select = st.sidebar.selectbox(
@@ -1217,179 +1217,338 @@ if uploaded_files:
                 ["(Todos)"] + sorted(df_view["CP"].astype(str).unique()),
                 key="cp_select"
             )
+
+            # decide qual CP usar
             cp_focus = (cp_foco_manual.strip() or (cp_select if cp_select != "(Todos)" else "")).strip()
 
-            # df_plot = dados do CP focado; se vazio, usa df_view
+            # se escolheu um CP, filtra só ele; senão usa todos
             if cp_focus:
                 df_plot = df_view[df_view["CP"].astype(str) == cp_focus].copy()
             else:
                 df_plot = df_view.copy()
 
-            # ====== função auxiliar para montar curva estimada com fallback ======
-            def build_est_curve(prefer_df: pd.DataFrame, fallback_df: pd.DataFrame):
-                """
-                prefer_df: dados do CP focado
-                fallback_df: dados de todos os CPs filtrados
-                regra:
-                  - tenta montar com prefer_df
-                  - se não tiver média em 28d nem 7d -> usa fallback_df
-                """
-                def _try(df_src: pd.DataFrame):
-                    g = df_src.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-                    m28 = g.get(28, float("nan"))
-                    m7  = g.get(7,  float("nan"))
-                    if pd.notna(m28):
-                        return pd.DataFrame({
-                            "Idade (dias)": [7, 28, 63],
-                            "Resistência (MPa)": [m28*0.65, m28, m28*1.15]
-                        })
-                    if pd.notna(m7):
-                        est28 = m7 / 0.70
-                        return pd.DataFrame({
-                            "Idade (dias)": [7, 28, 63],
-                            "Resistência (MPa)": [m7, est28, est28*1.15]
-                        })
-                    return None
-
-                est_local = _try(prefer_df)
-                if est_local is not None:
-                    return est_local
-                est_global = _try(fallback_df)
-                return est_global
-
-            # fck ativo (do filtro)
-            fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
-            fck_active = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
-            # coloca isso antes de usar place_right_legend
-
-from matplotlib.ticker import MaxNLocator  # se ainda não tiver nessa parte
-
-def place_right_legend(ax):
-    # pega o que já está no gráfico
-    handles, labels = ax.get_legend_handles_labels()
-    # remove duplicados mantendo a ordem
-    by_label = dict(zip(labels, handles))
-    ax.legend(
-        by_label.values(),
-        by_label.keys(),
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1.0),
-        frameon=False,
-        ncol=1,
-        handlelength=2.2,
-        handletextpad=0.8,
-        labelspacing=0.35,
-        prop={"size": 9},
-    )
-    # dá um espaço à direita pro legend não cortar
-    plt.subplots_adjust(right=0.80)
-
-            # ===== Gráfico 1
-            st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
-            fig1, ax = plt.subplots(figsize=(9.6, 4.6))
-            for cp, sub in df_plot.groupby("CP"):
-                sub = sub.sort_values("Idade (dias)")
-                ax.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp}")
-            # média geral do filtro
-            stats_all_focus = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean().reset_index()
-            if not stats_all_focus.empty:
-                ax.plot(stats_all_focus["Idade (dias)"], stats_all_focus["Resistência (MPa)"],
-                        linewidth=2.1, linestyle="--", label="Média (todos CPs)")
-            if fck_active is not None:
-                ax.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
-            ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
-            ax.set_title("Crescimento da resistência por corpo de prova")
-            place_right_legend(ax)
-            ax.grid(True, linestyle="--", alpha=0.35)
-            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-            st.pyplot(fig1)
-
-            # ===== Gráfico 2 — Curva estimada
-            st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
-            est_df = build_est_curve(df_plot, df_view)
-            if est_df is not None:
-                fig2, ax2 = plt.subplots(figsize=(7.8, 4.6))
-                ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"],
-                         linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
-                for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
-                    ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
-                ax2.set_title("Curva estimada (baseada no conjunto filtrado)")
-                ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
-                place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig2)
+            # pode acontecer do filtro deixar sem linha — evita quebrar os gráficos
+            if df_plot.empty:
+                st.info("Nenhum dado para o CP selecionado. Escolha outro CP ou deixe '(Todos)'.")
             else:
-                st.info("Não foi possível calcular a curva estimada (nem o CP focado nem o conjunto filtrado possuem 7d ou 28d).")
+                # fck ativo para linhas de referência
+                fck_series_focus = pd.to_numeric(df_plot["Fck Projeto"], errors="coerce").dropna()
+                fck_series_all_g = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
+                if not fck_series_focus.empty:
+                    fck_active = float(fck_series_focus.mode().iloc[0])
+                elif not fck_series_all_g.empty:
+                    fck_active = float(fck_series_all_g.mode().iloc[0])
+                else:
+                    fck_active = None
 
-            # ===== Gráfico 3 — Comparação Real × Estimado (médias)
-            st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
-            if est_df is not None:
-                mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean().reset_index()
-                fig3, ax3 = plt.subplots(figsize=(9.6, 4.6))
-                ax3.plot(mean_by_age_all["Idade (dias)"], mean_by_age_all["Resistência (MPa)"],
-                         marker="s", linewidth=2.0, label="Média Real (todos CPs)")
-                ax3.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"],
-                         linestyle="--", marker="o", linewidth=2, label="Estimado")
-                if fck_active is not None:
-                    ax3.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
-                ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
-                ax3.set_title("Comparação Real × Estimado (médias)")
-                place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig3)
-            else:
-                st.info("Sem curva estimada → não é possível comparar médias.")
-
-            # ===== Gráfico 4 — Real × Estimado por CP (com ligação de pontos)
-            st.write("##### Gráfico 4 — Real × Estimado por CP (com ligação de pontos)")
-            pareamento_df = None
-            if est_df is not None:
-                est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
-                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
-
-                # 1) plota estimado claro para TODAS as idades, para servir de referência de fundo
-                ages_sorted = sorted(est_map.keys())
-                est_vals_sorted = [est_map[a] for a in ages_sorted]
-                ax4.plot(
-                    ages_sorted, est_vals_sorted,
-                    linestyle="--", linewidth=1.0, color=(0.8,0.8,0.8),
-                    label="Estimado (referência base)"
+                # estatísticas por idade do conjunto que está sendo plotado
+                stats_all_focus = (
+                    df_plot.groupby("Idade (dias)")["Resistência (MPa)"]
+                    .agg(mean="mean", std="std", count="count")
+                    .reset_index()
                 )
 
-                pares = []
-                for cp, sub in df_view.groupby("CP"):  # usa TODOS do filtro
+                # =============== GRÁFICO 1 ===============
+                st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
+                fig1, ax = plt.subplots(figsize=(9.6, 4.9))
+
+                # cada CP real, com cor padrão
+                for cp, sub in df_plot.groupby("CP"):
                     sub = sub.sort_values("Idade (dias)")
-                    ax4.plot(sub["Idade (dias)"], sub["Resistência (MPa)"],
-                             marker="o", linewidth=1.6, label=f"CP {cp} — Real")
-                    # linha estimada específica do CP: usa valores do est_map (mesma curva)
-                    x_est = []; y_est = []
-                    for _, r in sub.iterrows():
-                        idade = int(r["Idade (dias)"])
-                        if idade in est_map:
-                            x_est.append(idade); y_est.append(float(est_map[idade]))
-                            real = float(r["Resistência (MPa)"])
-                            estv = float(est_map[idade])
-                            delta = real - estv
-                            tol = float(s["TOL_MP"])
-                            status = "✅ OK" if abs(delta) <= tol else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
-                            pares.append([str(cp), idade, real, estv, delta, status])
-                            ax4.vlines(idade, min(real, estv), max(real, estv), linestyles=":", linewidth=0.9)
-                    if x_est:
-                        ax4.plot(x_est, y_est, linestyle="--", linewidth=1.0, alpha=0.30)
+                    ax.plot(
+                        sub["Idade (dias)"],
+                        sub["Resistência (MPa)"],
+                        marker="o",
+                        linewidth=1.6,
+                        label=f"CP {cp}"
+                    )
 
+                # média por idade (se tiver)
+                sa_dp = stats_all_focus[stats_all_focus["count"] >= 2].copy()
+                if not sa_dp.empty:
+                    ax.plot(
+                        sa_dp["Idade (dias)"],
+                        sa_dp["mean"],
+                        linewidth=2.2,
+                        marker="s",
+                        label="Média"
+                    )
+                _sdp = sa_dp.dropna(subset=["std"]).copy()
+                if not _sdp.empty:
+                    ax.fill_between(
+                        _sdp["Idade (dias)"],
+                        _sdp["mean"] - _sdp["std"],
+                        _sdp["mean"] + _sdp["std"],
+                        alpha=0.2,
+                        label="±1 DP"
+                    )
+
+                # linha de fck
                 if fck_active is not None:
-                    ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
-                ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
-                ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
-                place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig4)
+                    ax.axhline(
+                        fck_active,
+                        linestyle=":",
+                        linewidth=2,
+                        color="#ef4444",
+                        label=f"fck projeto ({fck_active:.1f} MPa)"
+                    )
 
-                pareamento_df = pd.DataFrame(
-                    pares,
-                    columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]
-                ).sort_values(["CP","Idade (dias)"])
-                st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
-                st.dataframe(pareamento_df, use_container_width=True)
-            else:
-                st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
+                ax.set_xlabel("Idade (dias)")
+                ax.set_ylabel("Resistência (MPa)")
+                ax.set_title("Crescimento da resistência por corpo de prova")
+                ax.grid(True, linestyle="--", alpha=0.35)
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                place_right_legend(ax)
+                st.pyplot(fig1)
+
+                if CAN_EXPORT:
+                    _buf1 = io.BytesIO()
+                    fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
+                    st.download_button(
+                        "🖼️ Baixar Gráfico 1 (PNG)",
+                        data=_buf1.getvalue(),
+                        file_name="grafico1_real.png",
+                        mime="image/png"
+                    )
+
+                # =============== GRÁFICO 2 ===============
+                st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
+                fig2 = None
+                est_df = None
+
+                # tenta achar média 28 ou 7 para montar a curva referência
+                fck28 = df_plot.loc[df_plot["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
+                fck7  = df_plot.loc[df_plot["Idade (dias)"] == 7,  "Resistência (MPa)"].mean()
+
+                if pd.notna(fck28):
+                    est_df = pd.DataFrame({
+                        "Idade (dias)": [7, 28, 63],
+                        "Resistência (MPa)": [fck28*0.65, fck28, fck28*1.15]
+                    })
+                elif pd.notna(fck7):
+                    _f28 = fck7 / 0.70
+                    est_df = pd.DataFrame({
+                        "Idade (dias)": [7, 28, 63],
+                        "Resistência (MPa)": [float(fck7), float(_f28), float(_f28)*1.15]
+                    })
+
+                if est_df is not None:
+                    fig2, ax2 = plt.subplots(figsize=(7.8, 4.8))
+                    ax2.plot(
+                        est_df["Idade (dias)"],
+                        est_df["Resistência (MPa)"],
+                        linestyle="--",
+                        marker="o",
+                        linewidth=2,
+                        label="Curva Estimada"
+                    )
+                    for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
+                        ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
+
+                    ax2.set_title("Curva estimada (referência técnica, não critério normativo)")
+                    ax2.set_xlabel("Idade (dias)")
+                    ax2.set_ylabel("Resistência (MPa)")
+                    ax2.grid(True, linestyle="--", alpha=0.5)
+                    place_right_legend(ax2)
+                    st.pyplot(fig2)
+
+                    if CAN_EXPORT:
+                        _buf2 = io.BytesIO()
+                        fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
+                        st.download_button(
+                            "🖼️ Baixar Gráfico 2 (PNG)",
+                            data=_buf2.getvalue(),
+                            file_name="grafico2_estimado.png",
+                            mime="image/png"
+                        )
+                else:
+                    st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
+
+                # =============== GRÁFICO 3 ===============
+                st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
+                fig3 = None
+                cond_df = None
+
+                # médias reais por idade
+                mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+
+                if est_df is not None:
+                    sa = stats_all_focus.copy()
+                    sa["std"] = sa["std"].fillna(0.0)
+
+                    fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
+                    ax3.plot(
+                        sa["Idade (dias)"],
+                        sa["mean"],
+                        marker="s",
+                        linewidth=2,
+                        label=("Média (CP focado)" if cp_focus else "Média Real")
+                    )
+
+                    _sa_dp = sa[sa["count"] >= 2].copy()
+                    if not _sa_dp.empty:
+                        ax3.fill_between(
+                            _sa_dp["Idade (dias)"],
+                            _sa_dp["mean"] - _sa_dp["std"],
+                            _sa_dp["mean"] + _sa_dp["std"],
+                            alpha=0.2,
+                            label="Real ±1 DP"
+                        )
+
+                    ax3.plot(
+                        est_df["Idade (dias)"],
+                        est_df["Resistência (MPa)"],
+                        linestyle="--",
+                        marker="o",
+                        linewidth=2,
+                        label="Estimado"
+                    )
+
+                    if fck_active is not None:
+                        ax3.axhline(
+                            fck_active,
+                            linestyle=":",
+                            linewidth=2,
+                            color="#ef4444",
+                            label=f"fck projeto ({fck_active:.1f} MPa)"
+                        )
+
+                    ax3.set_xlabel("Idade (dias)")
+                    ax3.set_ylabel("Resistência (MPa)")
+                    ax3.set_title("Comparação Real × Estimado (médias)")
+                    ax3.grid(True, linestyle="--", alpha=0.5)
+                    place_right_legend(ax3)
+                    st.pyplot(fig3)
+
+                    # tabela condição
+                    _TOL = float(s["TOL_MP"])
+                    cond_df = pd.DataFrame({
+                        "Idade (dias)": [7, 28, 63],
+                        "Média Real (MPa)": [
+                            sa.loc[sa["Idade (dias)"] == 7,  "mean"].mean(),
+                            sa.loc[sa["Idade (dias)"] == 28, "mean"].mean(),
+                            sa.loc[sa["Idade (dias)"] == 63, "mean"].mean(),
+                        ],
+                        "Estimado (MPa)": est_df.set_index("Idade (dias)")["Resistência (MPa)"].reindex([7, 28, 63]).values
+                    })
+                    cond_df["Δ (Real-Est.)"] = cond_df["Média Real (MPa)"] - cond_df["Estimado (MPa)"]
+
+                    def _status_row(delta, tol):
+                        if pd.isna(delta):
+                            return "⚪ Sem dados"
+                        if abs(delta) <= tol:
+                            return "✅ Dentro"
+                        return "🔵 Acima" if delta > 0 else "🔴 Abaixo"
+
+                    cond_df["Status"] = [_status_row(d, _TOL) for d in cond_df["Δ (Real-Est.)"]]
+                    st.write("#### 📊 Condição Real × Estimado (médias)")
+                    st.dataframe(cond_df, use_container_width=True)
+                else:
+                    st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
+
+                # =============== GRÁFICO 4 ===============
+                st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
+                fig4 = None
+                pareamento_df = None
+
+                if est_df is not None and not est_df.empty:
+                    est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
+                    pares = []
+
+                    fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+
+                    # 1) desenha as curvas estimadas de todos os CPs em cinza claro
+                    for cp, sub in df_plot.groupby("CP"):
+                        sub = sub.sort_values("Idade (dias)")
+                        x_est = []
+                        y_est = []
+                        for _, r in sub.iterrows():
+                            idade = int(r["Idade (dias)"])
+                            if idade in est_map:
+                                x_est.append(idade)
+                                y_est.append(float(est_map[idade]))
+                        if x_est:
+                            ax4.plot(
+                                x_est,
+                                y_est,
+                                linestyle="--",
+                                linewidth=1.1,
+                                color="#d1d5db",
+                                label="_ignore_est"
+                            )
+
+                    # 2) agora desenha os reais do CP (ou de todos) em cores normais
+                    for cp, sub in df_plot.groupby("CP"):
+                        sub = sub.sort_values("Idade (dias)")
+                        ax4.plot(
+                            sub["Idade (dias)"],
+                            sub["Resistência (MPa)"],
+                            marker="o",
+                            linewidth=1.6,
+                            label=f"CP {cp} — Real"
+                        )
+
+                        # liga real x estimado com linha pontilhada vertical e monta tabela
+                        for _, r in sub.iterrows():
+                            idade = int(r["Idade (dias)"])
+                            if idade in est_map:
+                                real = float(r["Resistência (MPa)"])
+                                estv = float(est_map[idade])
+                                delta = real - estv
+                                _TOL = float(s["TOL_MP"])
+                                status = (
+                                    "✅ OK" if abs(delta) <= _TOL
+                                    else ("🔵 Acima" if delta > 0 else "🔴 Abaixo")
+                                )
+                                pares.append([str(cp), idade, real, estv, delta, status])
+                                ax4.vlines(idade, min(real, estv), max(real, estv), linestyles=":", linewidth=1)
+
+                    if fck_active is not None:
+                        ax4.axhline(
+                            fck_active,
+                            linestyle=":",
+                            linewidth=2,
+                            color="#ef4444",
+                            label=f"fck projeto ({fck_active:.1f} MPa)"
+                        )
+
+                    ax4.set_xlabel("Idade (dias)")
+                    ax4.set_ylabel("Resistência (MPa)")
+                    ax4.set_title("Pareamento Real × Estimado por CP (com curva estimada de fundo)")
+                    ax4.grid(True, linestyle="--", alpha=0.5)
+
+                    # legenda sem as linhas de fundo "_ignore_est"
+                    handles, labels = ax4.get_legend_handles_labels()
+                    clean_h = []
+                    clean_l = []
+                    for h, l in zip(handles, labels):
+                        if l != "_ignore_est":
+                            clean_h.append(h)
+                            clean_l.append(l)
+                    ax4.legend(clean_h, clean_l, loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
+                    plt.subplots_adjust(right=0.80)
+
+                    st.pyplot(fig4)
+
+                    pareamento_df = pd.DataFrame(
+                        pares,
+                        columns=["CP", "Idade (dias)", "Real (MPa)", "Estimado (MPa)", "Δ", "Status"]
+                    ).sort_values(["CP", "Idade (dias)"])
+
+                    st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
+                    st.dataframe(pareamento_df, use_container_width=True)
+
+                    if CAN_EXPORT:
+                        _buf4 = io.BytesIO()
+                        fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                        st.download_button(
+                            "🖼️ Baixar Gráfico 4 (PNG)",
+                            data=_buf4.getvalue(),
+                            file_name="grafico4_pareamento.png",
+                            mime="image/png"
+                        )
+                else:
+                    st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
         # =============================================================================
         # Seção 3 — verificação do fck / CP detalhado
@@ -1706,6 +1865,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

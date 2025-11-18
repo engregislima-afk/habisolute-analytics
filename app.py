@@ -1470,7 +1470,7 @@ if uploaded_files:
                 ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
                 for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
                     ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
-                ax2.set_title("Curva estimada (referência técnica, não critério normativo)")
+                ax2.set_title("Curva estimada")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
                 place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig2)
@@ -1481,7 +1481,7 @@ if uploaded_files:
                 st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
             # === Gráfico 3 — comparações
-            st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
+            st.write("##### Gráfico 3 — Comparação Real × Estimado (Utilizando a Média)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
             m3  = mean_by_age.get(3,  float("nan"))
@@ -1568,7 +1568,7 @@ if uploaded_files:
                 if fck_active is not None:
                     ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
-                ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
+                ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
                 place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig4)
                 if CAN_EXPORT:
@@ -2098,3 +2098,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+

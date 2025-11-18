@@ -1793,7 +1793,7 @@ if uploaded_files:
                 story = []
 
                 story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
-                story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
+                story.append(Paragraph("Relatório Técnico de Rompimento de Corpos de Prova", styles['Heading2']))
 
                 def _usina_label_from_df(df_: pd.DataFrame) -> str:
                     if "Usina" not in df_.columns: return "—"
@@ -2098,4 +2098,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 

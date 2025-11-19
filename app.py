@@ -1717,7 +1717,7 @@ if uploaded_files:
                     + _cols_age(14)
                     + _cols_age(28)
                     + _cols_age(63)
-                    + [" Pares (Δ>2 MPa)"]
+                    + ["Alerta Pares (Δ>2 MPa)"]
                 )
                 pv = pv[ordered_cols]
                 pv_cp_status = pv.copy()
@@ -2098,6 +2098,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

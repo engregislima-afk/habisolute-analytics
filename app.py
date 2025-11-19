@@ -1700,7 +1700,7 @@ if uploaded_files:
                     alerta_pares.append("🟠 Δ pares > 2 MPa" if flag else "")
 
                 pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
-                pv["Divergência"] = alerta_pares
+                pv["Alerta de pares (Δ pares > 2 MPa)"] = alerta_pares
 
                 # ordem de colunas
                 cols_cp = ["CP"]
@@ -2098,6 +2098,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

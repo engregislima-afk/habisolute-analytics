@@ -481,32 +481,32 @@ if CAN_ADMIN:
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
 
         with tab1:
-    users = user_list()
-    if not users:
-        st.info("Nenhum usuário cadastrado.")
-    else:
-        for u in users:
-            colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
-            colA.write(f"**{u['username']}**")
-            colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
-            colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
-            colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
-            with colE:
-                if u["username"] != "admin":
-                    if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
-                        rec = user_get(u["username"]) or {}
-                        rec["active"] = not rec.get("active", True)
-                        user_set(u["username"], rec)
-                        st.rerun()
-                    if st.button("Redefinir", key=f"rst_{u['username']}"):
-                        rec = user_get(u["username"]) or {}
-                        rec["password"] = _hash_password("1234")
-                        rec["must_change"] = True
-                        user_set(u["username"], rec)
-                        st.rerun()
-                    if st.button("Excluir", key=f"del_{u['username']}"):
-                        user_delete(u["username"])
-                        st.rerun()
+            users = user_list()
+            if not users:
+                 st.info("Nenhum usuário cadastrado.")
+            else:
+                for u in users:
+                    colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
+                    colA.write(f"**{u['username']}**")
+                    colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
+                    colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
+                    colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
+                    with colE:
+                         if u["username"] != "admin":
+                             if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["active"] = not rec.get("active", True)
+                                user_set(u["username"], rec)
+                                st.rerun()
+                        if st.button("Redefinir", key=f"rst_{u['username']}"):
+                                rec = user_get(u["username"]) or {}
+                                rec["password"] = _hash_password("1234")
+                                rec["must_change"] = True
+                                user_set(u["username"], rec)
+                                st.rerun()
+                        if st.button("Excluir", key=f"del_{u['username']}"):
+                                user_delete(u["username"])
+                                st.rerun()
 
         with tab2:
             st.markdown("### Novo usuário")

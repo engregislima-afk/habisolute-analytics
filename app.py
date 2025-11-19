@@ -498,7 +498,7 @@ if CAN_ADMIN:
                                 rec["active"] = not rec.get("active", True)
                                 user_set(u["username"], rec)
                                 st.rerun()
-                            if st.button("Redefinir", key=f"rst_{u['username']}"]:
+                            if st.button("Redefinir", key=f"rst_{u['username']}"):
                                 rec = user_get(u["username"]) or {}
                                 rec["password"] = _hash_password("1234")
                                 rec["must_change"] = True
@@ -1818,6 +1818,7 @@ if uploaded_files:
                 pv = pv[ordered_cols]
                 pv_cp_status = pv.copy()
                 st.dataframe(pv_cp_status, use_container_width=True)
+
         # ---------------------------------------------------------------
         # SEÇÃO 4 — exportações
         # ---------------------------------------------------------------
@@ -2186,4 +2187,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-

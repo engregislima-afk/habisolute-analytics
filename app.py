@@ -1,4 +1,5 @@
-# app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + CPs suspeitos)
+
+# app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + fix verificação 3d)
 
 import io, re, json, base64, tempfile, zipfile, hashlib
 from datetime import datetime
@@ -170,10 +171,6 @@ s.setdefault("last_date_range", None)
 s.setdefault("rt_responsavel", "")
 s.setdefault("rt_cliente", "")
 s.setdefault("rt_cidade", "")
-# NOVO: limite para marcar resistência absurda
-s.setdefault("ABSURD_LIMIT", 120.0)
-# NOVO: CPs suspeitos ignorados
-s.setdefault("ignored_susp_cps", [])
 
 # Recupera usuário após refresh
 if s.get("logged_in") and not s.get("username"):
@@ -418,7 +415,6 @@ if s.get("must_change", False):
 
 # Cabeçalho
 _render_header()
-
 # =============================================================================
 # Toolbar de preferências
 # =============================================================================
@@ -480,35 +476,30 @@ if CAN_ADMIN:
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])
 
-                with tab1:
+        with tab1:
             users = user_list()
             if not users:
                 st.info("Nenhum usuário cadastrado.")
             else:
                 for u in users:
-                    colA, colB, colC, colD, colE = st.columns([2, 1, 1.2, 1.6, 1.4])
+                    colA, colB, colC, colD, colE = st.columns([2,1,1.2,1.6,1.4])
                     colA.write(f"**{u['username']}**")
                     colB.write("👑 Admin" if u.get("is_admin") else "Usuário")
                     colC.write("✅ Ativo" if u.get("active", True) else "❌ Inativo")
-                    colD.write("Exige troca" if u.get("must_change") else "Senha OK")
+                    colD.write(("Exige troca" if u.get("must_change") else "Senha OK"))
                     with colE:
                         if u["username"] != "admin":
-                            if st.button(
-                                "Desativar" if u.get("active", True) else "Reativar",
-                                key=f"act_{u['username']}"
-                            ):
+                            if st.button(("Desativar" if u.get("active", True) else "Reativar"), key=f"act_{u['username']}"):
                                 rec = user_get(u["username"]) or {}
                                 rec["active"] = not rec.get("active", True)
                                 user_set(u["username"], rec)
                                 st.rerun()
-
                             if st.button("Redefinir", key=f"rst_{u['username']}"):
                                 rec = user_get(u["username"]) or {}
                                 rec["password"] = _hash_password("1234")
                                 rec["must_change"] = True
                                 user_set(u["username"], rec)
                                 st.rerun()
-
                             if st.button("Excluir", key=f"del_{u['username']}"):
                                 user_delete(u["username"])
                                 st.rerun()
@@ -637,9 +628,8 @@ if CAN_ADMIN:
                         mime="application/json",
                         use_container_width=True,
                     )
-
 # =============================================================================
-# Sidebar (relatório)
+# Sidebar
 # =============================================================================
 with st.sidebar:
     st.markdown("### ⚙️ Opções do relatório")
@@ -649,16 +639,6 @@ with st.sidebar:
         s["_prev_batch"] = s["BATCH_MODE"]
         s["uploader_key"] += 1
     s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1, key="opt_tol_mpa")
-
-    # NOVO: limite para marcar resistência absurda (apenas para gráficos e painel de suspeitos)
-    s["ABSURD_LIMIT"] = st.slider(
-        "Limite p/ marcar resistência absurda (MPa)",
-        60.0, 250.0,
-        float(s.get("ABSURD_LIMIT", 120.0)),
-        5.0,
-        key="opt_absurd_limit"
-    )
-
     st.markdown("---")
     st.markdown("#### 📄 Dados do relatório")
     s["rt_responsavel"] = st.text_input("Responsável técnico", value=s.get("rt_responsavel",""))
@@ -790,8 +770,9 @@ def _normalize_fck_label(value: Any) -> str:
     raw = str(value).strip()
     if not raw or raw.lower() == 'nan': return "—"
     return raw
+
 def extrair_dados_certificado(uploaded_file):
-    # leitura + parsing do PDF
+    # mesmo do teu, já preparado para pegar idades variadas
     try:
         raw = uploaded_file.read()
         uploaded_file.seek(0)
@@ -1169,7 +1150,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
 
     st.markdown("#### Visão Geral")
 
-    def _format_float_label_local(value: Optional[float]) -> str:
+    def _format_float_label(value: Optional[float]) -> str:
         if value is None or _pd.isna(value): return "—"
         num = float(value); label = f"{num:.2f}".rstrip("0").rstrip(".")
         return label or f"{num:.2f}"
@@ -1187,7 +1168,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
         for raw in df_view["Fck Projeto"].tolist():
             normalized = _to_float_or_none(raw)
             if normalized is not None:
-                formatted = _format_float_label_local(normalized)
+                formatted = _format_float_label(normalized)
                 if formatted != "—": fck_candidates.append(formatted)
             else:
                 raw_str = str(raw).strip()
@@ -1237,7 +1218,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
 
     st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
     st.markdown(
-        """
+        f"""
         <div style='font-size:13px; margin-bottom:10px; line-height:1.4'>
         28 dias tem peso 60% e 63 dias 40% para o semáforo. Faixas: ≥90% Bom • ≥75% Atenção • &lt;75% Crítico.
         </div>
@@ -1328,16 +1309,17 @@ if uploaded_files:
                 except Exception:
                     pass
 
-        # ---------------- Filtros
+        # ---------------- Filtros (corrigido p/ não quebrar)
         st.markdown("#### Filtros")
         fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
 
         with fc1:
             rels = sorted(df["Relatório"].astype(str).unique())
             saved_rels = s.get("last_sel_rels") or []
+            # garante que o default só tenha opções válidas
             default_rels = [str(r) for r in saved_rels if str(r) in rels]
             if not default_rels:
-                default_rels = rels
+                default_rels = rels  # se nada bate, usa todos
             if rels:
                 sel_rels = st.multiselect("Relatórios", rels, default=default_rels)
             else:
@@ -1395,90 +1377,13 @@ if uploaded_files:
             st.info("Nenhum dado disponível para o fck selecionado.")
             st.stop()
 
-        # ===== CPs suspeitos (valores absurdos e/ou muito fora da curva)
-        df_view_raw = df_view.copy()
-        suspicious_df = pd.DataFrame()
-        ignored_cps: List[str] = []
-
-        try:
-            df_num_all = df_view_raw[["CP", "Idade (dias)", "Resistência (MPa)"]].copy()
-            df_num_all["Resistência (MPa)"] = pd.to_numeric(df_num_all["Resistência (MPa)"], errors="coerce")
-
-            ABS_LIMIT = float(s.get("ABSURD_LIMIT", 120.0))
-            sigma = float(s.get("OUTLIER_SIGMA", 3.0))
-
-            mask_abs = df_num_all["Resistência (MPa)"] > ABS_LIMIT
-            df_num_all["absurdo"] = mask_abs
-            df_num_all["out_sigma"] = False
-
-            for age, sub in df_num_all.groupby("Idade (dias)"):
-                m = sub["Resistência (MPa)"].mean()
-                sd = sub["Resistência (MPa)"].std()
-                if pd.isna(sd) or sd == 0:
-                    continue
-                z = (sub["Resistência (MPa)"] - m) / sd
-                mask_out = z.abs() > sigma
-                if mask_out.any():
-                    df_num_all.loc[sub.index[mask_out], "out_sigma"] = True
-
-            suspicious_df = df_num_all[df_num_all["absurdo"] | df_num_all["out_sigma"]].copy()
-        except Exception:
-            suspicious_df = pd.DataFrame()
-
-        if not suspicious_df.empty:
-            suspicious_df["CP"] = suspicious_df["CP"].astype(str)
-
-            ABS_LIMIT = float(s.get("ABSURD_LIMIT", 120.0))
-            sigma = float(s.get("OUTLIER_SIGMA", 3.0))
-
-            def _reason(row):
-                motivos = []
-                if bool(row.get("absurdo")):
-                    motivos.append(f"> {ABS_LIMIT:.1f} MPa")
-                if bool(row.get("out_sigma")):
-                    motivos.append(f"|Δ| > {sigma:.1f}σ")
-                return " / ".join(motivos) or "-"
-
-            suspicious_df["Motivo"] = suspicious_df.apply(_reason, axis=1)
-
-            with st.expander("⚠️ CPs suspeitos (valor extremo ou fora da curva)", expanded=True):
-                st.write(
-                    "Os CPs abaixo foram marcados como suspeitos por terem resistência acima do limite "
-                    f"configurado ({ABS_LIMIT:.0f} MPa) e/ou por estarem além de {sigma:.1f} desvios-padrão "
-                    "da média na respectiva idade."
-                )
-                st.dataframe(
-                    suspicious_df[["CP", "Idade (dias)", "Resistência (MPa)", "Motivo"]],
-                    use_container_width=True,
-                )
-
-                all_susp_cps = sorted(suspicious_df["CP"].unique().tolist())
-                default_ignored = s.get("ignored_susp_cps", all_susp_cps)
-                ignored_cps = st.multiselect(
-                    "CPs suspeitos que devem ser **ignorados nos cálculos (KPIs, verificação de fck, PDF, etc.)**:",
-                    all_susp_cps,
-                    default=default_ignored,
-                    key="k_ignored_susp_cps",
-                )
-                s["ignored_susp_cps"] = ignored_cps
-
-        # aplica filtro global (remove CPs suspeitos marcados)
-        if ignored_cps:
-            df_view = df_view_raw[~df_view_raw["CP"].astype(str).isin(ignored_cps)].copy()
-        else:
-            df_view = df_view_raw
-
-        if df_view.empty:
-            st.warning("Após remover os CPs suspeitos selecionados, nenhum dado permaneceu para análise.")
-            st.stop()
-
         # ===== Estatísticas por CP/Idade
         stats_cp_idade = (
             df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
                   .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
         )
 
-        # ===== Outliers (simples com sigma)
+        # ===== Outliers (simples com sigma do state)
         outliers_df = None
         try:
             df_num = df_view[["CP","Idade (dias)","Resistência (MPa)"]].copy()
@@ -1514,21 +1419,10 @@ if uploaded_files:
         with st.expander("2) 📊 Análises e gráficos (4 gráficos)", expanded=True):
             st.sidebar.subheader("🎯 Foco nos gráficos")
             cp_foco_manual = st.sidebar.text_input("Digitar CP p/ gráficos (opcional)", "", key="cp_manual")
-            cp_select = st.sidebar.selectbox(
-                "CP para gráficos",
-                ["(Todos)"] + sorted(df_view["CP"].astype(str).unique()),
-                key="cp_select"
-            )
+            cp_select = st.sidebar.selectbox("CP para gráficos", ["(Todos)"] + sorted(df_view["CP"].astype(str).unique()),
+                                             key="cp_select")
             cp_focus = (cp_foco_manual.strip() or (cp_select if cp_select != "(Todos)" else "")).strip()
-
-            # base para gráficos (já sem CPs ignorados nos cálculos)
             df_plot = df_view[df_view["CP"].astype(str) == cp_focus].copy() if cp_focus else df_view.copy()
-
-            # NOVO: remover leituras absurdas só para os gráficos
-            absurd_limit = float(s.get("ABSURD_LIMIT", 120.0))
-            df_plot["_ResNum"] = pd.to_numeric(df_plot["Resistência (MPa)"], errors="coerce")
-            df_plot = df_plot[df_plot["_ResNum"] <= absurd_limit].copy()
-            df_plot = df_plot.drop(columns=["_ResNum"])
 
             fck_series_focus = pd.to_numeric(df_plot["Fck Projeto"], errors="coerce").dropna()
             fck_series_all_g = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1564,9 +1458,8 @@ if uploaded_files:
             # === Gráfico 2 — curva estimada
             st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
             fig2, est_df = None, None
-            mean_by_age_plot = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-            fck28 = mean_by_age_plot.get(28, float("nan"))
-            fck7  = mean_by_age_plot.get(7,  float("nan"))
+            fck28 = df_plot.loc[df_plot["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
+            fck7  = df_plot.loc[df_plot["Idade (dias)"] == 7,  "Resistência (MPa)"].mean()
             if pd.notna(fck28):
                 est_df = pd.DataFrame({"Idade (dias)": [7, 28, 63], "Resistência (MPa)": [fck28*0.65, fck28, fck28*1.15]})
             elif pd.notna(fck7):
@@ -1577,7 +1470,7 @@ if uploaded_files:
                 ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
                 for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
                     ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
-                ax2.set_title("Curva estimada (referência técnica, não critério normativo)")
+                ax2.set_title("Curva estimada")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
                 place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig2)
@@ -1588,7 +1481,7 @@ if uploaded_files:
                 st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
             # === Gráfico 3 — comparações
-            st.write("##### Gráfico 3 — Comparação Real × Estimado (médias)")
+            st.write("##### Gráfico 3 — Comparação Real × Estimado (Utilizando a Média)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
             m3  = mean_by_age.get(3,  float("nan"))
@@ -1649,7 +1542,7 @@ if uploaded_files:
             else:
                 st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
-            # === Gráfico 4 — pareamento ponto-a-ponto
+            # === Gráfico 4 — pareamento ponto-a-ponto (melhorado)
             st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
             fig4, pareamento_df = None, None
             if est_df is not None and not est_df.empty:
@@ -1675,7 +1568,7 @@ if uploaded_files:
                 if fck_active is not None:
                     ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
-                ax4.set_title("Pareamento Real × Estimado por CP (com ligação de pontos)")
+                ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
                 place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig4)
                 if CAN_EXPORT:
@@ -1693,9 +1586,11 @@ if uploaded_files:
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
             st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
 
+            # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
             fck_active2 = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
 
+            # MÉDIAS POR IDADE EM CIMA DE TODOS OS CPs VISÍVEIS
             mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
 
             m3  = mean_by_age_all.get(3,  float("nan"))
@@ -1728,6 +1623,7 @@ if uploaded_files:
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
+            # detalhado por CP — incluindo 3 e 14
             idades_interesse = [3, 7, 14, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
@@ -1760,6 +1656,7 @@ if uploaded_files:
                     pv["__cp_sort__"] = range(len(pv))
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
+                # status columns por idade
                 def _status_text_media(media_idade, age, fckp):
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
@@ -1782,6 +1679,7 @@ if uploaded_files:
                         for i in range(len(pv_multi.index))
                     ]
 
+                # alerta de pares
                 def _delta_flag(row_vals: pd.Series) -> bool:
                     vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
                     if vals.empty:
@@ -1804,6 +1702,7 @@ if uploaded_files:
                 pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
                 pv["Alerta Pares (Δ>2 MPa)"] = alerta_pares
 
+                # ordem de colunas
                 cols_cp = ["CP"]
                 def _cols_age(age):
                     base = [c for c in pv.columns if c.startswith(f"{age}d")]
@@ -1829,6 +1728,7 @@ if uploaded_files:
         # ---------------------------------------------------------------
         with st.expander("4) ⬇️ Exportações", expanded=True):
 
+            # checklist visual
             st.markdown("##### ✅ Checklist antes de exportar")
             items = []
             items.append(("✅ Dados disponíveis", not df_view.empty))
@@ -1876,7 +1776,8 @@ if uploaded_files:
                     if "sem dados" in t: return _C.HexColor("#e5e7eb")
                     return None
 
-                include_tables = True
+                # define que seções entram
+                include_tables = True  # sempre
                 include_graphs = report_mode in ("Relatório técnico completo", "Relatório resumido (cliente)")
                 include_verif  = report_mode in ("Relatório técnico completo",)
                 include_cp_det = report_mode in ("Relatório técnico completo",)
@@ -1892,7 +1793,7 @@ if uploaded_files:
                 story = []
 
                 story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
-                story.append(Paragraph("Relatório de Rompimento de Corpos de Prova", styles['Heading2']))
+                story.append(Paragraph("Relatório Técnico de Rompimento de Corpos de Prova", styles['Heading2']))
 
                 def _usina_label_from_df(df_: pd.DataFrame) -> str:
                     if "Usina" not in df_.columns: return "—"
@@ -1983,6 +1884,7 @@ if uploaded_files:
                         ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                         ("FONTSIZE",(0,0),(-1,-1),8.6),
                     ]
+                    # colorir status
                     for i, row in enumerate(rows_v[1:], start=1):
                         txt = str(row[3]).lower()
                         if "analisando" in txt:   ts.append(("BACKGROUND",(3,i),(3,i),_C.HexColor("#facc15")))
@@ -2017,6 +1919,7 @@ if uploaded_files:
                         ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
                         ("FONTSIZE",(0,0),(-1,-1),8.6),
                     ]
+                    # colorir status
                     for i, row in enumerate(rows_c[1:], start=1):
                         txt = str(row[4]).lower()
                         if "analisando" in txt:   ts2.append(("BACKGROUND",(4,i),(4,i),_C.HexColor("#facc15")))
@@ -2047,6 +1950,7 @@ if uploaded_files:
                         ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
                         ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
                     ]))
+                    # destaca status
                     for r_i, row in enumerate(tab[1:], start=1):
                         for c_i, col_name in enumerate(cols):
                             if "Status" in col_name:
@@ -2135,6 +2039,7 @@ if uploaded_files:
                                        use_container_width=True)
                     log_event("export_excel", { "rows": int(df_view.shape[0]) })
 
+                    # ZIP com CSVs
                     zip_buf = io.BytesIO()
                     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                         z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
@@ -2147,6 +2052,7 @@ if uploaded_files:
                                        mime="application/zip", use_container_width=True)
                     log_event("export_zip", { "rows": int(df_view.shape[0]) })
 
+                    # ZIP com gráficos (se existirem)
                     try:
                         graph_zip = io.BytesIO()
                         with zipfile.ZipFile(graph_zip, "w", zipfile.ZIP_DEFLATED) as zg:
@@ -2179,9 +2085,9 @@ else:
 st.markdown("---")
 st.subheader("📘 Normas de Referência")
 st.markdown("""
-- **NBR 5738** – Concreto: Procedimento para moldagem e cura de corpos de prova  
-- **NBR 5739** – Concreto: Ensaio de compressão de corpos de prova cilíndricos  
-- **NBR 12655** – Concreto de cimento Portland: Preparo, controle e recebimento  
+- **NBR 5738** – Concreto: Procedimento para moldagem e cura de corpos de prova
+- **NBR 5739** – Concreto: Ensaio de compressão de corpos de prova cilíndricos
+- **NBR 12655** – Concreto de cimento Portland: Preparo, controle e recebimento
 - **NBR 7215** – Cimento Portland: Determinação da resistência à compressão
 """)
 st.markdown(
@@ -2192,3 +2098,11 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+
+
+
+
+
+
+

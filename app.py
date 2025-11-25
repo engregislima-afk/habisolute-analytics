@@ -1617,7 +1617,7 @@ if uploaded_files:
                     resumo_status.append("⚪ Sem dados")
                 else:
                     if idade in (3, 7, 14):
-                        resumo_status.append("🟡 Analisando")
+                        resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
             verif_fck_df2["Status"] = resumo_status
@@ -1661,7 +1661,7 @@ if uploaded_files:
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
                     if age in (3, 7, 14):
-                        return "🟡 Analisando"
+                        return "🟡 Coletando dados"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
                 media_by_age = {}
@@ -2098,6 +2098,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
 

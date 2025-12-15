@@ -1,4 +1,3 @@
-
 # app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + fix verificação 3d)
 
 import io, re, json, base64, tempfile, zipfile, hashlib
@@ -628,6 +627,7 @@ if CAN_ADMIN:
                         mime="application/json",
                         use_container_width=True,
                     )
+
 # =============================================================================
 # Sidebar
 # =============================================================================
@@ -1150,7 +1150,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
 
     st.markdown("#### Visão Geral")
 
-    def _format_float_label(value: Optional[float]) -> str:
+    def _format_float_label_local(value: Optional[float]) -> str:
         if value is None or _pd.isna(value): return "—"
         num = float(value); label = f"{num:.2f}".rstrip("0").rstrip(".")
         return label or f"{num:.2f}"
@@ -1168,7 +1168,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
         for raw in df_view["Fck Projeto"].tolist():
             normalized = _to_float_or_none(raw)
             if normalized is not None:
-                formatted = _format_float_label(normalized)
+                formatted = _format_float_label_local(normalized)
                 if formatted != "—": fck_candidates.append(formatted)
             else:
                 raw_str = str(raw).strip()
@@ -1767,20 +1767,15 @@ if uploaded_files:
                 from reportlab.lib import colors as _C
                 import tempfile, io
 
-                def _status_bg(text: str):
-                    t = str(text or "").lower()
-                    if "analisando" in t: return _C.HexColor("#facc15")
-                    if ("não atingiu" in t) or ("nao atingiu" in t) or ("abaixo" in t): return _C.HexColor("#ef4444")
-                    if ("atingiu" in t) or ("dentro" in t): return _C.HexColor("#16a34a")
-                    if "acima" in t: return _C.HexColor("#3b82f6")
-                    if "sem dados" in t: return _C.HexColor("#e5e7eb")
-                    return None
+                # >>>>>> NOVO: modo básico interno
+                is_basic = (report_mode == "__BASICO__")
 
                 # define que seções entram
                 include_tables = True  # sempre
-                include_graphs = report_mode in ("Relatório técnico completo", "Relatório resumido (cliente)")
-                include_verif  = report_mode in ("Relatório técnico completo",)
-                include_cp_det = report_mode in ("Relatório técnico completo",)
+                include_graphs = (True if is_basic else report_mode in ("Relatório técnico completo", "Relatório resumido (cliente)"))
+                include_verif  = (False if is_basic else report_mode in ("Relatório técnico completo",))
+                include_cp_det = (True if is_basic else report_mode in ("Relatório técnico completo",))
+
                 use_landscape = (len(df.columns) >= 8)
                 pagesize = landscape(A4) if use_landscape else A4
                 buffer = io.BytesIO()
@@ -1840,7 +1835,8 @@ if uploaded_files:
                     ]))
                     story.append(table); story.append(Spacer(1, 8))
 
-                if stats is not None and not stats.empty:
+                # >>>>>> NOVO: no básico NÃO entra "Resumo Estatístico"
+                if (not is_basic) and stats is not None and not stats.empty:
                     stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
                     story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
                     t2 = Table(stt, repeatRows=1)
@@ -1858,11 +1854,14 @@ if uploaded_files:
                     _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
                     return RLImage(tmp.name, width=w, height=h)
 
+                # >>>>>> NOVO: no básico entra SÓ o Gráfico 1
                 if include_graphs:
-                    if fig1: story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
-                    if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
-                    if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
-                    if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
+                    if fig1:
+                        story.append(_img_from_fig_pdf(fig1, w=640, h=430)); story.append(Spacer(1, 8))
+                    if not is_basic:
+                        if fig2: story.append(_img_from_fig_pdf(fig2, w=600, h=400)); story.append(Spacer(1, 8))
+                        if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
+                        if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
 
                 if include_verif and verif_fck_df is not None and not verif_fck_df.empty:
                     story.append(PageBreak())
@@ -2017,6 +2016,55 @@ if uploaded_files:
                     if pdf_bytes:
                         try: render_print_block(pdf_bytes, None, brand, brand600)
                         except Exception: pass
+
+                    # ============================================================
+                    # NOVO: Botão de PDF BÁSICO (Obra + 1ª tabela + Gráfico 1 + Verificação por CP + ID + rodapé)
+                    # ============================================================
+                    try:
+                        pdf_basic_bytes = gerar_pdf(
+                            df_view, stats_cp_idade,
+                            fig1 if 'fig1' in locals() else None,
+                            fig2 if 'fig2' in locals() else None,
+                            fig3 if 'fig3' in locals() else None,
+                            fig4 if 'fig4' in locals() else None,
+                            str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                            (lambda _d: (
+                                (min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}")
+                                if _d else "—"
+                            ))([_to_date_obj(x) for x in df_view["Data Certificado"].dropna().tolist()]),
+                            _format_float_label(fck_active) if 'fck_active' in locals() and fck_active is not None else "—",
+                            verif_fck_df2 if 'verif_fck_df2' in locals() else None,
+                            cond_df if 'cond_df' in locals() else None,
+                            pv_cp_status if 'pv_cp_status' in locals() else None,
+                            s.get("qr_url",""),
+                            s.get("rt_responsavel",""),
+                            s.get("rt_cliente",""),
+                            s.get("rt_cidade",""),
+                            "__BASICO__",  # modo interno do relatório básico
+                        )
+
+                        file_name_basic = build_pdf_filename(df_view, uploaded_files)
+                        if file_name_basic.lower().endswith(".pdf"):
+                            file_name_basic = file_name_basic[:-4] + "_BASICO.pdf"
+                        else:
+                            file_name_basic = file_name_basic + "_BASICO.pdf"
+
+                        st.download_button(
+                            "📄 BAIXAR RELATÓRIO BASICO",
+                            data=pdf_basic_bytes,
+                            file_name=file_name_basic,
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                        log_event("export_pdf_basic", {
+                            "rows": int(df_view.shape[0]),
+                            "relatorios": int(df_view["Relatório"].nunique()),
+                            "obra": str(df_view["Obra"].mode().iat[0]) if "Obra" in df_view.columns and not df_view["Obra"].dropna().empty else "—",
+                            "file_name": file_name_basic,
+                        })
+                    except Exception as e:
+                        st.error(f"Falha ao gerar PDF Básico: {e}")
+
                 except Exception as e:
                     st.error(f"Falha ao gerar PDF: {e}")
 
@@ -2098,11 +2146,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
-
-
-
-

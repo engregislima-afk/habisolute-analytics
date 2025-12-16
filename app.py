@@ -9,8 +9,7 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import (
@@ -983,6 +982,30 @@ def place_right_legend(ax):
               frameon=False, ncol=1, handlelength=2.2, handletextpad=0.8, labelspacing=0.35, prop={"size": 9})
     plt.subplots_adjust(right=0.80)
 
+def apply_habi_plot_style(ax):
+    """Aplica estilo mais profissional aos gráficos (grade quadriculada major+minor).
+    Não altera dados nem a lógica, apenas estética/legibilidade.
+    """
+    try:
+        ax.set_axisbelow(True)
+        ax.minorticks_on()
+        try:
+            ax.xaxis.set_minor_locator(AutoMinorLocator())
+            ax.yaxis.set_minor_locator(AutoMinorLocator())
+        except Exception:
+            pass
+        ax.grid(True, which="major", linestyle="--", alpha=0.35)
+        ax.grid(True, which="minor", linestyle=":", alpha=0.18)
+        for side in ("top", "right"):
+            try:
+                ax.spines[side].set_alpha(0.35)
+            except Exception:
+                pass
+        ax.tick_params(axis="both", which="both", labelsize=9)
+    except Exception:
+        pass
+
+
 def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
     b64_all = base64.b64encode(pdf_all).decode()
     cp_btn = ""
@@ -1434,7 +1457,7 @@ if uploaded_files:
 
             # === Gráfico 1
             st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
-            fig1, ax = plt.subplots(figsize=(9.6, 4.9))
+            fig1, ax = plt.subplots(figsize=(9.6, 4.9), dpi=140)
             for cp, sub in df_plot.groupby("CP"):
                 sub = sub.sort_values("Idade (dias)")
                 ax.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp}")
@@ -1449,10 +1472,11 @@ if uploaded_files:
             ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
             ax.set_title("Crescimento da resistência por corpo de prova")
             place_right_legend(ax)
-            ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            apply_habi_plot_style(ax)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
             st.pyplot(fig1)
             if CAN_EXPORT:
-                _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
+                _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=300, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
             # === Gráfico 2 — curva estimada
@@ -1466,16 +1490,16 @@ if uploaded_files:
                 _f28 = fck7 / 0.70
                 est_df = pd.DataFrame({"Idade (dias)": [7, 28, 63], "Resistência (MPa)": [float(fck7), float(_f28), float(_f28)*1.15]})
             if est_df is not None:
-                fig2, ax2 = plt.subplots(figsize=(7.8, 4.8))
+                fig2, ax2 = plt.subplots(figsize=(7.8, 4.8), dpi=140)
                 ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
                 for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
                     ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
                 ax2.set_title("Curva estimada")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
-                place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
+                place_right_legend(ax2); apply_habi_plot_style(ax2)
                 st.pyplot(fig2)
                 if CAN_EXPORT:
-                    _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
+                    _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=300, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
             else:
                 st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
@@ -1504,7 +1528,7 @@ if uploaded_files:
 
             if est_df is not None:
                 sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
-                fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
+                fig3, ax3 = plt.subplots(figsize=(9.6, 4.9), dpi=140)
                 ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
                 _sa_dp = sa[sa["count"] >= 2].copy()
                 if not _sa_dp.empty:
@@ -1514,10 +1538,10 @@ if uploaded_files:
                     ax3.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
                 ax3.set_title("Comparação Real × Estimado (médias)")
-                place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
+                place_right_legend(ax3); apply_habi_plot_style(ax3)
                 st.pyplot(fig3)
                 if CAN_EXPORT:
-                    _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
+                    _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=300, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
 
                 def _status_row(delta, tol):
@@ -1548,7 +1572,7 @@ if uploaded_files:
             if est_df is not None and not est_df.empty:
                 est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
                 pares = []
-                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
+                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0), dpi=140)
                 for cp, sub in df_plot.groupby("CP"):
                     sub = sub.sort_values("Idade (dias)")
                     ax4.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp} — Real")
@@ -1569,10 +1593,10 @@ if uploaded_files:
                     ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
                 ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
-                place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
+                place_right_legend(ax4); apply_habi_plot_style(ax4)
                 st.pyplot(fig4)
                 if CAN_EXPORT:
-                    _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
+                    _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=300, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
                 pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
                 st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
@@ -1851,7 +1875,7 @@ if uploaded_files:
 
                 def _img_from_fig_pdf(_fig, w=620, h=420):
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                    _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                    _fig.savefig(tmp.name, dpi=320, bbox_inches="tight", pad_inches=0.04)
                     return RLImage(tmp.name, width=w, height=h)
 
                 # >>>>>> NOVO: no básico entra SÓ o Gráfico 1
@@ -2105,16 +2129,16 @@ if uploaded_files:
                         graph_zip = io.BytesIO()
                         with zipfile.ZipFile(graph_zip, "w", zipfile.ZIP_DEFLATED) as zg:
                             if 'fig1' in locals() and fig1 is not None:
-                                buf = io.BytesIO(); fig1.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                                buf = io.BytesIO(); fig1.savefig(buf, format="png", dpi=300, bbox_inches="tight")
                                 zg.writestr("grafico1_real.png", buf.getvalue())
                             if 'fig2' in locals() and fig2 is not None:
-                                buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                                buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=300, bbox_inches="tight")
                                 zg.writestr("grafico2_estimado.png", buf.getvalue())
                             if 'fig3' in locals() and fig3 is not None:
-                                buf = io.BytesIO(); fig3.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                                buf = io.BytesIO(); fig3.savefig(buf, format="png", dpi=300, bbox_inches="tight")
                                 zg.writestr("grafico3_comparacao.png", buf.getvalue())
                             if 'fig4' in locals() and fig4 is not None:
-                                buf = io.BytesIO(); fig4.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                                buf = io.BytesIO(); fig4.savefig(buf, format="png", dpi=300, bbox_inches="tight")
                                 zg.writestr("grafico4_pareamento.png", buf.getvalue())
                         st.download_button("🖼️ Baixar gráficos (ZIP)", data=graph_zip.getvalue(),
                                            file_name="Graficos_relatorio.zip", mime="application/zip", use_container_width=True)

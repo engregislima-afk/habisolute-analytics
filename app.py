@@ -9,7 +9,8 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from matplotlib.ticker import MaxNLocator
+
 # PDF (ReportLab)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import (
@@ -694,10 +695,8 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
     abat_nf = None; abat_obra = None
     for sline in linhas:
         s_clean = sline.replace(",", ".").replace("±", "+-")
-        # Alguns certificados vêm com variações/typos no cabeçalho: "ABATIM.", "ABATMIM.", etc.
-        # Captura o valor numérico após o marcador de abatimento de NF.
         m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?|mim\.?|min\.?)\s*(?:de\s*)?nf[^0-9]*"
+            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
             s_clean
         )
@@ -880,15 +879,10 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                # Nota Fiscal pode vir numérica, ou como "NA" (sem NF). Mesmo com "NA",
-                # o abatimento de NF costuma estar na coluna seguinte (ex.: "180+-30").
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
-                    tok = str(partes[j]).strip()
-                    tok_u = tok.upper()
-                    if tok_u in ("NA", "N/A", "N\\A", "N-A", "--", "—", "-"):
-                        nf = tok_u; nf_idx = j; break
+                    tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
                         nf = tok; nf_idx = j; break
 
@@ -902,24 +896,13 @@ def extrair_dados_certificado(uploaded_file):
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
-                # 1) tenta pegar o abatimento imediatamente após a NF (ou após "NA")
                 if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: min(len(partes), nf_idx + 6)]:
+                    for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
                         if v is not None and 20 <= v <= 250:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
-                # 2) fallback: procura token com "+-"/"±" no restante da linha (alguns PDFs deslocam colunas)
-                if abat_nf_val is None:
-                    for tok in partes[start_nf:]:
-                        tok_s = str(tok)
-                        if ("+-" in tok_s) or ("±" in tok_s):
-                            v, tol = _parse_abatim_nf_pair(tok_s)
-                            if v is not None and 20 <= v <= 250:
-                                abat_nf_val = float(v)
-                                abat_nf_tol = float(tol) if tol is not None else None
-                                break
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
@@ -999,30 +982,6 @@ def place_right_legend(ax):
     ax.legend(by_label.values(), by_label.keys(), loc="upper left", bbox_to_anchor=(1.02, 1.0),
               frameon=False, ncol=1, handlelength=2.2, handletextpad=0.8, labelspacing=0.35, prop={"size": 9})
     plt.subplots_adjust(right=0.80)
-
-def apply_habi_plot_style(ax):
-    """Aplica estilo mais profissional aos gráficos (grade quadriculada major+minor).
-    Não altera dados nem a lógica, apenas estética/legibilidade.
-    """
-    try:
-        ax.set_axisbelow(True)
-        ax.minorticks_on()
-        try:
-            ax.xaxis.set_minor_locator(AutoMinorLocator())
-            ax.yaxis.set_minor_locator(AutoMinorLocator())
-        except Exception:
-            pass
-        ax.grid(True, which="major", linestyle="--", alpha=0.35)
-        ax.grid(True, which="minor", linestyle=":", alpha=0.18)
-        for side in ("top", "right"):
-            try:
-                ax.spines[side].set_alpha(0.35)
-            except Exception:
-                pass
-        ax.tick_params(axis="both", which="both", labelsize=9)
-    except Exception:
-        pass
-
 
 def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
     b64_all = base64.b64encode(pdf_all).decode()
@@ -1475,7 +1434,7 @@ if uploaded_files:
 
             # === Gráfico 1
             st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
-            fig1, ax = plt.subplots(figsize=(9.6, 4.9), dpi=140)
+            fig1, ax = plt.subplots(figsize=(9.6, 4.9))
             for cp, sub in df_plot.groupby("CP"):
                 sub = sub.sort_values("Idade (dias)")
                 ax.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp}")
@@ -1490,11 +1449,10 @@ if uploaded_files:
             ax.set_xlabel("Idade (dias)"); ax.set_ylabel("Resistência (MPa)")
             ax.set_title("Crescimento da resistência por corpo de prova")
             place_right_legend(ax)
-            apply_habi_plot_style(ax)
-            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
             st.pyplot(fig1)
             if CAN_EXPORT:
-                _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=300, bbox_inches="tight")
+                _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
             # === Gráfico 2 — curva estimada
@@ -1508,16 +1466,16 @@ if uploaded_files:
                 _f28 = fck7 / 0.70
                 est_df = pd.DataFrame({"Idade (dias)": [7, 28, 63], "Resistência (MPa)": [float(fck7), float(_f28), float(_f28)*1.15]})
             if est_df is not None:
-                fig2, ax2 = plt.subplots(figsize=(7.8, 4.8), dpi=140)
+                fig2, ax2 = plt.subplots(figsize=(7.8, 4.8))
                 ax2.plot(est_df["Idade (dias)"], est_df["Resistência (MPa)"], linestyle="--", marker="o", linewidth=2, label="Curva Estimada")
                 for x, y in zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]):
                     ax2.text(x, y, f"{y:.1f}", ha="center", va="bottom", fontsize=9)
                 ax2.set_title("Curva estimada")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
-                place_right_legend(ax2); apply_habi_plot_style(ax2)
+                place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig2)
                 if CAN_EXPORT:
-                    _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=300, bbox_inches="tight")
+                    _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
             else:
                 st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
@@ -1546,7 +1504,7 @@ if uploaded_files:
 
             if est_df is not None:
                 sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
-                fig3, ax3 = plt.subplots(figsize=(9.6, 4.9), dpi=140)
+                fig3, ax3 = plt.subplots(figsize=(9.6, 4.9))
                 ax3.plot(sa["Idade (dias)"], sa["mean"], marker="s", linewidth=2, label=("Média (CP focado)" if cp_focus else "Média Real"))
                 _sa_dp = sa[sa["count"] >= 2].copy()
                 if not _sa_dp.empty:
@@ -1556,10 +1514,10 @@ if uploaded_files:
                     ax3.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
                 ax3.set_title("Comparação Real × Estimado (médias)")
-                place_right_legend(ax3); apply_habi_plot_style(ax3)
+                place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig3)
                 if CAN_EXPORT:
-                    _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=300, bbox_inches="tight")
+                    _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
 
                 def _status_row(delta, tol):
@@ -1590,7 +1548,7 @@ if uploaded_files:
             if est_df is not None and not est_df.empty:
                 est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
                 pares = []
-                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0), dpi=140)
+                fig4, ax4 = plt.subplots(figsize=(10.2, 5.0))
                 for cp, sub in df_plot.groupby("CP"):
                     sub = sub.sort_values("Idade (dias)")
                     ax4.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.6, label=f"CP {cp} — Real")
@@ -1611,10 +1569,10 @@ if uploaded_files:
                     ax4.axhline(fck_active, linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({fck_active:.1f} MPa)")
                 ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
                 ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
-                place_right_legend(ax4); apply_habi_plot_style(ax4)
+                place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
                 st.pyplot(fig4)
                 if CAN_EXPORT:
-                    _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=300, bbox_inches="tight")
+                    _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
                 pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
                 st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
@@ -1893,7 +1851,7 @@ if uploaded_files:
 
                 def _img_from_fig_pdf(_fig, w=620, h=420):
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                    _fig.savefig(tmp.name, dpi=320, bbox_inches="tight", pad_inches=0.04)
+                    _fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
                     return RLImage(tmp.name, width=w, height=h)
 
                 # >>>>>> NOVO: no básico entra SÓ o Gráfico 1
@@ -1979,7 +1937,11 @@ if uploaded_files:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
                     cols = list(pv_cp_status.columns)
-                    tab  = [cols] + pv_cp_status.values.tolist()
+                    # No relatório básico, removemos a coluna de alerta de pares (>2 MPa)
+                    if is_basic:
+                        cols = [c for c in cols if "Alerta" not in str(c)]
+                    pv_det = pv_cp_status[cols] if cols else pv_cp_status
+                    tab  = [cols] + pv_det.values.tolist()
                     t_det = Table(tab, repeatRows=1)
                     t_det.setStyle(TableStyle([
                         ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
@@ -2147,16 +2109,16 @@ if uploaded_files:
                         graph_zip = io.BytesIO()
                         with zipfile.ZipFile(graph_zip, "w", zipfile.ZIP_DEFLATED) as zg:
                             if 'fig1' in locals() and fig1 is not None:
-                                buf = io.BytesIO(); fig1.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                                buf = io.BytesIO(); fig1.savefig(buf, format="png", dpi=200, bbox_inches="tight")
                                 zg.writestr("grafico1_real.png", buf.getvalue())
                             if 'fig2' in locals() and fig2 is not None:
-                                buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                                buf = io.BytesIO(); fig2.savefig(buf, format="png", dpi=200, bbox_inches="tight")
                                 zg.writestr("grafico2_estimado.png", buf.getvalue())
                             if 'fig3' in locals() and fig3 is not None:
-                                buf = io.BytesIO(); fig3.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                                buf = io.BytesIO(); fig3.savefig(buf, format="png", dpi=200, bbox_inches="tight")
                                 zg.writestr("grafico3_comparacao.png", buf.getvalue())
                             if 'fig4' in locals() and fig4 is not None:
-                                buf = io.BytesIO(); fig4.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                                buf = io.BytesIO(); fig4.savefig(buf, format="png", dpi=200, bbox_inches="tight")
                                 zg.writestr("grafico4_pareamento.png", buf.getvalue())
                         st.download_button("🖼️ Baixar gráficos (ZIP)", data=graph_zip.getvalue(),
                                            file_name="Graficos_relatorio.zip", mime="application/zip", use_container_width=True)

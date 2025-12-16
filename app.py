@@ -681,6 +681,7 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
     if not tok: return None, None
     t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    t = re.sub(r"\+\s*-\s*", "+-", t)  # normaliza '+ -' -> '+-'
     m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
     if not m: return None, None
     try:
@@ -691,25 +692,47 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None; abat_obra = None
+    """Captura abatimento de NF e abatimento medido em obra.
+
+    Importante: muitos certificados trazem o campo **'Abatim. NF (mm)'** apenas na tabela,
+    e o valor vem como '180+-30' (sem o texto 'mm' no final). Além disso, às vezes a NF vem como 'NA'.
+    Este parser aceita variações como 'abatim', 'abatmim', 'abat.' e tolerância (± ou '+-').
+    """
+    abat_nf: Optional[float] = None
+    abat_nf_tol: Optional[float] = None
+    abat_obra: Optional[float] = None
+
     for sline in linhas:
-        s_clean = sline.replace(",", ".").replace("±", "+-")
+        s_clean = (sline or "").replace(",", ".").replace("±", "+-")
+
+        # Ex.: 'Abatim. NF (mm) 180+-30' ou linha da tabela '... NA 180+-30'
         m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
-            r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
+            r"(?i)abat\w{0,6}\s*(?:de\s*)?nf[^0-9]*"      # abatimento/abatim/abatmim + NF
+            r"(\d+(?:\.\d+)?)"                            # valor
+            r"(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?"         # tolerância opcional
+            r"(?:\s*mm)?\b",                               # 'mm' opcional
             s_clean
         )
         if m_nf and abat_nf is None:
-            try: abat_nf = float(m_nf.group(1))
-            except Exception: pass
+            try:
+                abat_nf = float(m_nf.group(1))
+                abat_nf_tol = float(m_nf.group(2)) if m_nf.group(2) is not None else None
+            except Exception:
+                pass
+
+        # Abatimento medido em obra (quando houver texto explícito)
         m_obra = re.search(
-            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
+            r"(?i)abat\w{0,6}.*(obra|medido\s+em\s+obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
             s_clean
         )
         if m_obra and abat_obra is None:
-            try: abat_obra = float(m_obra.group(2))
-            except Exception: pass
+            try:
+                abat_obra = float(m_obra.group(2))
+            except Exception:
+                pass
+
+    # Mantém compatibilidade: retorna (abat_nf, abat_obra). Tolerância é inferida linha-a-linha.
     return abat_nf, abat_obra
 
 def _extract_fck_values(line: str) -> List[float]:
@@ -895,13 +918,40 @@ def extrair_dados_certificado(uploaded_file):
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
-                if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
+
+                # Alguns certificados trazem Nota Fiscal = 'NA', mas ainda assim possuem 'Abatim. NF (mm)' no fim da linha
+                # (ex.: '... NA 180+-30'). Então, tentamos capturar o par mesmo sem NF.
+                def _try_parse_nf_pair(tokens: List[str]) -> Tuple[Optional[float], Optional[float]]:
+                    for i in range(len(tokens)):
+                        tok = tokens[i]
                         v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 250:
-                            abat_nf_val = float(v)
-                            abat_nf_tol = float(tol) if tol is not None else None
-                            break
+                        if v is not None:
+                            return float(v), (float(tol) if tol is not None else None)
+
+                        # tenta colar com o próximo token (casos '180' '+-30')
+                        if i + 1 < len(tokens):
+                            comb = f"{tok}{tokens[i+1]}"
+                            v2, tol2 = _parse_abatim_nf_pair(comb)
+                            if v2 is not None:
+                                return float(v2), (float(tol2) if tol2 is not None else None)
+
+                            comb2 = f"{tok} {tokens[i+1]}"
+                            v3, tol3 = _parse_abatim_nf_pair(comb2)
+                            if v3 is not None:
+                                return float(v3), (float(tol3) if tol3 is not None else None)
+
+                    return None, None
+
+                window = partes[nf_idx + 1: nf_idx + 6] if nf_idx is not None else partes[-6:]
+                v_nf, tol_nf = _try_parse_nf_pair(window)
+
+                if v_nf is None:
+                    # fallback final: varre o fim da linha (bem comum estar no último campo)
+                    v_nf, tol_nf = _try_parse_nf_pair(list(reversed(partes[-8:])))
+
+                if v_nf is not None and 20 <= float(v_nf) <= 250:
+                    abat_nf_val = float(v_nf)
+                    abat_nf_tol = float(tol_nf) if tol_nf is not None else None
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([

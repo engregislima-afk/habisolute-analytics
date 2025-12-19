@@ -1714,14 +1714,16 @@ if uploaded_files:
             m3  = mean_by_age_all.get(3,  float("nan"))
             m7  = mean_by_age_all.get(7,  float("nan"))
             m14 = mean_by_age_all.get(14, float("nan"))
+            m21 = mean_by_age_all.get(21, float("nan"))
             m28 = mean_by_age_all.get(28, float("nan"))
             m63 = mean_by_age_all.get(63, float("nan"))
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Idade (dias)": [3, 7, 14, 21, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
@@ -1734,7 +1736,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14):
+                    if idade in (3, 7, 14, 21):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
@@ -1742,7 +1744,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 28, 63]
+            idades_interesse = [3, 7, 14, 21, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1778,7 +1780,7 @@ if uploaded_files:
                 def _status_text_media(media_idade, age, fckp):
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
-                    if age in (3, 7, 14):
+                    if age in (3, 7, 14, 21):
                         return "🟡 Coletando dados"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
@@ -1833,6 +1835,7 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
+                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]

@@ -918,7 +918,7 @@ def extrair_dados_certificado(uploaded_file):
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
     # >>>>>> FIX: aceita NF curta (ex.: 118) e formatos com separador (ex.: 037.421, 12/2025, 123-456)
-    nf_regex = re.compile(r"^(?:\d{1,12}|\d{1,6}[.\-\/]\d{1,6})$")
+    nf_regex = re.compile(r"^(?:\d{3,12}|\d{1,6}(?:[.\-\/]\d{1,6})+)$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -1000,27 +1000,15 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                # >>>>>> FIX: aceitar NF sem ponto (e NFs curtas como 118, 1624)
+                # >>>>>> FIX: NF curta + filtro contra token pequeno (ex.: "7" em PDF quebrado)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-
                 for j in range(start_nf, len(partes)):
-                    tok_raw = (partes[j] or "").strip()
-                    if tok_raw == cp:
-                        continue
-
-                    # normaliza: remove caracteres estranhos e mantém dígitos + separadores comuns
-                    tok = re.sub(r"[^0-9./-]", "", tok_raw)
-                    if not tok:
-                        continue
-
-                    if nf_regex.fullmatch(tok):
-                        # evita confundir idade "7" como NF
-                        if tok.isdigit() and int(tok) < 10:
-                            continue
-                        nf = tok
-                        nf_idx = j
-                        break
+                    tok = partes[j]
+                    if nf_regex.match(tok) and tok != cp:
+                        if tok.isdigit() and (len(tok) < 3 or int(tok) < 10):
+                    continue
+                        nf = tok; nf_idx = j; break
 
                 abat_obra_val = None
                 if i_data is not None:

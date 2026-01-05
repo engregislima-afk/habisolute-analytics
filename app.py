@@ -1000,15 +1000,19 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                # >>>>>> FIX: NF curta + filtro contra token pequeno (ex.: "7" em PDF quebrado)
+                                # >>>>>> FIX: Nota Fiscal (aceita com ou sem ponto)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
-                    tok = partes[j]
+                    tok_raw = partes[j]
+                    tok = tok_raw.strip(".,; ")
                     if nf_regex.match(tok) and tok != cp:
-                        if tok.isdigit() and (len(tok) < 3 or int(tok) < 10):
-                    continue
-                        nf = tok; nf_idx = j; break
+                        # evita pegar tokens muito curtos (ex.: "7", "1")
+                        if tok.isdigit() and len(tok) < 3:
+                            continue
+                        nf = tok
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:

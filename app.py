@@ -917,7 +917,8 @@ def extrair_dados_certificado(uploaded_file):
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
+    # >>>>>> FIX: aceita NF curta (ex.: 118) e formatos com separador (ex.: 037.421, 12/2025, 123-456)
+    nf_regex = re.compile(r"^(?:\d{1,12}|\d{1,6}[.\-\/]\d{1,6})$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -999,11 +1000,14 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
+                # >>>>>> FIX: NF curta + filtro contra token pequeno (ex.: "7" em PDF quebrado)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
                     tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
+                        if tok.isdigit() and int(tok) < 10:
+                            continue
                         nf = tok; nf_idx = j; break
 
                 abat_obra_val = None
@@ -1019,6 +1023,15 @@ def extrair_dados_certificado(uploaded_file):
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     abat_nf_val, abat_nf_tol = _parse_abatim_nf_tokens(partes[nf_idx + 1: nf_idx + 10])
+
+                # >>>>>> RECOMENDADO: fallback extra para PDFs "zoados"
+                if abat_nf_val is None and abat_nf_tol is None:
+                    _v, _t = _parse_abatim_nf_tokens(partes[-8:])
+                    if _v is not None:
+                        abat_nf_val = _v
+                    if abat_nf_tol is None and _t is not None:
+                        abat_nf_tol = _t
+
                 if abat_nf_tol is None and abat_nf_tol_pdf is not None:
                     abat_nf_tol = float(abat_nf_tol_pdf)
 

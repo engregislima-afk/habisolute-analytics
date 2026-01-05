@@ -918,7 +918,7 @@ def extrair_dados_certificado(uploaded_file):
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
     # >>>>>> FIX: aceita NF curta (ex.: 118) e formatos com separador (ex.: 037.421, 12/2025, 123-456)
-    nf_regex = re.compile(r"^(?:\d{3,12}|\d{1,6}(?:[.\-\/]\d{1,6})+)$")
+    nf_regex = re.compile(r"^(?:\d{2,12}|\d{1,6}(?:[.\-\/]\d{1,6})+)$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -962,6 +962,7 @@ def extrair_dados_certificado(uploaded_file):
     relatorio_cabecalho = None
 
     for sline in linhas_todas:
+        sline = (sline or '').replace('\u00A0',' ').replace('\u202F',' ')
         partes = sline.split()
 
         if sline.startswith("Relatório:"):
@@ -1005,10 +1006,12 @@ def extrair_dados_certificado(uploaded_file):
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
                     tok_raw = partes[j]
-                    tok = tok_raw.strip(".,; ")
+                    tok_raw = (tok_raw or "").replace("\u00A0"," ").replace("\u202F"," ").strip()
+                    # mantém só dígitos e separadores usuais de NF (remove NBSP/ruídos)
+                    tok = re.sub(r"[^0-9.\-/]", "", tok_raw)
                     if nf_regex.match(tok) and tok != cp:
                         # evita pegar tokens muito curtos (ex.: "7", "1")
-                        if tok.isdigit() and len(tok) < 3:
+                        if tok.isdigit() and len(tok) < 2:
                             continue
                         nf = tok
                         nf_idx = j

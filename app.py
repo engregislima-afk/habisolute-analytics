@@ -1023,7 +1023,16 @@ def extrair_dados_certificado(uploaded_file):
                             if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
-                # >>>>>> ATUALIZADO: abatimento NF robusto (tokenizado + fallback de cabeçalho)
+                                # >>>>>> FALLBACK: alguns certificados trazem NF curta (ex.: 118/1620) e/ou o texto pode colar;
+                # se a linha termina com padrão 'VAL+-TOL', assume que o token imediatamente anterior é a NF.
+                if nf_idx is None and len(partes) >= 2:
+                    _v_tmp, _t_tmp = _parse_abatim_nf_tokens([partes[-1]])
+                    _prev = partes[-2].strip(".,; ")
+                    if _v_tmp is not None and _prev.isdigit() and len(_prev) >= 2:
+                        nf_idx = len(partes) - 2
+                        nf = _prev
+
+# >>>>>> ATUALIZADO: abatimento NF robusto (tokenizado + fallback de cabeçalho)
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     abat_nf_val, abat_nf_tol = _parse_abatim_nf_tokens(partes[nf_idx + 1: nf_idx + 10])

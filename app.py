@@ -1000,33 +1000,27 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                # >>>>>> FIX: NF robusta (aceita com/sem ponto e remove pontuações acopladas)
+                # >>>>>> FIX: aceitar NF sem ponto (e NFs curtas como 118, 1624)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-                cp_digits = re.sub(r"\D", "", str(cp))
+
                 for j in range(start_nf, len(partes)):
-                    tok_raw = partes[j]
-                    tok_str = str(tok_raw).strip()
-                    if not tok_str:
+                    tok_raw = (partes[j] or "").strip()
+                    if tok_raw == cp:
                         continue
-                    # ignora marcadores textuais
-                    if tok_str.lower() in ("nf", "nota", "fiscal", "nota_fiscal", "nº", "n°", "no"):
+
+                    # normaliza: remove caracteres estranhos e mantém dígitos + separadores comuns
+                    tok = re.sub(r"[^0-9./-]", "", tok_raw)
+                    if not tok:
                         continue
-                    # remove qualquer pontuação (ex.: "037421," ou "037.421;") e mantém apenas dígitos
-                    dig = re.sub(r"\D", "", tok_str)
-                    if not dig:
-                        continue
-                    if dig == cp_digits:
-                        continue
-                    if len(dig) > 12:
-                        continue
-                    # evita tokens numéricos muito pequenos (ruído)
-                    if dig.isdigit() and int(dig) < 10:
-                        continue
-                    # padroniza 6 dígitos para o formato comum "000.000"
-                    nf = f"{dig[:3]}.{dig[3:]}" if len(dig) == 6 else dig
-                    nf_idx = j
-                    break
+
+                    if nf_regex.fullmatch(tok):
+                        # evita confundir idade "7" como NF
+                        if tok.isdigit() and int(tok) < 10:
+                            continue
+                        nf = tok
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:

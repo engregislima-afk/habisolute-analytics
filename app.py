@@ -1,4 +1,3 @@
-
 # app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + fix verificação 3d)
 
 import io, re, json, base64, tempfile, zipfile, hashlib
@@ -692,146 +691,27 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
     except Exception:
         return None, None
 
-# ===================== NOVO (abatimento NF robusto) =====================
-def _detecta_abat_nf_tol(linhas: List[str]) -> Optional[float]:
-    """
-    Tenta capturar a tolerância do abatimento NF no cabeçalho (ex.: 120 ± 20 mm).
-    Retorna só a tolerância (20), se achar.
-    """
-    for sline in linhas:
-        s = (sline or "").replace(",", ".")
-        low = s.lower()
-        if ("nf" in low) and ("abat" in low or "abatm" in low or "abatim" in low or "abtm" in low):
-            s2 = s.replace("±", "+-").replace("+/−", "+-").replace("+/-", "+-")
-            nums = re.findall(r"\d+(?:\.\d+)?", s2)
-            if len(nums) >= 2 and "+-" in s2:
-                try:
-                    tol = float(nums[1])
-                    if 0 < tol <= 100:
-                        return tol
-                except Exception:
-                    pass
-            if len(nums) >= 2 and re.search(r"(?i)\(mm\)|\bmm\b", s):
-                try:
-                    tol = float(nums[1])
-                    if 0 < tol <= 100:
-                        return tol
-                except Exception:
-                    pass
-    return None
-
-def _parse_abatim_nf_tokens(tokens: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Lê abatimento e tolerância em uma janela de tokens após a NF.
-    Suporta:
-      - 120+-20
-      - 120 ± 20
-      - 120 20 mm
-      - 120 (MM) ±20
-    """
-    if not tokens:
-        return None, None
-
-    cleaned = []
-    for t in tokens:
-        if t is None:
-            continue
-        tt = str(t).strip()
-        if not tt:
-            continue
-        tt = tt.replace("±", "+-").replace(",", ".")
-        tt = re.sub(r"[()\[\]]", "", tt)
-        if tt.lower() in ("mm", "m", "mm.", "m."):
-            continue
-        cleaned.append(tt)
-
-    for tt in cleaned:
-        v, tol = _parse_abatim_nf_pair(tt)
-        if v is not None and 20 <= v <= 250:
-            if tol is not None and 0 < tol <= 100:
-                return float(v), float(tol)
-            return float(v), None
-
-    for i, tt in enumerate(cleaned):
-        nums = re.findall(r"\d+(?:\.\d+)?", tt)
-        if not nums:
-            continue
-        try:
-            v = float(nums[0])
-        except Exception:
-            continue
-        if not (20 <= v <= 250):
-            continue
-
-        tol = None
-        if len(nums) >= 2:
-            try:
-                cand = float(nums[1])
-                if 0 < cand <= 100:
-                    tol = cand
-            except Exception:
-                tol = None
-
-        if tol is None and i + 1 < len(cleaned):
-            nxt = cleaned[i + 1]
-            nxt2 = nxt.replace("±", "+-")
-            nums2 = re.findall(r"\d+(?:\.\d+)?", nxt2)
-            if nums2:
-                try:
-                    cand = float(nums2[0])
-                    if (("+-" in nxt2) and 0 < cand <= 100) or (0 < cand <= 60):
-                        tol = cand
-                except Exception:
-                    tol = None
-
-        return float(v), (float(tol) if tol is not None else None)
-
-    return None, None
-# =======================================================================
-
-# ===================== SUBSTITUÍDO (detecta abatimentos robusto) =====================
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None
-    abat_obra = None
-
+    abat_nf = None; abat_obra = None
     for sline in linhas:
-        s = (sline or "").replace(",", ".").replace("±", "+-")
-        low = s.lower()
-
-        # -------- Abatimento NF (aceita: abatimento / abat. / abatmim / abatim. etc)
-        if abat_nf is None and ("nf" in low) and ("abat" in low or "abatm" in low or "abatim" in low or "abtm" in low):
-            m = re.search(r"(?i)\bnf\b(.*)$", s)
-            tail = (m.group(1) if m else s).strip()
-
-            tail2 = re.sub(r"(?i)\bmm\b|\(\s*mm\s*\)|mm\.", " ", tail)
-            nums = re.findall(r"\d+(?:\.\d+)?", tail2)
-
-            if nums:
-                try:
-                    v = float(nums[0])
-                    if 20 <= v <= 250:
-                        abat_nf = v
-                except Exception:
-                    pass
-
-        # -------- Abatimento Obra
-        if abat_obra is None and ("abat" in low) and (("obra" in low) or ("medido" in low)):
-            m = re.search(r"(?i)(?:obra|medido em obra)\b(.*)$", s)
-            tail = (m.group(1) if m else s).strip()
-            nums = re.findall(r"\d+(?:\.\d+)?", tail)
-            if nums:
-                try:
-                    v = float(nums[0])
-                    if 20 <= v <= 250:
-                        abat_obra = v
-                except Exception:
-                    pass
-
-        if abat_nf is not None and abat_obra is not None:
-            break
-
+        s_clean = sline.replace(",", ".").replace("±", "+-")
+        m_nf = re.search(
+            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
+            r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
+            s_clean
+        )
+        if m_nf and abat_nf is None:
+            try: abat_nf = float(m_nf.group(1))
+            except Exception: pass
+        m_obra = re.search(
+            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
+            r"(\d+(?:\.\d+)?)\s*mm",
+            s_clean
+        )
+        if m_obra and abat_obra is None:
+            try: abat_obra = float(m_obra.group(2))
+            except Exception: pass
     return abat_nf, abat_obra
-# =======================================================================
 
 def _extract_fck_values(line: str) -> List[float]:
     if not line or "fck" not in line.lower(): return []
@@ -956,7 +836,6 @@ def extrair_dados_certificado(uploaded_file):
 
     usina_nome = _limpa_usina_extra(_detecta_usina(linhas_todas))
     abat_nf_pdf, abat_obra_pdf = _detecta_abatimentos(linhas_todas)
-    abat_nf_tol_pdf = _detecta_abat_nf_tol(linhas_todas)
 
     dados = []
     relatorio_cabecalho = None
@@ -1016,12 +895,14 @@ def extrair_dados_certificado(uploaded_file):
                             if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
-                # >>>>>> ATUALIZADO: abatimento NF robusto (tokenizado + fallback de cabeçalho)
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
-                    abat_nf_val, abat_nf_tol = _parse_abatim_nf_tokens(partes[nf_idx + 1: nf_idx + 10])
-                if abat_nf_tol is None and abat_nf_tol_pdf is not None:
-                    abat_nf_tol = float(abat_nf_tol_pdf)
+                    for tok in partes[nf_idx + 1: nf_idx + 5]:
+                        v, tol = _parse_abatim_nf_pair(tok)
+                        if v is not None and 20 <= v <= 250:
+                            abat_nf_val = float(v)
+                            abat_nf_tol = float(tol) if tol is not None else None
+                            break
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
@@ -1715,16 +1596,14 @@ if uploaded_files:
             m3  = mean_by_age_all.get(3,  float("nan"))
             m7  = mean_by_age_all.get(7,  float("nan"))
             m14 = mean_by_age_all.get(14, float("nan"))
-            m21 = mean_by_age_all.get(21, float("nan"))
             m28 = mean_by_age_all.get(28, float("nan"))
             m63 = mean_by_age_all.get(63, float("nan"))
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 21, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
@@ -1737,7 +1616,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14, 21):
+                    if idade in (3, 7, 14):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
@@ -1745,7 +1624,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 21, 28, 63]
+            idades_interesse = [3, 7, 14, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1781,7 +1660,7 @@ if uploaded_files:
                 def _status_text_media(media_idade, age, fckp):
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
-                    if age in (3, 7, 14, 21):
+                    if age in (3, 7, 14):
                         return "🟡 Coletando dados"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
@@ -1836,7 +1715,6 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
-                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]
@@ -2059,11 +1937,7 @@ if uploaded_files:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
                     cols = list(pv_cp_status.columns)
-                    # No relatório básico, removemos a coluna de alerta de pares (>2 MPa)
-                    if is_basic:
-                        cols = [c for c in cols if "Alerta" not in str(c)]
-                    pv_det = pv_cp_status[cols] if cols else pv_cp_status
-                    tab  = [cols] + pv_det.values.tolist()
+                    tab  = [cols] + pv_cp_status.values.tolist()
                     t_det = Table(tab, repeatRows=1)
                     t_det.setStyle(TableStyle([
                         ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),

@@ -879,66 +879,12 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                nf = "NA"
-                nf_idx = None
-                abat_tok_hint = None
-
-                # NF logo após resistência (ou "NA"). Evita confundir com abatimento.
-                start_nf = (res_idx + 1) if res_idx is not None else None
-                if start_nf is not None and start_nf < len(partes):
-
-                    def _tok_is_na(x: str) -> bool:
-                        return str(x).strip().upper() in ("NA", "N/A", "NA.", "N/A.")
-
-                    def _looks_like_abat(x: str) -> bool:
-                        s = str(x).strip()
-                        if not s or _tok_is_na(s):
-                            return False
-                        v, tol = _parse_abatim_nf_pair(s)
-                        if v is not None and 20 <= v <= 250:
-                            return True
-                        # caso colado: 16030 (160 +- 30)
-                        if s.isdigit() and len(s) == 5:
-                            try:
-                                a = int(s[:3]); b = int(s[3:])
-                                if 20 <= a <= 250 and 0 <= b <= 99:
-                                    return True
-                            except Exception:
-                                return False
-                        return False
-
-                    def _looks_like_nf(x: str) -> bool:
-                        s = str(x).strip()
-                        if not s or _tok_is_na(s):
-                            return False
-                        if _looks_like_abat(s):
-                            return False
-                        return bool(nf_regex.match(s))
-
-                    t1 = partes[start_nf]
-                    t2 = partes[start_nf + 1] if (start_nf + 1) < len(partes) else None
-
-                    if _tok_is_na(t1):
-                        nf = "NA"; nf_idx = start_nf; abat_tok_hint = t2
-                    elif _looks_like_nf(t1) and t1 != cp:
-                        nf = str(t1); nf_idx = start_nf; abat_tok_hint = t2
-                    elif _looks_like_abat(t1):
-                        nf = "NA"; nf_idx = None; abat_tok_hint = t1
-                    else:
-                        # fallback: procura NF em no máx. 5 tokens após resistência, parando se achar abatimento
-                        for j in range(start_nf, min(len(partes), start_nf + 5)):
-                            tok = partes[j]
-                            if _tok_is_na(tok):
-                                nf = "NA"; nf_idx = j
-                                abat_tok_hint = partes[j + 1] if (j + 1) < len(partes) else None
-                                break
-                            if _looks_like_abat(tok):
-                                abat_tok_hint = tok
-                                break
-                            if _looks_like_nf(tok) and tok != cp:
-                                nf = str(tok); nf_idx = j
-                                abat_tok_hint = partes[j + 1] if (j + 1) < len(partes) else None
-                                break
+                nf, nf_idx = None, None
+                start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
+                for j in range(start_nf, len(partes)):
+                    tok = partes[j]
+                    if nf_regex.match(tok) and tok != cp:
+                        nf = tok; nf_idx = j; break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -950,27 +896,7 @@ def extrair_dados_certificado(uploaded_file):
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
-
-                # 1) tenta pegar abatimento pelo token imediatamente após NF (ou no lugar da NF quando ela está vazia)
-                if abat_tok_hint is not None:
-                    tok = str(abat_tok_hint).strip()
-                    v, tol = _parse_abatim_nf_pair(tok)
-
-                    # caso colado: 16030 (160 +- 30)
-                    if v is None and tok.isdigit() and len(tok) == 5:
-                        try:
-                            a = int(tok[:3]); b = int(tok[3:])
-                            if 20 <= a <= 250 and 0 <= b <= 99:
-                                v = float(a); tol = float(b)
-                        except Exception:
-                            v = None
-
-                    if v is not None and 20 <= float(v) <= 250:
-                        abat_nf_val = float(v)
-                        abat_nf_tol = float(tol) if tol is not None else None
-
-                # 2) fallback: procura em até 4 tokens após a NF real
-                if abat_nf_val is None and nf_idx is not None:
+                if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
                         if v is not None and 20 <= v <= 250:

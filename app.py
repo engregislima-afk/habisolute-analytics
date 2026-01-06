@@ -1,3 +1,4 @@
+
 # app.py — Habisolute Analytics (corrigido + melhorias dinâmicas + fix verificação 3d)
 
 import io, re, json, base64, tempfile, zipfile, hashlib
@@ -917,8 +918,7 @@ def extrair_dados_certificado(uploaded_file):
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    # >>>>>> FIX: aceita NF curta (ex.: 118) e formatos com separador (ex.: 037.421, 12/2025, 123-456)
-    nf_regex = re.compile(r"^(?:\d{2,12}|\d{1,6}(?:[.\-\/]\d{1,6})+)$")
+    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -962,7 +962,6 @@ def extrair_dados_certificado(uploaded_file):
     relatorio_cabecalho = None
 
     for sline in linhas_todas:
-        sline = (sline or '').replace('\u00A0',' ').replace('\u202F',' ')
         partes = sline.split()
 
         if sline.startswith("Relatório:"):
@@ -1001,21 +1000,12 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
-                                # >>>>>> FIX: Nota Fiscal (aceita com ou sem ponto)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
-                    tok_raw = partes[j]
-                    tok_raw = (tok_raw or "").replace("\u00A0"," ").replace("\u202F"," ").strip()
-                    # mantém só dígitos e separadores usuais de NF (remove NBSP/ruídos)
-                    tok = re.sub(r"[^0-9.\-/]", "", tok_raw)
+                    tok = partes[j]
                     if nf_regex.match(tok) and tok != cp:
-                        # evita pegar tokens muito curtos (ex.: "7", "1")
-                        if tok.isdigit() and len(tok) < 2:
-                            continue
-                        nf = tok
-                        nf_idx = j
-                        break
+                        nf = tok; nf_idx = j; break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -1026,28 +1016,10 @@ def extrair_dados_certificado(uploaded_file):
                             if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
-                                # >>>>>> FALLBACK: alguns certificados trazem NF curta (ex.: 118/1620) e/ou o texto pode colar;
-                # se a linha termina com padrão 'VAL+-TOL', assume que o token imediatamente anterior é a NF.
-                if nf_idx is None and len(partes) >= 2:
-                    _v_tmp, _t_tmp = _parse_abatim_nf_tokens([partes[-1]])
-                    _prev = partes[-2].strip(".,; ")
-                    if _v_tmp is not None and _prev.isdigit() and len(_prev) >= 2:
-                        nf_idx = len(partes) - 2
-                        nf = _prev
-
-# >>>>>> ATUALIZADO: abatimento NF robusto (tokenizado + fallback de cabeçalho)
+                # >>>>>> ATUALIZADO: abatimento NF robusto (tokenizado + fallback de cabeçalho)
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     abat_nf_val, abat_nf_tol = _parse_abatim_nf_tokens(partes[nf_idx + 1: nf_idx + 10])
-
-                # >>>>>> RECOMENDADO: fallback extra para PDFs "zoados"
-                if abat_nf_val is None and abat_nf_tol is None:
-                    _v, _t = _parse_abatim_nf_tokens(partes[-8:])
-                    if _v is not None:
-                        abat_nf_val = _v
-                    if abat_nf_tol is None and _t is not None:
-                        abat_nf_tol = _t
-
                 if abat_nf_tol is None and abat_nf_tol_pdf is not None:
                     abat_nf_tol = float(abat_nf_tol_pdf)
 

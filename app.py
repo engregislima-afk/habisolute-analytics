@@ -890,9 +890,10 @@ def extrair_dados_certificado(uploaded_file):
                 if i_data is not None:
                     for j in range(i_data - 1, max(-1, i_data - 6), -1):
                         tok = partes[j]
-                        if re.fullmatch(r"\d{2,3}", tok):
+                        if re.fullmatch(r"\d{1,3}", tok):
                             v = int(tok)
-                            if 20 <= v <= 250:
+                            # Abatimento (mm) em obra pode variar bastante (ex.: 10 a 300+)
+                            if 0 <= v <= 400:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None

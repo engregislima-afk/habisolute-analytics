@@ -1657,27 +1657,26 @@ if uploaded_files:
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
                 # status columns por idade
-                def _status_text_media(media_idade, age, fckp):
-                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
+                def _status_por_idade(idx_cp, age, fckp):
+                    # pega todas as repetições daquela idade para o CP
+                    cols = [c for c in pv_multi.columns if c[0] == age]
+                    if not cols:
                         return "⚪ Sem dados"
+                    vals = pd.to_numeric(pv_multi.loc[idx_cp, cols], errors="coerce").dropna().astype(float)
+                    if vals.empty:
+                        return "⚪ Sem dados"
+                    # idades iniciais são informativas
                     if age in (3, 7, 14):
                         return "🟡 Coletando dados"
-                    return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
-
-                media_by_age = {}
-                for age in idades_interesse:
-                    if age in pv_multi.columns.get_level_values(0):
-                        media_by_age[age] = pv_multi[age].mean(axis=1)
-                    else:
-                        media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
+                    # regra dos pares: atingiu se QUALQUER repetição atingir o fck
+                    if (fckp is None) or pd.isna(fckp):
+                        return "⚪ Sem dados"
+                    return "🟢 Atingiu fck" if (vals >= float(fckp)).any() else "🔴 Não atingiu fck"
 
                 status_df = pd.DataFrame(index=pv_multi.index)
                 for age in idades_interesse:
                     colname = f"Status {age}d"
-                    status_df[colname] = [
-                        _status_text_media(media_by_age[age].reindex(pv_multi.index).iloc[i], age, fck_active2)
-                        for i in range(len(pv_multi.index))
-                    ]
+                    status_df[colname] = [_status_por_idade(idx_cp, age, fck_active2) for idx_cp in pv_multi.index]
 
                 # alerta de pares
                 def _delta_flag(row_vals: pd.Series) -> bool:

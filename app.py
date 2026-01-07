@@ -1765,10 +1765,18 @@ if uploaded_files:
                           cidade: str,
                           report_mode: str) -> bytes:
                 from reportlab.lib import colors as _C
+                C = _C  # alias por compatibilidade (alguns trechos usam C)
                 import tempfile, io
 
                 # >>>>>> NOVO: modo básico interno
                 is_basic = (report_mode == "__BASICO__")
+                # ID do documento (estável para o mesmo conjunto de dados)
+                try:
+                    _cp_key = "|".join(sorted(set(df["CP"].dropna().astype(str).tolist()))) if isinstance(df, pd.DataFrame) and "CP" in df.columns else ""
+                    _base_id = f"{obra_label}|{data_label}|{fck_label}|{len(df)}|{_cp_key}"
+                except Exception:
+                    _base_id = f"{obra_label}|{data_label}|{fck_label}"
+                doc_id_pdf = "HAB-" + hashlib.sha1(_base_id.encode("utf-8")).hexdigest()[:12].upper()
 
                 # define que seções entram
                 include_tables = True  # sempre
@@ -1819,19 +1827,65 @@ if uploaded_files:
                     story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
                 story.append(Spacer(1, 8))
 
+                # =========================
+                # TABELA PRINCIPAL (AUTO-FIT + QUEBRA DE LINHA)
+                # =========================
                 if include_tables:
+                    from reportlab.lib.styles import ParagraphStyle
+                    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
                     headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)","Arquivo"]
-                    rows = df[headers].values.tolist()
-                    table = Table([headers] + rows, repeatRows=1)
+                    df_tab = df.copy()
+                    for col in headers:
+                        if col not in df_tab.columns:
+                            df_tab[col] = ""
+
+                    # estilos (quebra automática dentro da célula)
+                    st_head = ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, leading=9, alignment=TA_CENTER)
+                    st_num  = ParagraphStyle("tn", fontName="Helvetica",      fontSize=7.2, leading=8, alignment=TA_CENTER)
+                    st_txt  = ParagraphStyle("tt", fontName="Helvetica",      fontSize=7.2, leading=8, alignment=TA_LEFT, wordWrap="CJK")
+
+                    def _esc(x):
+                        s0 = "" if x is None else str(x)
+                        if s0.lower() == "nan":
+                            s0 = ""
+                        return (s0.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                 .replace("\n", "<br/>"))
+
+                    def P(x, kind="txt"):
+                        if kind == "head": return Paragraph(_esc(x), st_head)
+                        if kind == "num":  return Paragraph(_esc(x), st_num)
+                        return Paragraph(_esc(x), st_txt)
+
+                    usable = float(doc.width)  # largura útil (com margens)
+                    base = [46, 58, 44, 60, 62, None, 62, 72, 78, 96]  # Local = None
+                    fixed_sum = sum(w for w in base if w is not None)
+                    local_w = max(140.0, usable - fixed_sum)
+                    colWidths = [(local_w if w is None else float(w)) for w in base]
+
+                    total_w = sum(colWidths)
+                    if total_w > usable:
+                        scale = usable / total_w
+                        colWidths = [w * scale for w in colWidths]
+
+                    head_row = [P(h, "head") for h in headers]
+                    num_cols = {"Relatório","Idade (dias)","Resistência (MPa)","Abatimento NF (mm)","Abatimento Obra (mm)"}
+                    data_rows = []
+                    for row in df_tab[headers].values.tolist():
+                        out = []
+                        for h, v in zip(headers, row):
+                            out.append(P(v, "num" if h in num_cols else "txt"))
+                        data_rows.append(out)
+
+                    table = Table([head_row] + data_rows, colWidths=colWidths, repeatRows=1, splitByRow=1)
                     table.setStyle(TableStyle([
                         ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                        ("GRID",(0,0),(-1,-1),0.5,_C.black),
-                        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-                        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-                        ("FONTSIZE",(0,0),(-1,-1),8.5),
-                        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                        ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
-                        ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
+                        ("GRID",(0,0),(-1,-1),0.35,_C.black),
+                        ("VALIGN",(0,0),(-1,-1),"TOP"),
+                        ("LEFTPADDING",(0,0),(-1,-1),3),
+                        ("RIGHTPADDING",(0,0),(-1,-1),3),
+                        ("TOPPADDING",(0,0),(-1,-1),2),
+                        ("BOTTOMPADDING",(0,0),(-1,-1),2),
                     ]))
                     story.append(table); story.append(Spacer(1, 8))
 
@@ -1936,37 +1990,96 @@ if uploaded_files:
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
-                    cols = list(pv_cp_status.columns)
-                    tab  = [cols] + pv_cp_status.values.tolist()
-                    t_det = Table(tab, repeatRows=1)
-                    t_det.setStyle(TableStyle([
-                        ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                        ("GRID",(0,0),(-1,-1),0.4,_C.black),
-                        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-                        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-                        ("FONTSIZE",(0,0),(-1,-1),8.2),
-                        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                        ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
-                        ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
-                    ]))
-                    # destaca status
-                    for r_i, row in enumerate(tab[1:], start=1):
+
+                    det_df = pv_cp_status.copy()
+                    # No relatório básico, não exibir o campo/coluna de alerta de pares
+                    if is_basic:
+                        cols_drop = [c for c in det_df.columns if ("Alerta Pares" in str(c)) or ("Δ>2" in str(c)) or ("Δ≥2" in str(c))]
+                        if cols_drop:
+                            det_df = det_df.drop(columns=cols_drop)
+
+                    cols = list(det_df.columns)
+
+                    # estilos (quebra automática + compactação p/ caber na página)
+                    from reportlab.lib.styles import ParagraphStyle
+                    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+                    st_head = ParagraphStyle("th_det", fontName="Helvetica-Bold", fontSize=7.4, leading=8.4, alignment=TA_CENTER)
+                    st_num  = ParagraphStyle("tn_det", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_CENTER)
+                    st_txt  = ParagraphStyle("tt_det", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_LEFT, wordWrap="CJK")
+
+                    def _esc(x):
+                        s0 = "" if x is None else str(x)
+                        return (s0.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+                    def _cell(v, colname: str):
+                        # mantém "—" para vazios
+                        if v is None or (isinstance(v, float) and (pd.isna(v))):
+                            v = "—"
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            txt = f"{float(v):.2f}".rstrip("0").rstrip(".")
+                        else:
+                            txt = str(v)
+                        # status e textos longos: quebra; numéricos: centraliza
+                        if "Status" in colname or colname == "CP":
+                            style = st_txt if "Status" in colname else st_num
+                            return Paragraph(_esc(txt), style)
+                        if "(MPa)" in colname or colname.endswith("d") or "Idade" in colname:
+                            return Paragraph(_esc(txt), st_num)
+                        return Paragraph(_esc(txt), st_txt)
+
+                    # colWidths proporcionais (evita desconfigurar a última página)
+                    avail_w = pagesize[0] - doc.leftMargin - doc.rightMargin
+                    weights = []
+                    for c in cols:
+                        if c == "CP":
+                            weights.append(1.2)
+                        elif "Status" in c:
+                            weights.append(1.7)
+                        else:
+                            weights.append(1.0)
+                    tot = sum(weights) if weights else 1.0
+                    colWidths = [max(28.0, avail_w * (w / tot)) for w in weights]
+
+                    head_row = [Paragraph(_esc(c), st_head) for c in cols]
+                    data_rows = []
+                    for row in det_df.values.tolist():
+                        data_rows.append([_cell(v, cols[i]) for i, v in enumerate(row)])
+
+                    tab = [head_row] + data_rows
+                    t_det = Table(tab, colWidths=colWidths, repeatRows=1, splitByRow=1)
+                    ts = [
+                        ("BACKGROUND",(0,0),(-1,0),C.lightgrey),
+                        ("GRID",(0,0),(-1,-1),0.35,C.black),
+                        ("VALIGN",(0,0),(-1,-1),"TOP"),
+                        ("LEFTPADDING",(0,0),(-1,-1),2),
+                        ("RIGHTPADDING",(0,0),(-1,-1),2),
+                        ("TOPPADDING",(0,0),(-1,-1),1),
+                        ("BOTTOMPADDING",(0,0),(-1,-1),1),
+                    ]
+
+                    # destaca status (apenas colunas Status)
+                    for r_i, row in enumerate(det_df.values.tolist(), start=1):
                         for c_i, col_name in enumerate(cols):
-                            if "Status" in col_name:
-                                txt = str(row[c_i]).lower()
-                                if "analisando" in txt:   t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#facc15"))]))
-                                elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#ef4444"))]))
-                                elif "atingiu" in txt or "dentro" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#16a34a"))]))
-                                elif "acima" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#3b82f6"))]))
-                                elif "sem dados" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#e5e7eb"))]))
+                            if "Status" not in col_name:
+                                continue
+                            txt = str(row[c_i]).lower()
+                            if "analisando" in txt or "coletando" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#facc15")))
+                            elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#ef4444")))
+                            elif "atingiu" in txt or "dentro" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#16a34a")))
+                            elif "acima" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#3b82f6")))
+                            elif "sem dados" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#e5e7eb")))
+
+                    t_det.setStyle(TableStyle(ts))
                     story.append(t_det); story.append(Spacer(1, 6))
 
                 story.append(Spacer(1, 10))
-                story.append(Paragraph(f"<b>ID do documento:</b> HAB-{datetime.now().strftime('%Y%m%d-%H%M%S')}", styles["Normal"]))
+                story.append(Paragraph(f"<b>ID do documento:</b> {doc_id_pdf}", styles["Normal"]))
 
                 doc.build(story, canvasmaker=NumberedCanvas)
                 pdf = buffer.getvalue()

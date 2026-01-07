@@ -896,14 +896,36 @@ def extrair_dados_certificado(uploaded_file):
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
-                if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
-                        v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 250:
-                            abat_nf_val = float(v)
-                            abat_nf_tol = float(tol) if tol is not None else None
-                            break
+                # --- Abatimento de NF (mm) ---
+                # Em alguns certificados a coluna "NF" vem como "NA" ou alfanumérica,
+                # e o valor de abatimento de NF aparece no final da linha (ex.: "240+-30").
+                # Então buscamos o padrão de abatimento diretamente nos tokens da linha,
+                # independente de NF ter sido reconhecida por regex numérica.
+                abat_idx = None
+                # 1) procurar token já no formato "240+-30" / "240±30" / "240+/-30"
+                for j in range(len(partes) - 1, max(-1, start_nf - 1), -1):
+                    v, tol = _parse_abatim_nf_pair(partes[j])
+                    if v is not None:
+                                        abat_nf_val, abat_nf_tol = v, tol
+                                        abat_idx = j
+                                        break
 
+                # 2) fallback: caso venha separado em 3 tokens (ex.: "240", "+-", "30")
+                if abat_nf_val is None:
+                    for j in range(start_nf, max(start_nf, len(partes) - 2)):
+                                        if re.fullmatch(r"\d{2,3}", partes[j]) and partes[j+1] in ("+-", "+/-", "±") and re.fullmatch(r"\d{1,3}", partes[j+2]):
+                                                            abat_nf_val = int(partes[j])
+                                                            abat_nf_tol = int(partes[j+2])
+                                                            abat_idx = j
+                                                            break
+
+                # Se NF não foi reconhecida por regex numérica, mas existe um token de abatimento,
+                # tentamos capturar a NF imediatamente anterior (quando for numérica).
+                if nf_idx is None and abat_idx is not None and abat_idx - 1 >= 0:
+                    cand_nf = partes[abat_idx - 1]
+                    if nf_regex.fullmatch(cand_nf):
+                        nf_idx = abat_idx - 1
+                        nf = cand_nf
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
                     relatorio, cp, idade, resistência, nf, local,
@@ -1657,26 +1679,27 @@ if uploaded_files:
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
                 # status columns por idade
-                def _status_por_idade(idx_cp, age, fckp):
-                    # pega todas as repetições daquela idade para o CP
-                    cols = [c for c in pv_multi.columns if c[0] == age]
-                    if not cols:
+                def _status_text_media(media_idade, age, fckp):
+                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
-                    vals = pd.to_numeric(pv_multi.loc[idx_cp, cols], errors="coerce").dropna().astype(float)
-                    if vals.empty:
-                        return "⚪ Sem dados"
-                    # idades iniciais são informativas
                     if age in (3, 7, 14):
                         return "🟡 Coletando dados"
-                    # regra dos pares: atingiu se QUALQUER repetição atingir o fck
-                    if (fckp is None) or pd.isna(fckp):
-                        return "⚪ Sem dados"
-                    return "🟢 Atingiu fck" if (vals >= float(fckp)).any() else "🔴 Não atingiu fck"
+                    return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
+
+                media_by_age = {}
+                for age in idades_interesse:
+                    if age in pv_multi.columns.get_level_values(0):
+                        media_by_age[age] = pv_multi[age].mean(axis=1)
+                    else:
+                        media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
 
                 status_df = pd.DataFrame(index=pv_multi.index)
                 for age in idades_interesse:
                     colname = f"Status {age}d"
-                    status_df[colname] = [_status_por_idade(idx_cp, age, fck_active2) for idx_cp in pv_multi.index]
+                    status_df[colname] = [
+                        _status_text_media(media_by_age[age].reindex(pv_multi.index).iloc[i], age, fck_active2)
+                        for i in range(len(pv_multi.index))
+                    ]
 
                 # alerta de pares
                 def _delta_flag(row_vals: pd.Series) -> bool:

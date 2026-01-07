@@ -1982,33 +1982,90 @@ if uploaded_files:
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
                     story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
-                    cols = list(pv_cp_status.columns)
-                    tab  = [cols] + pv_cp_status.values.tolist()
-                    t_det = Table(tab, repeatRows=1)
-                    t_det.setStyle(TableStyle([
-                        ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                        ("GRID",(0,0),(-1,-1),0.4,_C.black),
-                        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-                        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-                        ("FONTSIZE",(0,0),(-1,-1),8.2),
-                        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                        ("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2),
-                        ("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),
-                    ]))
-                    # destaca status
-                    for r_i, row in enumerate(tab[1:], start=1):
+
+                    det_df = pv_cp_status.copy()
+                    # >>>>>> NOVO: no Relatório BÁSICO, não imprimir a coluna de alerta de pares
+                    if is_basic and "Alerta Pares (Δ>2 MPa)" in det_df.columns:
+                        det_df = det_df.drop(columns=["Alerta Pares (Δ>2 MPa)"])
+
+                    cols = list(det_df.columns)
+
+                    # estilos (quebra automática + compactação p/ caber na página)
+                    from reportlab.lib.styles import ParagraphStyle
+                    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+                    st_head = ParagraphStyle("th_det", fontName="Helvetica-Bold", fontSize=7.4, leading=8.4, alignment=TA_CENTER)
+                    st_num  = ParagraphStyle("tn_det", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_CENTER)
+                    st_txt  = ParagraphStyle("tt_det", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_LEFT, wordWrap="CJK")
+
+                    def _esc(x):
+                        s0 = "" if x is None else str(x)
+                        return (s0.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+                    def _cell(v, colname: str):
+                        # mantém "—" para vazios
+                        if v is None or (isinstance(v, float) and (pd.isna(v))):
+                            v = "—"
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            txt = f"{float(v):.2f}".rstrip("0").rstrip(".")
+                        else:
+                            txt = str(v)
+                        # status e textos longos: quebra; numéricos: centraliza
+                        if "Status" in colname or colname == "CP":
+                            style = st_txt if "Status" in colname else st_num
+                            return Paragraph(_esc(txt), style)
+                        if "(MPa)" in colname or colname.endswith("d") or "Idade" in colname:
+                            return Paragraph(_esc(txt), st_num)
+                        return Paragraph(_esc(txt), st_txt)
+
+                    # colWidths proporcionais (evita desconfigurar a última página)
+                    avail_w = pagesize[0] - doc.leftMargin - doc.rightMargin
+                    weights = []
+                    for c in cols:
+                        if c == "CP":
+                            weights.append(1.2)
+                        elif "Status" in c:
+                            weights.append(1.7)
+                        else:
+                            weights.append(1.0)
+                    tot = sum(weights) if weights else 1.0
+                    colWidths = [max(28.0, avail_w * (w / tot)) for w in weights]
+
+                    head_row = [Paragraph(_esc(c), st_head) for c in cols]
+                    data_rows = []
+                    for row in det_df.values.tolist():
+                        data_rows.append([_cell(v, cols[i]) for i, v in enumerate(row)])
+
+                    tab = [head_row] + data_rows
+                    t_det = Table(tab, colWidths=colWidths, repeatRows=1, splitByRow=1)
+                    ts = [
+                        ("BACKGROUND",(0,0),(-1,0),C.lightgrey),
+                        ("GRID",(0,0),(-1,-1),0.35,C.black),
+                        ("VALIGN",(0,0),(-1,-1),"TOP"),
+                        ("LEFTPADDING",(0,0),(-1,-1),2),
+                        ("RIGHTPADDING",(0,0),(-1,-1),2),
+                        ("TOPPADDING",(0,0),(-1,-1),1),
+                        ("BOTTOMPADDING",(0,0),(-1,-1),1),
+                    ]
+
+                    # destaca status (apenas colunas Status)
+                    for r_i, row in enumerate(det_df.values.tolist(), start=1):
                         for c_i, col_name in enumerate(cols):
-                            if "Status" in col_name:
-                                txt = str(row[c_i]).lower()
-                                if "analisando" in txt:   t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#facc15"))]))
-                                elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#ef4444"))]))
-                                elif "atingiu" in txt or "dentro" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#16a34a"))]))
-                                elif "acima" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#3b82f6"))]))
-                                elif "sem dados" in txt:
-                                    t_det.setStyle(TableStyle([("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#e5e7eb"))]))
+                            if "Status" not in col_name:
+                                continue
+                            txt = str(row[c_i]).lower()
+                            if "analisando" in txt or "coletando" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#facc15")))
+                            elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#ef4444")))
+                            elif "atingiu" in txt or "dentro" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#16a34a")))
+                            elif "acima" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#3b82f6")))
+                            elif "sem dados" in txt:
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#e5e7eb")))
+
+                    t_det.setStyle(TableStyle(ts))
                     story.append(t_det); story.append(Spacer(1, 6))
 
                 story.append(Spacer(1, 10))

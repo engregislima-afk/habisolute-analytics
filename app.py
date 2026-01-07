@@ -1819,19 +1819,65 @@ if uploaded_files:
                     story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
                 story.append(Spacer(1, 8))
 
+                # =========================
+                # TABELA PRINCIPAL (AUTO-FIT + QUEBRA DE LINHA)
+                # =========================
                 if include_tables:
+                    from reportlab.lib.styles import ParagraphStyle
+                    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
                     headers = ["Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local","Usina","Abatimento NF (mm)","Abatimento Obra (mm)","Arquivo"]
-                    rows = df[headers].values.tolist()
-                    table = Table([headers] + rows, repeatRows=1)
+                    df_tab = df.copy()
+                    for col in headers:
+                        if col not in df_tab.columns:
+                            df_tab[col] = ""
+
+                    # estilos (quebra automática dentro da célula)
+                    st_head = ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, leading=9, alignment=TA_CENTER)
+                    st_num  = ParagraphStyle("tn", fontName="Helvetica",      fontSize=7.2, leading=8, alignment=TA_CENTER)
+                    st_txt  = ParagraphStyle("tt", fontName="Helvetica",      fontSize=7.2, leading=8, alignment=TA_LEFT, wordWrap="CJK")
+
+                    def _esc(x):
+                        s0 = "" if x is None else str(x)
+                        if s0.lower() == "nan":
+                            s0 = ""
+                        return (s0.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                                 .replace("\n", "<br/>"))
+
+                    def P(x, kind="txt"):
+                        if kind == "head": return Paragraph(_esc(x), st_head)
+                        if kind == "num":  return Paragraph(_esc(x), st_num)
+                        return Paragraph(_esc(x), st_txt)
+
+                    usable = float(doc.width)  # largura útil (com margens)
+                    base = [46, 58, 44, 60, 62, None, 62, 72, 78, 96]  # Local = None
+                    fixed_sum = sum(w for w in base if w is not None)
+                    local_w = max(140.0, usable - fixed_sum)
+                    colWidths = [(local_w if w is None else float(w)) for w in base]
+
+                    total_w = sum(colWidths)
+                    if total_w > usable:
+                        scale = usable / total_w
+                        colWidths = [w * scale for w in colWidths]
+
+                    head_row = [P(h, "head") for h in headers]
+                    num_cols = {"Relatório","Idade (dias)","Resistência (MPa)","Abatimento NF (mm)","Abatimento Obra (mm)"}
+                    data_rows = []
+                    for row in df_tab[headers].values.tolist():
+                        out = []
+                        for h, v in zip(headers, row):
+                            out.append(P(v, "num" if h in num_cols else "txt"))
+                        data_rows.append(out)
+
+                    table = Table([head_row] + data_rows, colWidths=colWidths, repeatRows=1, splitByRow=1)
                     table.setStyle(TableStyle([
                         ("BACKGROUND",(0,0),(-1,0),_C.lightgrey),
-                        ("GRID",(0,0),(-1,-1),0.5,_C.black),
-                        ("ALIGN",(0,0),(-1,-1),"CENTER"),
-                        ("FONTNAME",(0,0),(-1,-1),"Helvetica"),
-                        ("FONTSIZE",(0,0),(-1,-1),8.5),
-                        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-                        ("LEFTPADDING",(0,0),(-1,-1),3),("RIGHTPADDING",(0,0),(-1,-1),3),
-                        ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2),
+                        ("GRID",(0,0),(-1,-1),0.35,_C.black),
+                        ("VALIGN",(0,0),(-1,-1),"TOP"),
+                        ("LEFTPADDING",(0,0),(-1,-1),3),
+                        ("RIGHTPADDING",(0,0),(-1,-1),3),
+                        ("TOPPADDING",(0,0),(-1,-1),2),
+                        ("BOTTOMPADDING",(0,0),(-1,-1),2),
                     ]))
                     story.append(table); story.append(Spacer(1, 8))
 

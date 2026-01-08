@@ -692,25 +692,44 @@ def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    abat_nf = None; abat_obra = None
+    """Detecta valores globais de abatimento no texto.
+
+    Regras de segurança:
+    - Ignora linhas que contenham 'nota fiscal' (evita confundir NF com abatimento).
+    - Só considera quando há texto indicando 'abat...' e 'nf' / 'obra'.
+    """
+    abat_nf = None
+    abat_obra = None
     for sline in linhas:
         s_clean = sline.replace(",", ".").replace("±", "+-")
+        low = s_clean.lower()
+
+        # Evitar confusão em cabeçalhos/linhas que misturam "Nota Fiscal" com "Abatim. NF"
+        if "nota fiscal" in low:
+            continue
+
         m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
+            r"(?i)abat(?:imento|\.?im\.?)(?:\s*(?:de\s*)?)?\s*nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
             s_clean
         )
         if m_nf and abat_nf is None:
-            try: abat_nf = float(m_nf.group(1))
-            except Exception: pass
+            try:
+                abat_nf = float(m_nf.group(1))
+            except Exception:
+                pass
+
         m_obra = re.search(
-            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
+            r"(?i)abat(?:imento|\.?im\.?)(?:[^\n]*)?(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
             s_clean
         )
         if m_obra and abat_obra is None:
-            try: abat_obra = float(m_obra.group(2))
-            except Exception: pass
+            try:
+                abat_obra = float(m_obra.group(2))
+            except Exception:
+                pass
+
     return abat_nf, abat_obra
 
 def _extract_fck_values(line: str) -> List[float]:
@@ -931,9 +950,9 @@ def extrair_dados_certificado(uploaded_file):
                 dados.append([
                     relatorio, cp, idade, resistência, nf, local,
                     usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
+                    abat_nf_val,
                     abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
+                    abat_obra_val
                 ])
             except Exception:
                 pass
@@ -942,6 +961,33 @@ def extrair_dados_certificado(uploaded_file):
         "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
         "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
     ])
+
+
+    # Preenchimento seguro de abatimentos globais (quando o certificado informa apenas 1x)
+    # - Só aplica se nenhuma linha trouxe valor próprio
+    # - E nunca deixa "Abatimento NF" virar igual ao número da Nota Fiscal
+    if not df.empty:
+        try:
+            nf_nums: List[float] = []
+            for s in df["Nota Fiscal"].dropna().astype(str).tolist():
+                s2 = (s or "").strip()
+                if s2.upper() in ("NA", "N/A", "-", "—", ""):
+                    continue
+                try:
+                    nf_nums.append(float(s2.replace(",", ".")))
+                except Exception:
+                    pass
+
+            if df["Abatimento NF (mm)"].notna().sum() == 0 and abat_nf_pdf is not None:
+                if any(abs(abat_nf_pdf - x) < 1e-9 for x in nf_nums):
+                    abat_nf_pdf = None
+                if abat_nf_pdf is not None:
+                    df["Abatimento NF (mm)"] = abat_nf_pdf
+
+            if df["Abatimento Obra (mm)"].notna().sum() == 0 and abat_obra_pdf is not None:
+                df["Abatimento Obra (mm)"] = abat_obra_pdf
+        except Exception:
+            pass
 
     if not df.empty:
         rel_map = {}

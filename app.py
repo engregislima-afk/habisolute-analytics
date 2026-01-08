@@ -680,17 +680,75 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
     return None
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
-    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
-    if not m: return None, None
-    try:
-        v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) is not None else None
-        return v, tol
-    except Exception:
-        return None, None
+    """Parse do 'Abatimento NF (mm)'.
 
+    Regras de segurança:
+    - NÃO aceita padrões típicos de Nota Fiscal com separador de milhar (ex.: 161.692).
+    - Aceita: '240', '240+30', '240+-30', '240±30', '240+/-30' (com ou sem 'mm').
+    - Retorna (valor_mm, tolerancia_mm) ou (None, None) se não conseguir/for inseguro.
+    """
+    if not tok:
+        return (None, None)
+
+    t = str(tok).strip()
+    if not t:
+        return (None, None)
+
+    # remove espaços e sufixo mm
+    t = re.sub(r"\s+", "", t)
+    t = re.sub(r"(?i)mm$", "", t)
+
+    # Segurança: padrões de Nota Fiscal com separador de milhar (ex.: 161.692, 1.234.567)
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", t) or re.fullmatch(r"\d{1,3}(?:,\d{3})+", t):
+        return (None, None)
+
+    # normalizações de tolerância
+    t_norm = t.replace("+/-", "+-").replace("±", "+-").replace("\u00b1", "+-")  # ±
+
+    def _to_float(x: str) -> Optional[float]:
+        try:
+            return float(x.replace(",", "."))
+        except Exception:
+            return None
+
+    # Caso com tolerância
+    if "+-" in t_norm:
+        a, b = t_norm.split("+-", 1)
+        va, vb = _to_float(a), _to_float(b)
+        if va is None or vb is None:
+            return (None, None)
+        if 20 <= va <= 400 and 0 <= vb <= 100:
+            return (va, vb)
+        return (None, None)
+
+    # Alguns certificados podem vir como '240+30' (sem o '-')
+    if "+" in t_norm:
+        a, b = t_norm.split("+", 1)
+        va, vb = _to_float(a), _to_float(b)
+        if va is None or vb is None:
+            return (None, None)
+        if 20 <= va <= 400 and 0 <= vb <= 100:
+            return (va, vb)
+        return (None, None)
+
+    # Alguns raros podem vir como '240-30' (assumir tolerância)
+    if "-" in t_norm[1:]:
+        a, b = t_norm.split("-", 1)
+        va, vb = _to_float(a), _to_float(b)
+        if va is None or vb is None:
+            return (None, None)
+        vb = abs(vb)
+        if 20 <= va <= 400 and 0 <= vb <= 100:
+            return (va, vb)
+        return (None, None)
+
+    # Caso sem tolerância: apenas número (2-3 dígitos, opcional 1-2 decimais)
+    if re.fullmatch(r"\d{2,3}(?:[\.,]\d{1,2})?", t_norm):
+        va = _to_float(t_norm)
+        if va is not None and 20 <= va <= 400:
+            return (va, None)
+
+    return (None, None)
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
     """Detecta valores globais de abatimento no texto.
 

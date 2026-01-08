@@ -958,10 +958,39 @@ def extrair_dados_certificado(uploaded_file):
 
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-                for j in range(start_nf, len(partes)):
-                    tok = partes[j]
-                    if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
+
+                # ✅ Regra de segurança:
+                # Se a NF vier como NA / N/A / vazio logo após a resistência,
+                # NÃO devemos "caçar" números mais à frente (isso causava pegar valores errados).
+                lookahead = partes[start_nf:start_nf + 4]
+                nf_is_na = False
+                for k, tok in enumerate(lookahead):
+                    t = (tok or "").strip().upper()
+                    if t in ("NA", "N/A", "N\A", "-", "—", ""):
+                        nf = None
+                        nf_idx = start_nf + k
+                        nf_is_na = True
+                        break
+
+                if not nf_is_na:
+                    # Busca curta e mais restrita para evitar confundir com outros números
+                    # (NF normalmente é um identificador com vários dígitos; evitamos decimais).
+                    for j in range(start_nf, min(len(partes), start_nf + 10)):
+                        tok = (partes[j] or "").strip()
+                        if tok == cp:
+                            continue
+                        if not nf_regex.match(tok):
+                            continue
+                        # evita decimais típicos (ex.: 17,38 / 42,17)
+                        if re.fullmatch(r"\d+[\.,]\d{1,2}", tok):
+                            continue
+                        # exige pelo menos 4 dígitos (desconsiderando separadores)
+                        digits = re.sub(r"\D", "", tok)
+                        if len(digits) < 4:
+                            continue
+                        nf = tok
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -975,35 +1004,44 @@ def extrair_dados_certificado(uploaded_file):
 
                 abat_nf_val, abat_nf_tol = None, None
                 # --- Abatimento de NF (mm) ---
-                # Em alguns certificados a coluna "NF" vem como "NA" ou alfanumérica,
-                # e o valor de abatimento de NF aparece no final da linha (ex.: "240+-30").
-                # Então buscamos o padrão de abatimento diretamente nos tokens da linha,
-                # independente de NF ter sido reconhecida por regex numérica.
                 abat_idx = None
-                # 1) procurar token já no formato "240+-30" / "240±30" / "240+/-30"
-                for j in range(len(partes) - 1, max(-1, start_nf - 1), -1):
+
+                # 1) tenta localizar um token "240+-30" ou "240±30"
+                for j in range(len(partes) - 1, start_nf - 1, -1):
                     v, tol = _parse_abatim_nf_pair(partes[j])
                     if v is not None:
-                                        abat_nf_val, abat_nf_tol = v, tol
-                                        abat_idx = j
-                                        break
+                        abat_nf_val, abat_nf_tol = v, tol
+                        abat_idx = j
+                        break
 
-                # 2) fallback: caso venha separado em 3 tokens (ex.: "240", "+-", "30")
+                # 2) fallback: separado em 3 tokens: "240" "+-" "30" (ou "+/-", "±")
                 if abat_nf_val is None:
-                    for j in range(start_nf, max(start_nf, len(partes) - 2)):
-                                        if re.fullmatch(r"\d{2,3}", partes[j]) and partes[j+1] in ("+-", "+/-", "±") and re.fullmatch(r"\d{1,3}", partes[j+2]):
-                                                            abat_nf_val = int(partes[j])
-                                                            abat_nf_tol = int(partes[j+2])
-                                                            abat_idx = j
-                                                            break
+                    for j in range(start_nf, len(partes) - 2):
+                        a = (partes[j] or "").strip()
+                        op = (partes[j + 1] or "").strip()
+                        b = (partes[j + 2] or "").strip()
+                        if re.fullmatch(r"\d{1,4}", a) and op in ("+-", "+/-", "±", "+−") and re.fullmatch(r"\d{1,3}", b):
+                            abat_nf_val = int(a)
+                            abat_nf_tol = int(b)
+                            abat_idx = j
+                            break
 
-                # Se NF não foi reconhecida por regex numérica, mas existe um token de abatimento,
-                # tentamos capturar a NF imediatamente anterior (quando for numérica).
+                # 3) tenta inferir a NF imediatamente antes do abatimento (se ainda não tiver)
+                #    (NÃO faz isso se a NF foi marcada como NA / vazia)
                 if nf_idx is None and abat_idx is not None and abat_idx - 1 >= 0:
-                    cand_nf = partes[abat_idx - 1]
-                    if nf_regex.fullmatch(cand_nf):
-                        nf_idx = abat_idx - 1
-                        nf = cand_nf
+                    cand_nf = (partes[abat_idx - 1] or "").strip()
+                    if cand_nf and cand_nf.upper() not in ("NA", "N/A", "N\A", "-", "—"):
+                        if nf_regex.match(cand_nf):
+                            nf = cand_nf
+                            nf_idx = abat_idx - 1
+
+                # Regra extra de segurança: se NF está ausente/NA, não aceitar abatimento NF preenchido por engano
+                if nf_idx is not None:
+                    tok_nf = (partes[nf_idx] or "").strip().upper()
+                    if tok_nf in ("NA", "N/A", "N\A", "-", "—", ""):
+                        nf = None
+                        abat_nf_val, abat_nf_tol = None, None
+
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
                     relatorio, cp, idade, resistência, nf, local,

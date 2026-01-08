@@ -1906,6 +1906,41 @@ if uploaded_files:
                 color = "#16a34a" if ok else "#f97316"
                 st.markdown(f"<div style='color:{color};font-size:13px;margin-bottom:3px;'>{label}</div>", unsafe_allow_html=True)
 
+
+            # -----------------------------------------------------------------
+            # Alertas de consistência (NF / Abatimento NF)
+            # - Se NF estiver NA/vazio, Abatimento NF fica em branco (segurança).
+            # - Se NF existir mas o certificado não trouxer Abatimento NF, avisamos.
+            # -----------------------------------------------------------------
+            try:
+                _df_check = df_view if "df_view" in locals() and df_view is not None else df_all
+                if _df_check is not None and len(_df_check) > 0:
+                    _nf_col = "Nota Fiscal"
+                    _abat_col = "Abatimento NF (mm)"
+
+                    _nf_series = _df_check[_nf_col] if _nf_col in _df_check.columns else pd.Series([None] * len(_df_check))
+                    _abat_series = _df_check[_abat_col] if _abat_col in _df_check.columns else pd.Series([None] * len(_df_check))
+
+                    nf_missing = _nf_series.isna() | (_nf_series.astype(str).str.strip() == "")
+                    abat_missing = _abat_series.isna()
+
+                    n_nf_missing = int(nf_missing.sum())
+                    n_abat_nf_missing = int((~nf_missing & abat_missing).sum())
+
+                    if n_nf_missing > 0:
+                        st.warning(
+                            f"⚠️ {n_nf_missing} linha(s) sem Nota Fiscal (NA/vazio). "
+                            "Para segurança, o campo **Abatimento NF** ficará em branco nesses registros."
+                        )
+                    if n_abat_nf_missing > 0:
+                        st.warning(
+                            f"⚠️ {n_abat_nf_missing} linha(s) com Nota Fiscal, mas sem **Abatimento NF** informado no certificado. "
+                            "Conferir antes de imprimir o PDF."
+                        )
+            except Exception:
+                pass
+
+
             report_mode = st.radio(
                 "Modo do relatório PDF",
                 [

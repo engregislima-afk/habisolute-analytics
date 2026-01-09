@@ -1587,7 +1587,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 21, 28, 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1720,6 +1720,7 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
+                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]

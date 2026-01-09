@@ -892,14 +892,14 @@ def extrair_dados_certificado(uploaded_file):
                         tok = partes[j]
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
-                            if 20 <= v <= 250:
+                            if 20 <= v <= 500:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 250:
+                        if v is not None and 20 <= v <= 500:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break

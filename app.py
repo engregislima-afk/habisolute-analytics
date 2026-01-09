@@ -1599,6 +1599,7 @@ if uploaded_files:
             m3  = mean_by_age_all.get(3,  float("nan"))
             m7  = mean_by_age_all.get(7,  float("nan"))
             m14 = mean_by_age_all.get(14, float("nan"))
+            m21 = mean_by_age_all.get(21, float("nan"))
             m28 = mean_by_age_all.get(28, float("nan"))
             m63 = mean_by_age_all.get(63, float("nan"))
 
@@ -1611,6 +1612,7 @@ if uploaded_files:
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
                 ],
             })
 
@@ -1619,7 +1621,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14):
+                    if idade in (3, 7, 14, 21):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")

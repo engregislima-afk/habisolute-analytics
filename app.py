@@ -680,114 +680,37 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
     return None
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    """Parse do 'Abatimento NF (mm)'.
+    if not tok: return None, None
+    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
+    if not m: return None, None
+    try:
+        v = float(m.group(1))
+        tol = float(m.group(2)) if m.group(2) is not None else None
+        return v, tol
+    except Exception:
+        return None, None
 
-    Regras de segurança:
-    - NÃO aceita padrões típicos de Nota Fiscal com separador de milhar (ex.: 161.692).
-    - Aceita: '240', '240+30', '240+-30', '240±30', '240+/-30' (com ou sem 'mm').
-    - Retorna (valor_mm, tolerancia_mm) ou (None, None) se não conseguir/for inseguro.
-    """
-    if not tok:
-        return (None, None)
-
-    t = str(tok).strip()
-    if not t:
-        return (None, None)
-
-    # remove espaços e sufixo mm
-    t = re.sub(r"\s+", "", t)
-    t = re.sub(r"(?i)mm$", "", t)
-
-    # Segurança: padrões de Nota Fiscal com separador de milhar (ex.: 161.692, 1.234.567)
-    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", t) or re.fullmatch(r"\d{1,3}(?:,\d{3})+", t):
-        return (None, None)
-
-    # normalizações de tolerância
-    t_norm = t.replace("+/-", "+-").replace("±", "+-").replace("\u00b1", "+-")  # ±
-
-    def _to_float(x: str) -> Optional[float]:
-        try:
-            return float(x.replace(",", "."))
-        except Exception:
-            return None
-
-    # Caso com tolerância
-    if "+-" in t_norm:
-        a, b = t_norm.split("+-", 1)
-        va, vb = _to_float(a), _to_float(b)
-        if va is None or vb is None:
-            return (None, None)
-        if 20 <= va <= 400 and 0 <= vb <= 100:
-            return (va, vb)
-        return (None, None)
-
-    # Alguns certificados podem vir como '240+30' (sem o '-')
-    if "+" in t_norm:
-        a, b = t_norm.split("+", 1)
-        va, vb = _to_float(a), _to_float(b)
-        if va is None or vb is None:
-            return (None, None)
-        if 20 <= va <= 400 and 0 <= vb <= 100:
-            return (va, vb)
-        return (None, None)
-
-    # Alguns raros podem vir como '240-30' (assumir tolerância)
-    if "-" in t_norm[1:]:
-        a, b = t_norm.split("-", 1)
-        va, vb = _to_float(a), _to_float(b)
-        if va is None or vb is None:
-            return (None, None)
-        vb = abs(vb)
-        if 20 <= va <= 400 and 0 <= vb <= 100:
-            return (va, vb)
-        return (None, None)
-
-    # Caso sem tolerância: apenas número (2-3 dígitos, opcional 1-2 decimais)
-    if re.fullmatch(r"\d{2,3}(?:[\.,]\d{1,2})?", t_norm):
-        va = _to_float(t_norm)
-        if va is not None and 20 <= va <= 400:
-            return (va, None)
-
-    return (None, None)
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
-    """Detecta valores globais de abatimento no texto.
-
-    Regras de segurança:
-    - Ignora linhas que contenham 'nota fiscal' (evita confundir NF com abatimento).
-    - Só considera quando há texto indicando 'abat...' e 'nf' / 'obra'.
-    """
-    abat_nf = None
-    abat_obra = None
+    abat_nf = None; abat_obra = None
     for sline in linhas:
         s_clean = sline.replace(",", ".").replace("±", "+-")
-        low = s_clean.lower()
-
-        # Evitar confusão em cabeçalhos/linhas que misturam "Nota Fiscal" com "Abatim. NF"
-        if "nota fiscal" in low:
-            continue
-
         m_nf = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)(?:\s*(?:de\s*)?)?\s*nf[^0-9]*"
+            r"(?i)abat(?:imento|\.?im\.?)\s*(?:de\s*)?nf[^0-9]*"
             r"(\d+(?:\.\d+)?)(?:\s*\+?-?\s*\d+(?:\.\d+)?)?\s*mm?",
             s_clean
         )
         if m_nf and abat_nf is None:
-            try:
-                abat_nf = float(m_nf.group(1))
-            except Exception:
-                pass
-
+            try: abat_nf = float(m_nf.group(1))
+            except Exception: pass
         m_obra = re.search(
-            r"(?i)abat(?:imento|\.?im\.?)(?:[^\n]*)?(obra|medido em obra)[^0-9]*"
+            r"(?i)abat(?:imento|\.?im\.?).*(obra|medido em obra)[^0-9]*"
             r"(\d+(?:\.\d+)?)\s*mm",
             s_clean
         )
         if m_obra and abat_obra is None:
-            try:
-                abat_obra = float(m_obra.group(2))
-            except Exception:
-                pass
-
+            try: abat_obra = float(m_obra.group(2))
+            except Exception: pass
     return abat_nf, abat_obra
 
 def _extract_fck_values(line: str) -> List[float]:
@@ -958,97 +881,36 @@ def extrair_dados_certificado(uploaded_file):
 
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-
-                # ✅ Regra de segurança:
-                # Se a NF vier como NA / N/A / vazio logo após a resistência,
-                # NÃO devemos "caçar" números mais à frente (isso causava pegar valores errados).
-                lookahead = partes[start_nf:start_nf + 4]
-                nf_is_na = False
-                for k, tok in enumerate(lookahead):
-                    t = (tok or "").strip().upper()
-                    if t in ("NA", "N/A", "N\A", "-", "—", ""):
-                        nf = None
-                        nf_idx = start_nf + k
-                        nf_is_na = True
-                        break
-
-                if not nf_is_na:
-                    # Busca curta e mais restrita para evitar confundir com outros números
-                    # (NF normalmente é um identificador com vários dígitos; evitamos decimais).
-                    for j in range(start_nf, min(len(partes), start_nf + 10)):
-                        tok = (partes[j] or "").strip()
-                        if tok == cp:
-                            continue
-                        if not nf_regex.match(tok):
-                            continue
-                        # evita decimais típicos (ex.: 17,38 / 42,17)
-                        if re.fullmatch(r"\d+[\.,]\d{1,2}", tok):
-                            continue
-                        # exige pelo menos 4 dígitos (desconsiderando separadores)
-                        digits = re.sub(r"\D", "", tok)
-                        if len(digits) < 4:
-                            continue
-                        nf = tok
-                        nf_idx = j
-                        break
+                for j in range(start_nf, len(partes)):
+                    tok = partes[j]
+                    if nf_regex.match(tok) and tok != cp:
+                        nf = tok; nf_idx = j; break
 
                 abat_obra_val = None
                 if i_data is not None:
                     for j in range(i_data - 1, max(-1, i_data - 6), -1):
                         tok = partes[j]
-                        if re.fullmatch(r"\d{1,3}", tok):
+                        if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
-                            # Abatimento (mm) em obra pode variar bastante (ex.: 10 a 300+)
-                            if 0 <= v <= 400:
+                            if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
-                # --- Abatimento de NF (mm) ---
-                abat_idx = None
-
-                # 1) tenta localizar um token "240+-30" ou "240±30"
-                for j in range(len(partes) - 1, start_nf - 1, -1):
-                    v, tol = _parse_abatim_nf_pair(partes[j])
-                    if v is not None:
-                        abat_nf_val, abat_nf_tol = v, tol
-                        abat_idx = j
-                        break
-
-                # 2) fallback: separado em 3 tokens: "240" "+-" "30" (ou "+/-", "±")
-                if abat_nf_val is None:
-                    for j in range(start_nf, len(partes) - 2):
-                        a = (partes[j] or "").strip()
-                        op = (partes[j + 1] or "").strip()
-                        b = (partes[j + 2] or "").strip()
-                        if re.fullmatch(r"\d{1,4}", a) and op in ("+-", "+/-", "±", "+−") and re.fullmatch(r"\d{1,3}", b):
-                            abat_nf_val = int(a)
-                            abat_nf_tol = int(b)
-                            abat_idx = j
-                            break
-
-                # 3) tenta inferir a NF imediatamente antes do abatimento (se ainda não tiver)
-                #    (NÃO faz isso se a NF foi marcada como NA / vazia)
-                if nf_idx is None and abat_idx is not None and abat_idx - 1 >= 0:
-                    cand_nf = (partes[abat_idx - 1] or "").strip()
-                    if cand_nf and cand_nf.upper() not in ("NA", "N/A", "N\A", "-", "—"):
-                        if nf_regex.match(cand_nf):
-                            nf = cand_nf
-                            nf_idx = abat_idx - 1
-
-                # Regra extra de segurança: se NF está ausente/NA, não aceitar abatimento NF preenchido por engano
                 if nf_idx is not None:
-                    tok_nf = (partes[nf_idx] or "").strip().upper()
-                    if tok_nf in ("NA", "N/A", "N\A", "-", "—", ""):
-                        nf = None
-                        abat_nf_val, abat_nf_tol = None, None
+                    for tok in partes[nf_idx + 1: nf_idx + 5]:
+                        v, tol = _parse_abatim_nf_pair(tok)
+                        if v is not None and 20 <= v <= 250:
+                            abat_nf_val = float(v)
+                            abat_nf_tol = float(tol) if tol is not None else None
+                            break
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
                     relatorio, cp, idade, resistência, nf, local,
                     usina_nome,
-                    abat_nf_val,
+                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
                     abat_nf_tol,
-                    abat_obra_val
+                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
                 ])
             except Exception:
                 pass
@@ -1057,33 +919,6 @@ def extrair_dados_certificado(uploaded_file):
         "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
         "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
     ])
-
-
-    # Preenchimento seguro de abatimentos globais (quando o certificado informa apenas 1x)
-    # - Só aplica se nenhuma linha trouxe valor próprio
-    # - E nunca deixa "Abatimento NF" virar igual ao número da Nota Fiscal
-    if not df.empty:
-        try:
-            nf_nums: List[float] = []
-            for s in df["Nota Fiscal"].dropna().astype(str).tolist():
-                s2 = (s or "").strip()
-                if s2.upper() in ("NA", "N/A", "-", "—", ""):
-                    continue
-                try:
-                    nf_nums.append(float(s2.replace(",", ".")))
-                except Exception:
-                    pass
-
-            if df["Abatimento NF (mm)"].notna().sum() == 0 and abat_nf_pdf is not None:
-                if any(abs(abat_nf_pdf - x) < 1e-9 for x in nf_nums):
-                    abat_nf_pdf = None
-                if abat_nf_pdf is not None:
-                    df["Abatimento NF (mm)"] = abat_nf_pdf
-
-            if df["Abatimento Obra (mm)"].notna().sum() == 0 and abat_obra_pdf is not None:
-                df["Abatimento Obra (mm)"] = abat_obra_pdf
-        except Exception:
-            pass
 
     if not df.empty:
         rel_map = {}
@@ -1615,6 +1450,7 @@ if uploaded_files:
             ax.set_title("Crescimento da resistência por corpo de prova")
             place_right_legend(ax)
             ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            ax.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.4)
             st.pyplot(fig1)
             if CAN_EXPORT:
                 _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
@@ -1656,7 +1492,7 @@ if uploaded_files:
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Idade (dias)": [3, 7, 14, 21, 28, 63],
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1765,7 +1601,7 @@ if uploaded_files:
             m63 = mean_by_age_all.get(63, float("nan"))
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Idade (dias)": [3, 7, 14, 21, 28, 63],
                 "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
@@ -1789,7 +1625,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 28, 63]
+            idades_interesse = [3, 7, 14, 21, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1821,25 +1657,27 @@ if uploaded_files:
                     pv["__cp_sort__"] = range(len(pv))
                 pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
 
-                # status columns por idade (regra: se 1 dos pares atingir o fck -> Atingiu)
-                def _status_from_rowvals(row_vals: pd.Series, age: int, fckp: Optional[float]) -> str:
-                    vals = pd.to_numeric(row_vals, errors="coerce").dropna().astype(float)
-                    if (fckp is None) or pd.isna(fckp) or vals.empty:
+                # status columns por idade
+                def _status_text_media(media_idade, age, fckp):
+                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
                     if age in (3, 7, 14):
                         return "🟡 Coletando dados"
-                    return "🟢 Atingiu fck" if (vals >= float(fckp)).any() else "🔴 Não atingiu fck"
+                    return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
+
+                media_by_age = {}
+                for age in idades_interesse:
+                    if age in pv_multi.columns.get_level_values(0):
+                        media_by_age[age] = pv_multi[age].mean(axis=1)
+                    else:
+                        media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
 
                 status_df = pd.DataFrame(index=pv_multi.index)
                 for age in idades_interesse:
                     colname = f"Status {age}d"
-                    cols = [c for c in pv_multi.columns if c[0] == age]
-                    if not cols:
-                        status_df[colname] = "⚪ Sem dados"
-                        continue
                     status_df[colname] = [
-                        _status_from_rowvals(pv_multi.loc[idx_, cols], int(age), fck_active2)
-                        for idx_ in pv_multi.index
+                        _status_text_media(media_by_age[age].reindex(pv_multi.index).iloc[i], age, fck_active2)
+                        for i in range(len(pv_multi.index))
                     ]
 
                 # alerta de pares
@@ -1905,41 +1743,6 @@ if uploaded_files:
             for label, ok in items:
                 color = "#16a34a" if ok else "#f97316"
                 st.markdown(f"<div style='color:{color};font-size:13px;margin-bottom:3px;'>{label}</div>", unsafe_allow_html=True)
-
-
-            # -----------------------------------------------------------------
-            # Alertas de consistência (NF / Abatimento NF)
-            # - Se NF estiver NA/vazio, Abatimento NF fica em branco (segurança).
-            # - Se NF existir mas o certificado não trouxer Abatimento NF, avisamos.
-            # -----------------------------------------------------------------
-            try:
-                _df_check = df_view if "df_view" in locals() and df_view is not None else df_all
-                if _df_check is not None and len(_df_check) > 0:
-                    _nf_col = "Nota Fiscal"
-                    _abat_col = "Abatimento NF (mm)"
-
-                    _nf_series = _df_check[_nf_col] if _nf_col in _df_check.columns else pd.Series([None] * len(_df_check))
-                    _abat_series = _df_check[_abat_col] if _abat_col in _df_check.columns else pd.Series([None] * len(_df_check))
-
-                    nf_missing = _nf_series.isna() | (_nf_series.astype(str).str.strip() == "")
-                    abat_missing = _abat_series.isna()
-
-                    n_nf_missing = int(nf_missing.sum())
-                    n_abat_nf_missing = int((~nf_missing & abat_missing).sum())
-
-                    if n_nf_missing > 0:
-                        st.warning(
-                            f"⚠️ {n_nf_missing} linha(s) sem Nota Fiscal (NA/vazio). "
-                            "Para segurança, o campo **Abatimento NF** ficará em branco nesses registros."
-                        )
-                    if n_abat_nf_missing > 0:
-                        st.warning(
-                            f"⚠️ {n_abat_nf_missing} linha(s) com Nota Fiscal, mas sem **Abatimento NF** informado no certificado. "
-                            "Conferir antes de imprimir o PDF."
-                        )
-            except Exception:
-                pass
-
 
             report_mode = st.radio(
                 "Modo do relatório PDF",
@@ -2263,15 +2066,15 @@ if uploaded_files:
                                 continue
                             txt = str(row[c_i]).lower()
                             if "analisando" in txt or "coletando" in txt:
-                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#facc15")))
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#facc15")))
                             elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
-                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#ef4444")))
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#ef4444")))
                             elif "atingiu" in txt or "dentro" in txt:
-                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#16a34a")))
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#16a34a")))
                             elif "acima" in txt:
-                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#3b82f6")))
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#3b82f6")))
                             elif "sem dados" in txt:
-                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),_C.HexColor("#e5e7eb")))
+                                ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#e5e7eb")))
 
                     t_det.setStyle(TableStyle(ts))
                     story.append(t_det); story.append(Spacer(1, 6))

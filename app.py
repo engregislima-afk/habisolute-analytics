@@ -1488,14 +1488,16 @@ if uploaded_files:
             m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
             m14 = mean_by_age.get(14, float("nan"))
+            m21 = mean_by_age.get(21, float("nan"))
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
                 "Idade (dias)": [3, 7, 14, 21, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
+                    (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
@@ -1602,7 +1604,7 @@ if uploaded_files:
 
             verif_fck_df2 = pd.DataFrame({
                 "Idade (dias)": [3, 7, 14, 21, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
                     (fck_active2 if fck_active2 is not None else float("nan")),

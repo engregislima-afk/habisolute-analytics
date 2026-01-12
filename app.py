@@ -798,7 +798,7 @@ def extrair_dados_certificado(uploaded_file):
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
+    nf_regex = re.compile(r"^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:[\/-]\d+)?$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -882,9 +882,25 @@ def extrair_dados_certificado(uploaded_file):
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
-                    tok = partes[j]
+                    tok_raw = partes[j]
+                    # limpar token (aceita: 1, 10, 999, 1458, 1.458, 23.789.987, etc.)
+                    tok = re.sub(r"[^\d\./-]", "", tok_raw).strip()
+                    tok = tok.strip(".,;:()[]{}")
+                    if not tok:
+                        continue
+
                     if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
+                        # Preferir o candidato que é seguido por um par válido de abatimento (obra / NF)
+                        abat_tmp, abat_nf_tmp = _parse_abatim_nf_pair(partes[j+1:]) if (j + 1) < len(partes) else (None, None)
+                        if abat_nf_tmp is not None:
+                            nf = tok
+                            nf_idx = j
+                            break
+
+                        # Fallback: guarda o primeiro candidato plausível
+                        if nf is None:
+                            nf = tok
+                            nf_idx = j
 
                 abat_obra_val = None
                 if i_data is not None:

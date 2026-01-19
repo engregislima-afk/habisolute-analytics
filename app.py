@@ -713,93 +713,6 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
             except Exception: pass
     return abat_nf, abat_obra
 
-
-# === NF parsing helpers =======================================================
-
-def _parse_nf_token(raw: str) -> Optional[str]:
-    """Parse a Nota Fiscal token.
-
-    Returns:
-      - numeric NF string (keeps dots/slashes/hyphens) like '129.717' or '12345'
-      - 'NA' when the PDF indicates missing invoice (e.g., NA, N/A)
-      - None when not a plausible NF token
-
-    Important: this avoids mistaking abatimento tokens like '180+-30' as NF.
-    """
-    if raw is None:
-        return None
-    s = str(raw).strip()
-    if not s:
-        return None
-
-    # normalize common dashes
-    s2 = s.replace('–', '-').replace('—', '-')
-    s2 = s2.strip('()[]{}<>')
-
-    # NA / N-A / N/A
-    na = re.sub(r"[^A-Za-z/]", "", s2).upper()
-    if na in {"NA", "N/A", "N.A"}:
-        return "NA"
-
-    # Exclude abatimento tokens (very common pattern: 180+-30, 180 ± 30)
-    up = s2.upper()
-    if '+-' in up or '±' in up or '+/-' in up:
-        return None
-
-    # Keep only NF-friendly chars
-    tok = re.sub(r"[^0-9\./-]", "", s2).strip()
-    tok = tok.strip('.,;:')
-    if not tok:
-        return None
-
-    nf_regex = re.compile(r"^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:[\/-]\d+)?$")
-    if nf_regex.match(tok):
-        return tok
-    return None
-
-
-def _prefer_nf_followed_by_abat(partes: List[str], start_nf: int, cp: str) -> Tuple[Optional[str], Optional[int]]:
-    """Pick NF token after resistance.
-
-    Preference:
-      1) first plausible NF that is immediately followed by a valid abatimento token
-      2) otherwise, the first plausible NF after resistance
-
-    Also skips false positives where a small number is likely abatimento.
-    """
-    first_nf, first_idx = None, None
-    for j in range(start_nf, len(partes)):
-        raw = partes[j]
-        cand = _parse_nf_token(raw)
-        if not cand:
-            continue
-        if cand == cp:
-            continue
-
-        # Skip likely abatimento value misread as NF (e.g., 180 120)
-        if cand != 'NA' and re.fullmatch(r"\d{2,3}", cand):
-            try:
-                v = int(cand)
-            except Exception:
-                v = None
-            if v is not None and 20 <= v <= 500:
-                nxt = str(partes[j + 1]) if (j + 1) < len(partes) else ''
-                if '+-' in nxt or '±' in nxt or '+/-' in nxt:
-                    continue
-
-        if first_nf is None:
-            first_nf, first_idx = cand, j
-
-        # Prefer NF immediately followed by valid abatimento token
-        if (j + 1) < len(partes):
-            abat_v, abat_tol = _parse_abatim_nf_pair(str(partes[j + 1]))
-            if abat_v is not None and 20 <= abat_v <= 500 and (abat_tol is None or (0 < abat_tol <= 150)):
-                return cand, j
-
-    return first_nf, first_idx
-
-# ============================================================================
-
 def _extract_fck_values(line: str) -> List[float]:
     if not line or "fck" not in line.lower(): return []
     sanitized = line.replace(",", ".")
@@ -885,7 +798,7 @@ def extrair_dados_certificado(uploaded_file):
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:[\/-]\d+)?$")
+    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -926,79 +839,122 @@ def extrair_dados_certificado(uploaded_file):
 
     dados = []
     relatorio_cabecalho = None
+    in_tabela = False
 
     for sline in linhas_todas:
         partes = sline.split()
 
+        # Cabeçalho de cada relatório
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
-            if m_rel: relatorio_cabecalho = m_rel.group(1)
+            if m_rel:
+                relatorio_cabecalho = m_rel.group(1)
+            in_tabela = False
             continue
 
-        if len(partes) >= 5 and cp_regex.match(partes[0]):
-            try:
-                cp = partes[0]
-                relatorio = relatorio_cabecalho or "NÃO IDENTIFICADO"
+        # Início da tabela principal de resultados (corpos de prova)
+        if ("Corpo de Prova" in sline) and ("Betoneira" in sline) and ("Tensão" in sline):
+            in_tabela = True
+            continue
 
-                i_data = next((i for i, t in enumerate(partes) if data_token.match(t)), None)
-                if i_data is not None:
-                    i_tipo = next((i for i in range(i_data + 1, len(partes)) if tipo_token.match(partes[i])), None)
-                    start = (i_tipo + 1) if i_tipo is not None else (i_data + 1)
-                else:
-                    start = 1
+        # Linha de unidades (m³) / separadores, ignorar
+        if in_tabela and sline.startswith("("):
+            continue
 
-                idade_idx, idade = None, None
-                for j in range(start, len(partes)):
+        if not in_tabela:
+            continue
+
+        # Fim da tabela do relatório (antes de peças/observações, etc.)
+        low = sline.lower()
+        if low.startswith(("peças", "pecas", "observa", "toler", "impresso")):
+            in_tabela = False
+            continue
+
+        # Tentar parsear apenas linhas que começam com CP
+        if len(partes) < 6 or not cp_regex.match(partes[0]):
+            continue
+
+        try:
+            cp = partes[0]
+            relatorio = relatorio_cabecalho or "NÃO IDENTIFICADO"
+
+            # Data de ruptura (dd/mm/aaaa) deve existir na linha da tabela
+            i_data = next((i for i, t in enumerate(partes) if data_token.match(t)), None)
+            if i_data is None:
+                continue
+
+            # Idade (dias): normalmente após o tipo (A3, A7, etc.)
+            i_tipo = next((i for i in range(i_data + 1, len(partes)) if tipo_token.match(partes[i])), None)
+            start = (i_tipo + 1) if i_tipo is not None else (i_data + 1)
+
+            idade_idx, idade = None, None
+            for j in range(start, len(partes)):
+                t = partes[j]
+                if t.isdigit():
+                    v = int(t)
+                    if 1 <= v <= 120:
+                        idade = v
+                        idade_idx = j
+                        break
+
+            # Resistência (MPa): próximo float após idade
+            resistência, res_idx = None, None
+            if idade_idx is not None:
+                for j in range(idade_idx + 1, len(partes)):
                     t = partes[j]
-                    if t.isdigit():
-                        v = int(t)
-                        if 1 <= v <= 120:
-                            idade = v; idade_idx = j; break
+                    if float_token.match(t):
+                        resistência = float(t.replace(",", "."))
+                        res_idx = j
+                        break
 
-                resistência, res_idx = None, None
-                if idade_idx is not None:
-                    for j in range(idade_idx + 1, len(partes)):
-                        t = partes[j]
-                        if float_token.match(t):
-                            resistência = float(t.replace(",", "."))
-                            res_idx = j; break
+            if idade is None or resistência is None:
+                continue
 
-                if idade is None or resistência is None:
-                    continue
+            # Nota Fiscal: token após resistência (aceita NA)
+            nf, nf_idx = None, None
+            start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
+            for j in range(start_nf, len(partes)):
+                tok = partes[j]
+                if tok.upper() in {"NA", "N/A", "-"}:
+                    nf = None
+                    nf_idx = j
+                    break
+                if nf_regex.match(tok) and tok != cp:
+                    nf = tok
+                    nf_idx = j
+                    break
 
-                # NF (Nota Fiscal): aceitar números (com/sem ponto) e também NA/N/A; evitar confundir com abatimento (ex.: 180+-30)
-                nf, nf_idx = None, None
-                start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-                nf, nf_idx = _prefer_nf_followed_by_abat(partes, start_nf, cp)
-
-                abat_obra_val = None
-                if i_data is not None:
-                    for j in range(i_data - 1, max(-1, i_data - 6), -1):
-                        tok = partes[j]
-                        if re.fullmatch(r"\d{2,3}", tok):
-                            v = int(tok)
-                            if 20 <= v <= 500:
-                                abat_obra_val = float(v); break
-
-                abat_nf_val, abat_nf_tol = None, None
-                if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
-                        v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 500:
-                            abat_nf_val = float(v)
-                            abat_nf_tol = float(tol) if tol is not None else None
+            # Abatimento de obra: normalmente imediatamente antes da data
+            abat_obra_val = None
+            if i_data is not None:
+                for j in range(i_data - 1, max(-1, i_data - 6), -1):
+                    tok = partes[j]
+                    if re.fullmatch(r"\d{2,3}", tok):
+                        v = int(tok)
+                        if 20 <= v <= 250:
+                            abat_obra_val = float(v)
                             break
 
-                local = local_por_relatorio.get(relatorio)
-                dados.append([
-                    relatorio, cp, idade, resistência, nf, local,
-                    usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
-                    abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
-                ])
-            except Exception:
-                pass
+            # Abatimento NF (mm) e tolerância: token após NF
+            abat_nf_val, abat_nf_tol = None, None
+            if nf_idx is not None:
+                for tok in partes[nf_idx + 1: nf_idx + 5]:
+                    v, tol = _parse_abatim_nf_pair(tok)
+                    if v is not None and 20 <= v <= 250:
+                        abat_nf_val = float(v)
+                        abat_nf_tol = float(tol) if tol is not None else None
+                        break
+
+            local = local_por_relatorio.get(relatorio)
+            dados.append([
+                relatorio, cp, idade, resistência, nf, local,
+                usina_nome,
+                (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
+                abat_nf_tol,
+                (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
+            ])
+        except Exception:
+            pass
 
     df = pd.DataFrame(dados, columns=[
         "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
@@ -1535,7 +1491,6 @@ if uploaded_files:
             ax.set_title("Crescimento da resistência por corpo de prova")
             place_right_legend(ax)
             ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-            ax.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.4)
             st.pyplot(fig1)
             if CAN_EXPORT:
                 _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
@@ -1573,16 +1528,14 @@ if uploaded_files:
             m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
             m14 = mean_by_age.get(14, float("nan"))
-            m21 = mean_by_age.get(21, float("nan"))
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 21, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
-                    (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
@@ -1672,7 +1625,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 21, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1684,16 +1637,14 @@ if uploaded_files:
             m3  = mean_by_age_all.get(3,  float("nan"))
             m7  = mean_by_age_all.get(7,  float("nan"))
             m14 = mean_by_age_all.get(14, float("nan"))
-            m21 = mean_by_age_all.get(21, float("nan"))
             m28 = mean_by_age_all.get(28, float("nan"))
             m63 = mean_by_age_all.get(63, float("nan"))
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 21, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
+                "Idade (dias)": [3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
@@ -1706,7 +1657,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14, 21):
+                    if idade in (3, 7, 14):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
@@ -1714,7 +1665,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 21, 28, 63]
+            idades_interesse = [3, 7, 14, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1805,7 +1756,6 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
-                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]

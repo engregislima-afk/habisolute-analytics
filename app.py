@@ -713,6 +713,93 @@ def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[f
             except Exception: pass
     return abat_nf, abat_obra
 
+
+# === NF parsing helpers =======================================================
+
+def _parse_nf_token(raw: str) -> Optional[str]:
+    """Parse a Nota Fiscal token.
+
+    Returns:
+      - numeric NF string (keeps dots/slashes/hyphens) like '129.717' or '12345'
+      - 'NA' when the PDF indicates missing invoice (e.g., NA, N/A)
+      - None when not a plausible NF token
+
+    Important: this avoids mistaking abatimento tokens like '180+-30' as NF.
+    """
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+
+    # normalize common dashes
+    s2 = s.replace('–', '-').replace('—', '-')
+    s2 = s2.strip('()[]{}<>')
+
+    # NA / N-A / N/A
+    na = re.sub(r"[^A-Za-z/]", "", s2).upper()
+    if na in {"NA", "N/A", "N.A"}:
+        return "NA"
+
+    # Exclude abatimento tokens (very common pattern: 180+-30, 180 ± 30)
+    up = s2.upper()
+    if '+-' in up or '±' in up or '+/-' in up:
+        return None
+
+    # Keep only NF-friendly chars
+    tok = re.sub(r"[^0-9\./-]", "", s2).strip()
+    tok = tok.strip('.,;:')
+    if not tok:
+        return None
+
+    nf_regex = re.compile(r"^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:[\/-]\d+)?$")
+    if nf_regex.match(tok):
+        return tok
+    return None
+
+
+def _prefer_nf_followed_by_abat(partes: List[str], start_nf: int, cp: str) -> Tuple[Optional[str], Optional[int]]:
+    """Pick NF token after resistance.
+
+    Preference:
+      1) first plausible NF that is immediately followed by a valid abatimento token
+      2) otherwise, the first plausible NF after resistance
+
+    Also skips false positives where a small number is likely abatimento.
+    """
+    first_nf, first_idx = None, None
+    for j in range(start_nf, len(partes)):
+        raw = partes[j]
+        cand = _parse_nf_token(raw)
+        if not cand:
+            continue
+        if cand == cp:
+            continue
+
+        # Skip likely abatimento value misread as NF (e.g., 180 120)
+        if cand != 'NA' and re.fullmatch(r"\d{2,3}", cand):
+            try:
+                v = int(cand)
+            except Exception:
+                v = None
+            if v is not None and 20 <= v <= 500:
+                nxt = str(partes[j + 1]) if (j + 1) < len(partes) else ''
+                if '+-' in nxt or '±' in nxt or '+/-' in nxt:
+                    continue
+
+        if first_nf is None:
+            first_nf, first_idx = cand, j
+
+        # Prefer NF immediately followed by valid abatimento token
+        if (j + 1) < len(partes):
+            abat_v, abat_tol = _parse_abatim_nf_pair(str(partes[j + 1]))
+            if abat_v is not None and 20 <= abat_v <= 500 and (abat_tol is None or (0 < abat_tol <= 150)):
+                return cand, j
+
+    return first_nf, first_idx
+
+# ============================================================================
+
 def _extract_fck_values(line: str) -> List[float]:
     if not line or "fck" not in line.lower(): return []
     sanitized = line.replace(",", ".")
@@ -879,28 +966,10 @@ def extrair_dados_certificado(uploaded_file):
                 if idade is None or resistência is None:
                     continue
 
+                # NF (Nota Fiscal): aceitar números (com/sem ponto) e também NA/N/A; evitar confundir com abatimento (ex.: 180+-30)
                 nf, nf_idx = None, None
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
-                for j in range(start_nf, len(partes)):
-                    tok_raw = partes[j]
-                    # limpar token (aceita: 1, 10, 999, 1458, 1.458, 23.789.987, etc.)
-                    tok = re.sub(r"[^\d\./-]", "", tok_raw).strip()
-                    tok = tok.strip(".,;:()[]{}")
-                    if not tok:
-                        continue
-
-                    if nf_regex.match(tok) and tok != cp:
-                        # Preferir o candidato que é seguido por um par válido de abatimento (obra / NF)
-                        abat_tmp, abat_nf_tmp = _parse_abatim_nf_pair(partes[j+1:]) if (j + 1) < len(partes) else (None, None)
-                        if abat_nf_tmp is not None:
-                            nf = tok
-                            nf_idx = j
-                            break
-
-                        # Fallback: guarda o primeiro candidato plausível
-                        if nf is None:
-                            nf = tok
-                            nf_idx = j
+                nf, nf_idx = _prefer_nf_followed_by_abat(partes, start_nf, cp)
 
                 abat_obra_val = None
                 if i_data is not None:

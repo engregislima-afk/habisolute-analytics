@@ -1528,14 +1528,16 @@ if uploaded_files:
             m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
             m14 = mean_by_age.get(14, float("nan"))
+            m21 = mean_by_age.get(21, float("nan"))
             m28 = mean_by_age.get(28, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Idade (dias)": [3, 7, 14, 21, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
+                    (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
@@ -1625,7 +1627,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 21, 28, 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1637,14 +1639,16 @@ if uploaded_files:
             m3  = mean_by_age_all.get(3,  float("nan"))
             m7  = mean_by_age_all.get(7,  float("nan"))
             m14 = mean_by_age_all.get(14, float("nan"))
+            m21 = mean_by_age_all.get(21, float("nan"))
             m28 = mean_by_age_all.get(28, float("nan"))
             m63 = mean_by_age_all.get(63, float("nan"))
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Idade (dias)": [3, 7, 14, 21, 28, 63],
+                "Média Real (MPa)": [m3, m7, m14, m21, m28, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
+                    (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
                     (fck_active2 if fck_active2 is not None else float("nan")),
@@ -1657,7 +1661,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14):
+                    if idade in (3, 7, 14, 21):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
@@ -1665,11 +1669,11 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 28, 63]
+            idades_interesse = [3, 7, 14, 21, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
-                st.info("Sem CPs de 3/7/14/28/63 dias no filtro atual.")
+                st.info("Sem CPs de 3/7/14/21/28/63 dias no filtro atual.")
             else:
                 tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
                 tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
@@ -1756,6 +1760,7 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
+                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]
@@ -2030,7 +2035,7 @@ if uploaded_files:
 
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
-                    story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
+                    story.append(Paragraph("Verificação detalhada por CP (3/7/14/21/28/63 dias)", styles["Heading3"]))
 
                     det_df = pv_cp_status.copy()
                     # No relatório básico, não exibir o campo/coluna de alerta de pares

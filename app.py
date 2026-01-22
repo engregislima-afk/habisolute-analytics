@@ -948,9 +948,9 @@ def extrair_dados_certificado(uploaded_file):
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
-                    relatorio, cp, idade, resistência, nf, local,
+                    relatorio, cp, idade, resistência, (relatorio if relatorio else nf), local,
                     usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
+                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
                     abat_nf_tol,
                     (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
                 ])

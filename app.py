@@ -900,13 +900,22 @@ def extrair_dados_certificado(uploaded_file):
                     start = 1
 
                 idade_idx, idade = None, None
+                # Prefer idades padrão (3, 7, 14, 21, 28, 63) quando existirem na linha
+                idades_padrao = {3, 7, 14, 21, 28, 63}
                 for j in range(start, len(partes)):
                     t = partes[j]
                     if t.isdigit():
                         v = int(t)
-                        if 1 <= v <= 120:
+                        if v in idades_padrao:
                             idade = v; idade_idx = j; break
-
+                # Fallback: se não achou idade padrão, pega o primeiro inteiro plausível
+                if idade_idx is None:
+                    for j in range(start, len(partes)):
+                        t = partes[j]
+                        if t.isdigit():
+                            v = int(t)
+                            if 1 <= v <= 120:
+                                idade = v; idade_idx = j; break
                 resistência, res_idx = None, None
                 if idade_idx is not None:
                     for j in range(idade_idx + 1, len(partes)):
@@ -1527,23 +1536,36 @@ if uploaded_files:
             st.write("##### Gráfico 3 — Comparação Real × Estimado (Utilizando a Média)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
-            m3  = mean_by_age.get(3,  float("nan"))
-            m7  = mean_by_age.get(7,  float("nan"))
-            m14 = mean_by_age.get(14, float("nan"))
-            m28 = mean_by_age.get(28, float("nan"))
-            m63 = mean_by_age.get(63, float("nan"))
-
+            m3  = mean_by_age.get(3,  float('nan'))
+            m7  = mean_by_age.get(7,  float('nan'))
+            m14 = mean_by_age.get(14, float('nan'))
+            m21 = mean_by_age.get(21, float('nan'))
+            m28 = mean_by_age.get(28, float('nan'))
+            m63 = mean_by_age.get(63, float('nan'))
+            # Mostrar 21d somente quando existir no PDF
+            idades_proj = [3, 7, 14, 28, 63]
+            if not pd.isna(m21):
+                idades_proj.insert(3, 21)
+            medias_proj = {3: m3, 7: m7, 14: m14, 21: m21, 28: m28, 63: m63}
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
-                "fck Projeto (MPa)": [
-                    float("nan"),
-                    (fck_active if fck_active is not None else float("nan")),
-                    (fck_active if fck_active is not None else float("nan")),
-                    (fck_active if fck_active is not None else float("nan")),
-                    (fck_active if fck_active is not None else float("nan")),
-                ],
+                "Idade (dias)": idades_proj,
+                "Média Real (MPa)": [medias_proj[i] for i in idades_proj],
+                "fck Projeto (MPa)": [float(fck) if fck else None for _ in idades_proj],
             })
+            status_vals = []
+            for idade in idades_proj:
+                val = medias_proj.get(idade, float('nan'))
+                if pd.isna(val):
+                    status_vals.append('⚪ Sem dados')
+                else:
+                    if fck and val >= float(fck):
+                        status_vals.append('🟢 Atingiu fck')
+                    else:
+                        if idade in (3, 7, 14, 21):
+                            status_vals.append('🟡 Coletando dados')
+                        else:
+                            status_vals.append('🔴 Não atingiu fck')
+            verif_fck_df['Status'] = status_vals
 
             if est_df is not None:
                 sa = stats_all_focus.copy(); sa["std"] = sa["std"].fillna(0.0)
@@ -1685,7 +1707,11 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 21, 28, 63]
+            # Mostrar 21d somente quando existir no PDF
+            idades_presentes = set(int(x) for x in df_view['Idade (dias)'].dropna().unique().tolist())
+            idades_interesse = [3, 7, 14, 28, 63]
+            if 21 in idades_presentes:
+                idades_interesse.insert(3, 21)
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1771,15 +1797,11 @@ if uploaded_files:
                     if status_col in pv.columns:
                         base = base + [status_col]
                     return base
-                ordered_cols = (
-                    cols_cp
-                    + _cols_age(3)
-                    + _cols_age(7)
-                    + _cols_age(14)
-                    + _cols_age(28)
-                    + _cols_age(63)
-                    + ["Alerta Pares (Δ>2 MPa)"]
-                )
+                ordered_cols = ['CP']
+                for a in idades_interesse:
+                    ordered_cols += _cols_age(a)
+                ordered_cols += ['Alerta Pares (Δ>2 MPa)']
+
                 pv = pv[ordered_cols]
                 pv_cp_status = pv.copy()
                 st.dataframe(pv_cp_status, use_container_width=True)

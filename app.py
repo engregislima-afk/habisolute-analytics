@@ -809,35 +809,43 @@ def extrair_dados_certificado(uploaded_file):
         t0 = t0.strip(" \t\r\n,;:()[]{}<>")
         return t0
 
-    def _is_nf_token(t: str, cp_val: str) -> bool:
-        tt = _clean_nf_token(t)
-        if not tt:
-            return False
-        # evita confundir com CP e com o tipo (A1, A2...)
-        if cp_regex.match(tt):
-            return False
-        if tipo_token.match(tt):
-            return False
-        # caracteres permitidos (tamanho máximo para evitar lixo)
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-\/]{0,24}", tt):
-            return False
-        # somente letras (ex.: NA)
-        if re.fullmatch(r"[A-Za-z]{1,4}", tt):
-            return True
-        # precisa ter ao menos um dígito para as demais variações
-        if not re.search(r"\d", tt):
-            return False
-        # número puro
-        if re.fullmatch(r"\d{1,12}", tt):
-            return True
-        # milhares com ponto: 1.236 / 25.969.789
-        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", tt):
-            return True
-        # alfa-numérico com separadores opcionais
-        if re.fullmatch(r"[A-Za-z0-9]+(?:[.\-\/]?[A-Za-z0-9]+)*", tt):
-            return True
-        return False
+    def _is_nf_token(tok: str, cp_val: str, relatorio: str = "") -> bool:
+        """Heurística para reconhecer o token de Nota Fiscal (NF).
 
+        Aceita números (com ou sem separador de milhar '.'), alfanuméricos (ex.: H682, A039.258) e variações comuns.
+        Rejeita: o próprio CP, o número do relatório, idades/betoneira (1-2 dígitos) e tokens vazios.
+        """
+        tok = (tok or "").strip()
+        if not tok:
+            return False
+        if cp_val and tok == cp_val:
+            return False
+        if relatorio and tok == relatorio:
+            return False
+
+        t = tok.strip().upper()
+
+        # 1-2 dígitos normalmente são betoneira/idade
+        if re.fullmatch(r"\d{1,2}", t):
+            return False
+
+        # somente caracteres esperados
+        if re.fullmatch(r"[A-Z0-9][A-Z0-9.\-/]{0,24}", t) is None:
+            return False
+
+        # só números (>=3 dígitos)
+        if re.fullmatch(r"\d{3,12}", t):
+            return True
+
+        # com separador de milhar (037.421, 1.236, 25.969.789)
+        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", t):
+            return True
+
+        # alfanumérico (H682, A039.258)
+        if re.fullmatch(r"[A-Z]+\d+(?:\.\d+)*", t):
+            return True
+
+        return True
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -948,7 +956,7 @@ def extrair_dados_certificado(uploaded_file):
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
-                    relatorio, cp, idade, resistência, (relatorio if relatorio else nf), local,
+                    relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_nome,
                     (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
                     abat_nf_tol,

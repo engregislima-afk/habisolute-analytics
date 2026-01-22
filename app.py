@@ -798,7 +798,46 @@ def extrair_dados_certificado(uploaded_file):
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
     float_token = re.compile(r"^\d+[.,]\d+$")
-    nf_regex = re.compile(r"^(?:\d{2,6}[.\-\/]?\d{3,6}|\d{5,12})$")
+
+    # NOTA FISCAL — aceita números com separadores e combinações alfa-numéricas
+    # Exemplos: NA, AB0236, 001, 1236, 1.236, 12.369, 25.969.789, etc.
+    def _clean_nf_token(t: str) -> str:
+        if t is None:
+            return ""
+        t0 = str(t).strip()
+        # remove pontuação periférica, mantendo separadores internos (.,-,/)
+        t0 = t0.strip(" \t\r\n,;:()[]{}<>")
+        return t0
+
+    def _is_nf_token(t: str, cp_val: str) -> bool:
+        tt = _clean_nf_token(t)
+        if not tt:
+            return False
+        # evita confundir com CP e com o tipo (A1, A2...)
+        if cp_regex.match(tt):
+            return False
+        if tipo_token.match(tt):
+            return False
+        # caracteres permitidos (tamanho máximo para evitar lixo)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-\/]{0,24}", tt):
+            return False
+        # somente letras (ex.: NA)
+        if re.fullmatch(r"[A-Za-z]{1,4}", tt):
+            return True
+        # precisa ter ao menos um dígito para as demais variações
+        if not re.search(r"\d", tt):
+            return False
+        # número puro
+        if re.fullmatch(r"\d{1,12}", tt):
+            return True
+        # milhares com ponto: 1.236 / 25.969.789
+        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", tt):
+            return True
+        # alfa-numérico com separadores opcionais
+        if re.fullmatch(r"[A-Za-z0-9]+(?:[.\-\/]?[A-Za-z0-9]+)*", tt):
+            return True
+        return False
+
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -883,8 +922,11 @@ def extrair_dados_certificado(uploaded_file):
                 start_nf = (res_idx + 1) if res_idx is not None else (idade_idx + 1)
                 for j in range(start_nf, len(partes)):
                     tok = partes[j]
-                    if nf_regex.match(tok) and tok != cp:
-                        nf = tok; nf_idx = j; break
+                    tok_nf = _clean_nf_token(tok)
+                    if _is_nf_token(tok_nf, cp):
+                        nf = tok_nf
+                        nf_idx = j
+                        break
 
                 abat_obra_val = None
                 if i_data is not None:
@@ -1585,7 +1627,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 21, 28, 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1594,23 +1636,27 @@ if uploaded_files:
             # MÉDIAS POR IDADE EM CIMA DE TODOS OS CPs VISÍVEIS
             mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
 
-            m3  = mean_by_age_all.get(3,  float("nan"))
-            m7  = mean_by_age_all.get(7,  float("nan"))
-            m14 = mean_by_age_all.get(14, float("nan"))
-            m28 = mean_by_age_all.get(28, float("nan"))
-            m63 = mean_by_age_all.get(63, float("nan"))
+            # inclui 21 dias quando existir no certificado
+            idades_verif = [3, 7, 14]
+            try:
+                if 21 in mean_by_age_all.index:
+                    idades_verif.append(21)
+            except Exception:
+                pass
+            idades_verif += [28, 63]
+
+            medias = [mean_by_age_all.get(a, float("nan")) for a in idades_verif]
+            fck_col = [
+                (float("nan") if a == 3 else (fck_active2 if fck_active2 is not None else float("nan")))
+                for a in idades_verif
+            ]
 
             verif_fck_df2 = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
-                "fck Projeto (MPa)": [
-                    float("nan"),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
-                    (fck_active2 if fck_active2 is not None else float("nan")),
-                ],
+                "Idade (dias)": idades_verif,
+                "Média Real (MPa)": medias,
+                "fck Projeto (MPa)": fck_col,
             })
+
 
             pass28_any = None
             try:
@@ -1625,7 +1671,7 @@ if uploaded_files:
                 if pd.isna(media) or (pd.isna(fckp) and idade != 3):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14):
+                    if idade in (3, 7, 14, 21):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         if idade == 28:
@@ -1639,7 +1685,7 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 28, 63]
+            idades_interesse = [3, 7, 14, 21, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
@@ -1675,7 +1721,7 @@ if uploaded_files:
                 def _status_text_media(media_idade, age, fckp):
                     if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
                         return "⚪ Sem dados"
-                    if age in (3, 7, 14):
+                    if age in (3, 7, 14, 21):
                         return "🟡 Coletando dados"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
@@ -2004,7 +2050,7 @@ if uploaded_files:
 
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
-                    story.append(Paragraph("Verificação detalhada por CP (3/7/14/28/63 dias)", styles["Heading3"]))
+                    story.append(Paragraph("Verificação detalhada por CP (3/7/14/21/28/63 dias)", styles["Heading3"]))
 
                     det_df = pv_cp_status.copy()
                     # No relatório básico, não exibir o campo/coluna de alerta de pares

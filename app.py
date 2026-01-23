@@ -680,16 +680,34 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
     return None
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
-    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
-    if not m: return None, None
+    if not tok:
+        return None, None
+    t = str(tok).strip().lower()
+    t = t.replace("mm", "").replace(",", ".")
+    # Normaliza símbolos comuns: "240+-30", "240+/-30", "240 ± 30", etc.
+    t = t.replace("±", "+-")
+    # Normaliza hífens unicode (PDFs às vezes usam '−' ou '–')
+    for ch in ["−", "–", "—", "‑", "﹣", "－"]:
+        t = t.replace(ch, "-")
+    # Normaliza variações com barra: "+/-", "+ / -", etc.
+    t = re.sub(r"\+\s*/\s*\-\s*", "+-", t)
+    t = t.replace("+/-", "+-")
+    # Converte variações com espaços: "+ -", "+  -", etc.
+    t = re.sub(r"\+\s*\-\s*", "+-", t)
+    # Remove espaços residuais
+    t = re.sub(r"\s+", "", t)
+    # Trata "+-" como separador (tolerância sempre positiva)
+    t = t.replace("+-", "+")
+    m = re.match(r"^(\d+(?:\.\d+)?)(?:\+(\d+(?:\.\d+)?))?$", t)
+    if not m:
+        return None, None
     try:
         v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) is not None else None
+        tol = float(m.group(2)) if m.group(2) else None
         return v, tol
     except Exception:
         return None, None
+
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
     abat_nf = None; abat_obra = None

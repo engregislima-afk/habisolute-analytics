@@ -680,34 +680,16 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
     return None
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok:
-        return None, None
-    t = str(tok).strip().lower()
-    t = t.replace("mm", "").replace(",", ".")
-    # Normaliza símbolos comuns: "240+-30", "240+/-30", "240 ± 30", etc.
-    t = t.replace("±", "+-")
-    # Normaliza hífens unicode (PDFs às vezes usam '−' ou '–')
-    for ch in ["−", "–", "—", "‑", "﹣", "－"]:
-        t = t.replace(ch, "-")
-    # Normaliza variações com barra: "+/-", "+ / -", etc.
-    t = re.sub(r"\+\s*/\s*\-\s*", "+-", t)
-    t = t.replace("+/-", "+-")
-    # Converte variações com espaços: "+ -", "+  -", etc.
-    t = re.sub(r"\+\s*\-\s*", "+-", t)
-    # Remove espaços residuais
-    t = re.sub(r"\s+", "", t)
-    # Trata "+-" como separador (tolerância sempre positiva)
-    t = t.replace("+-", "+")
-    m = re.match(r"^(\d+(?:\.\d+)?)(?:\+(\d+(?:\.\d+)?))?$", t)
-    if not m:
-        return None, None
+    if not tok: return None, None
+    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
+    if not m: return None, None
     try:
         v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) else None
+        tol = float(m.group(2)) if m.group(2) is not None else None
         return v, tol
     except Exception:
         return None, None
-
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
     abat_nf = None; abat_obra = None
@@ -827,35 +809,43 @@ def extrair_dados_certificado(uploaded_file):
         t0 = t0.strip(" \t\r\n,;:()[]{}<>")
         return t0
 
-    def _is_nf_token(t: str, cp_val: str) -> bool:
-        tt = _clean_nf_token(t)
-        if not tt:
-            return False
-        # evita confundir com CP e com o tipo (A1, A2...)
-        if cp_regex.match(tt):
-            return False
-        if tipo_token.match(tt):
-            return False
-        # caracteres permitidos (tamanho máximo para evitar lixo)
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.\-\/]{0,24}", tt):
-            return False
-        # somente letras (ex.: NA)
-        if re.fullmatch(r"[A-Za-z]{1,4}", tt):
-            return True
-        # precisa ter ao menos um dígito para as demais variações
-        if not re.search(r"\d", tt):
-            return False
-        # número puro
-        if re.fullmatch(r"\d{1,12}", tt):
-            return True
-        # milhares com ponto: 1.236 / 25.969.789
-        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", tt):
-            return True
-        # alfa-numérico com separadores opcionais
-        if re.fullmatch(r"[A-Za-z0-9]+(?:[.\-\/]?[A-Za-z0-9]+)*", tt):
-            return True
-        return False
+    def _is_nf_token(tok: str, cp_val: str, relatorio: str = "") -> bool:
+        """Heurística para reconhecer o token de Nota Fiscal (NF).
 
+        Aceita números (com ou sem separador de milhar '.'), alfanuméricos (ex.: H682, A039.258) e variações comuns.
+        Rejeita: o próprio CP, o número do relatório, idades/betoneira (1-2 dígitos) e tokens vazios.
+        """
+        tok = (tok or "").strip()
+        if not tok:
+            return False
+        if cp_val and tok == cp_val:
+            return False
+        if relatorio and tok == relatorio:
+            return False
+
+        t = tok.strip().upper()
+
+        # 1-2 dígitos normalmente são betoneira/idade
+        if re.fullmatch(r"\d{1,2}", t):
+            return False
+
+        # somente caracteres esperados
+        if re.fullmatch(r"[A-Z0-9][A-Z0-9.\-/]{0,24}", t) is None:
+            return False
+
+        # só números (>=3 dígitos)
+        if re.fullmatch(r"\d{3,12}", t):
+            return True
+
+        # com separador de milhar (037.421, 1.236, 25.969.789)
+        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", t):
+            return True
+
+        # alfanumérico (H682, A039.258)
+        if re.fullmatch(r"[A-Z]+\d+(?:\.\d+)*", t):
+            return True
+
+        return True
 
     pecas_regex = re.compile(r"(?i)peç[ac]s?\s+concretad[ao]s?:\s*(.*)")
 
@@ -952,21 +942,21 @@ def extrair_dados_certificado(uploaded_file):
                         tok = partes[j]
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
-                            if 20 <= v <= 400:
+                            if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 400:
+                        if v is not None and 20 <= v <= 250:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
 
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
-                    relatorio, cp, idade, resistência, (relatorio if relatorio else nf), local,
+                    relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_nome,
                     (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
                     abat_nf_tol,

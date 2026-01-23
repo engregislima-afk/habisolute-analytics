@@ -935,35 +935,25 @@ def extrair_dados_certificado(uploaded_file):
                         nf = tok_nf
                         nf_idx = j
                         break
+
                 abat_obra_val = None
                 if i_data is not None:
-                    # Preferência: após o "Volume (m³)" vem o "Abatimento (mm)"
-                    i_vol = None
-                    for j in range(1, i_data):
+                    for j in range(i_data - 1, max(-1, i_data - 6), -1):
                         tok = partes[j]
-                        if float_token.match(tok):
-                            try:
-                                fv = float(tok.replace(",", "."))
-                            except Exception:
-                                continue
-                            if 0.1 <= fv <= 30:
-                                i_vol = j
-                    if i_vol is not None and (i_vol + 1) < i_data:
-                        tok = partes[i_vol + 1]
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
                             if 20 <= v <= 400:
-                                abat_obra_val = float(v)
+                                abat_obra_val = float(v); break
 
-                    # Fallback: últimos tokens antes da data (alguns PDFs quebram colunas)
-                    if abat_obra_val is None:
-                        for j in range(i_data - 1, max(-1, i_data - 8), -1):
-                            tok = partes[j]
-                            if re.fullmatch(r"\d{2,3}", tok):
-                                v = int(tok)
-                                if 20 <= v <= 400:
-                                    abat_obra_val = float(v)
-                                    break
+                abat_nf_val, abat_nf_tol = None, None
+                if nf_idx is not None:
+                    for tok in partes[nf_idx + 1: nf_idx + 5]:
+                        v, tol = _parse_abatim_nf_pair(tok)
+                        if v is not None and 20 <= v <= 400:
+                            abat_nf_val = float(v)
+                            abat_nf_tol = float(tol) if tol is not None else None
+                            break
+
                 local = local_por_relatorio.get(relatorio)
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,

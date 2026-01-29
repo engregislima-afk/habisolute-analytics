@@ -942,14 +942,14 @@ def extrair_dados_certificado(uploaded_file):
                         tok = partes[j]
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
-                            if 20 <= v <= 400:
+                            if 20 <= v <= 250:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 400:
+                        if v is not None and 20 <= v <= 250:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
@@ -958,7 +958,7 @@ def extrair_dados_certificado(uploaded_file):
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_nome,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
+                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
                     abat_nf_tol,
                     (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
                 ])
@@ -1784,6 +1784,7 @@ if uploaded_files:
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
+                    + _cols_age(21)
                     + _cols_age(28)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]
@@ -2067,45 +2068,7 @@ if uploaded_files:
                         if cols_drop:
                             det_df = det_df.drop(columns=cols_drop)
 
-                    # ✅ PDF: mostrar apenas idades/colunas que tenham dados (evita colunas vazias como 3d/14d/21d quando não houver ruptura)
-                    try:
-                        def _has_any_number(colname: str) -> bool:
-                            s_num = pd.to_numeric(det_df[colname], errors="coerce")
-                            return bool(s_num.notna().any())
-
-                        drop_cols_dyn = []
-                        for _age in (3, 7, 14, 21, 28, 63):
-                            # colunas numéricas daquele dia (ex.: "7d (MPa)", "7d #2 (MPa)")
-                            mpa_cols = [c for c in det_df.columns if (f"{_age}d" in str(c)) and ("(MPa)" in str(c))]
-                            if not mpa_cols:
-                                continue
-                            has_data = any(_has_any_number(c) for c in mpa_cols)
-                            if not has_data:
-                                status_cols = [c for c in det_df.columns if ("Status" in str(c)) and (f"{_age}d" in str(c))]
-                                drop_cols_dyn.extend(mpa_cols + status_cols)
-
-                        if drop_cols_dyn:
-                            det_df = det_df.drop(columns=[c for c in drop_cols_dyn if c in det_df.columns], errors="ignore")
-
-                        # opcional: remove colunas totalmente vazias (exceto CP)
-                        extra_drop = []
-                        for c in det_df.columns:
-                            if c == "CP":
-                                continue
-                            col = det_df[c]
-                            if col.isna().all():
-                                extra_drop.append(c)
-                            else:
-                                # strings vazias / "—"
-                                if col.astype(str).str.strip().replace({"—": ""}).eq("").all():
-                                    extra_drop.append(c)
-                        if extra_drop:
-                            det_df = det_df.drop(columns=extra_drop, errors="ignore")
-                    except Exception:
-                        pass
-
                     cols = list(det_df.columns)
-
 
                     # estilos (quebra automática + compactação p/ caber na página)
                     from reportlab.lib.styles import ParagraphStyle

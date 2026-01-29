@@ -942,14 +942,14 @@ def extrair_dados_certificado(uploaded_file):
                         tok = partes[j]
                         if re.fullmatch(r"\d{2,3}", tok):
                             v = int(tok)
-                            if 20 <= v <= 250:
+                            if 20 <= v <= 400:
                                 abat_obra_val = float(v); break
 
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
                     for tok in partes[nf_idx + 1: nf_idx + 5]:
                         v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 250:
+                        if v is not None and 20 <= v <= 400:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
@@ -958,7 +958,7 @@ def extrair_dados_certificado(uploaded_file):
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_nome,
-                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
+                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
                     abat_nf_tol,
                     (abat_obra_val if abat_obra_val is not None else abat_obra_pdf)
                 ])

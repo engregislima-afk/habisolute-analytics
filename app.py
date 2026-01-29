@@ -958,9 +958,9 @@ def extrair_dados_certificado(uploaded_file):
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_nome,
-                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
+                    (abat_nf_val if abat_nf_val is not None else (abat_nf_pdf if abat_nf_pdf is not None else (abat_obra_val if abat_obra_val is not None else abat_obra_pdf))),
                     abat_nf_tol,
-                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf)
+                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf)))
                 ])
             except Exception:
                 pass

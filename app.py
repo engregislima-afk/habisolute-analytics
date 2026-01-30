@@ -2107,6 +2107,11 @@ if uploaded_files:
                     for c in det_df.columns:
                         if c not in cols and c not in age_like:
                             cols.append(c)
+                    # reindexa para garantir que 'cols' esteja alinhado aos dados (evita list index out of range)
+                    cols = [c for c in cols if c in det_df.columns]
+                    if not cols:
+                        cols = list(det_df.columns)
+                    det_df2 = det_df[cols].copy()
                     # estilos (quebra automática + compactação p/ caber na página)
                     from reportlab.lib.styles import ParagraphStyle
                     from reportlab.lib.enums import TA_LEFT, TA_CENTER
@@ -2150,7 +2155,7 @@ if uploaded_files:
 
                     head_row = [Paragraph(_esc(c), st_head) for c in cols]
                     data_rows = []
-                    for row in det_df.values.tolist():
+                    for row in det_df2.values.tolist():
                         data_rows.append([_cell(v, cols[i]) for i, v in enumerate(row)])
 
                     tab = [head_row] + data_rows
@@ -2166,7 +2171,7 @@ if uploaded_files:
                     ]
 
                     # destaca status (apenas colunas Status)
-                    for r_i, row in enumerate(det_df.values.tolist(), start=1):
+                    for r_i, row in enumerate(det_df2.values.tolist(), start=1):
                         for c_i, col_name in enumerate(cols):
                             if "Status" not in col_name:
                                 continue

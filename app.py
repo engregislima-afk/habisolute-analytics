@@ -2068,8 +2068,45 @@ if uploaded_files:
                         if cols_drop:
                             det_df = det_df.drop(columns=cols_drop)
 
-                    cols = list(det_df.columns)
+                    # Colunas dinâmicas: só mostrar idades que tenham pelo menos 1 valor numérico (MPa)
+                    # (evita imprimir blocos totalmente vazios, mantendo o resto do relatório igual)
+                    def _has_numeric(_ser):
+                        _s = pd.to_numeric(_ser, errors="coerce")
+                        return _s.notna().any()
 
+                    cols = []
+                    if "CP" in det_df.columns:
+                        cols.append("CP")
+
+                    age_order = [3, 7, 14, 21, 28, 63]
+
+                    # adiciona blocos de idades que existirem no PDF (MPa + Status)
+                    for _age in age_order:
+                        mp_cols = [c for c in det_df.columns if str(c).startswith(f"{_age}d") and "(MPa)" in str(c)]
+                        status_cols = [c for c in det_df.columns if str(c).strip().lower() == f"status {_age}d".lower()]
+
+                        present = any(_has_numeric(det_df[c]) for c in mp_cols) if mp_cols else False
+                        if present:
+                            # adiciona somente colunas de MPa que tenham números (ex.: 28d #2 só quando existir)
+                            for c in mp_cols:
+                                if _has_numeric(det_df[c]):
+                                    cols.append(c)
+                            for c in status_cols:
+                                cols.append(c)
+
+                    # adiciona as demais colunas "fixas" na ordem original (ex.: Alerta Pares)
+                    age_like = set()
+                    for _age in age_order:
+                        for c in det_df.columns:
+                            sc = str(c)
+                            if sc.startswith(f"{_age}d") and "(MPa)" in sc:
+                                age_like.add(c)
+                            if sc.strip().lower() == f"status {_age}d".lower():
+                                age_like.add(c)
+
+                    for c in det_df.columns:
+                        if c not in cols and c not in age_like:
+                            cols.append(c)
                     # estilos (quebra automática + compactação p/ caber na página)
                     from reportlab.lib.styles import ParagraphStyle
                     from reportlab.lib.enums import TA_LEFT, TA_CENTER

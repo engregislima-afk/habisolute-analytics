@@ -2120,8 +2120,7 @@ if uploaded_files:
                     textColor=colors.black,
                 )
                 norma_box = Table(
-                    [[Paragraph("NORMA TÉCNICA APLICADA", norma_title_style)],
-                     [Paragraph(f"Material: {material_label}", norma_text_style)],
+                    [[Paragraph(f"Material: {material_label}", norma_text_style)],
                      [Paragraph(norma_label, norma_text_style)],
                      [Paragraph(f"Corpo de prova: {dimensao_label}", norma_small_style)]],
                     colWidths=[doc.width]

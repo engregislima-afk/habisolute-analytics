@@ -170,6 +170,7 @@ s.setdefault("last_date_range", None)
 s.setdefault("rt_responsavel", "")
 s.setdefault("rt_cliente", "")
 s.setdefault("rt_cidade", "")
+s.setdefault("rt_material", "Concreto")
 
 # Recupera usuário após refresh
 if s.get("logged_in") and not s.get("username"):
@@ -629,6 +630,23 @@ if CAN_ADMIN:
                     )
 
 # =============================================================================
+# Cabeçalho técnico: material e norma aplicável
+# =============================================================================
+def _norma_por_material(material: str) -> str:
+    material = (material or "").strip().lower()
+
+    if material == "concreto":
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Concreto"
+
+    if material == "argamassa":
+        return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos - Argamassa"
+
+    if material == "graute":
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Graute"
+
+    return "Norma técnica não informada"
+
+# =============================================================================
 # Sidebar
 # =============================================================================
 with st.sidebar:
@@ -641,6 +659,17 @@ with st.sidebar:
     s["TOL_MP"] = st.slider("Tolerância Real × Estimado (MPa)", 0.0, 5.0, float(s["TOL_MP"]), 0.1, key="opt_tol_mpa")
     st.markdown("---")
     st.markdown("#### 📄 Dados do relatório")
+    materiais_opts = ["Concreto", "Argamassa", "Graute"]
+    material_atual = s.get("rt_material", "Concreto")
+    if material_atual not in materiais_opts:
+        material_atual = "Concreto"
+    s["rt_material"] = st.selectbox(
+        "Material",
+        materiais_opts,
+        index=materiais_opts.index(material_atual),
+        help="Define automaticamente a norma técnica aplicada no cabeçalho do relatório."
+    )
+    st.caption(f"Norma aplicada: {_norma_por_material(s['rt_material'])}")
     s["rt_responsavel"] = st.text_input("Responsável técnico", value=s.get("rt_responsavel",""))
     s["rt_cliente"]     = st.text_input("Cliente / Empreendimento", value=s.get("rt_cliente",""))
     s["rt_cidade"]      = st.text_input("Cidade / UF", value=s.get("rt_cidade",""))
@@ -1267,6 +1296,19 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
                 abat_nf_label = f"{v:.0f} mm"
         st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
 
+    material_label = s.get("rt_material", "Concreto")
+    norma_label = _norma_por_material(material_label)
+    st.markdown(
+        f"""
+        <div class="h-card" style="margin-top:10px;">
+            <div class="h-kpi-label">Material</div>
+            <div class="h-kpi">{material_label}</div>
+            <div style="font-size:12px; opacity:.75; margin-top:4px;">{norma_label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
     st.markdown(
         f"""
@@ -1320,6 +1362,8 @@ if uploaded_files:
         st.error("⚠️ Não encontrei CPs válidos nos PDFs enviados.")
     else:
         df = pd.concat(frames, ignore_index=True)
+        df["Material"] = s.get("rt_material", "Concreto")
+        df["Norma Técnica"] = _norma_por_material(s.get("rt_material", "Concreto"))
 
         # ===== Validações
         has_nf_violation = False
@@ -1882,11 +1926,16 @@ if uploaded_files:
                     v = float(snf.mode().iloc[0]); t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
                     return f"{v:.0f} ± {t:.0f} mm"
 
+                material_label = s.get("rt_material", "Concreto")
+                norma_label = _norma_por_material(material_label)
+
                 story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
                 story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
                 story.append(Paragraph(f"Usina: {_usina_label_from_df(df)}", styles['Normal']))
                 story.append(Paragraph(f"Abatimento de NF: {_abat_nf_header_label(df)}", styles['Normal']))
+                story.append(Paragraph(f"Material: {material_label}", styles['Normal']))
+                story.append(Paragraph(f"Norma técnica aplicada: {norma_label}", styles['Normal']))
                 if cliente:
                     story.append(Paragraph(f"Cliente / Empreendimento: {cliente}", styles['Normal']))
                 if cidade:

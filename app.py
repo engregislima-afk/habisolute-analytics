@@ -750,7 +750,7 @@ def _extract_fck_values(line: str) -> List[float]:
     values: List[float] = []
     age_with_suffix = re.compile(r"^(\d{1,3})(?:\s*(?:dias?|d))\b\s*[:=]?", re.I)
     age_plain       = re.compile(r"^(\d{1,3})\b\s*[:=]?", re.I)
-    age_tokens = {3, 7, 14, 21, 28, 56, 63, 90}
+    age_tokens = {1, 3, 7, 14, 21, 28, 56, 63, 90}
     cut_keywords = ("mpa","abatimento","slump","nota","usina","relatório","relatorio","consumo","traço","traco","cimento","dosagem")
     for segment in parts:
         starts_immediate = bool(segment) and not segment[0].isspace()
@@ -1579,6 +1579,7 @@ if uploaded_files:
             st.write("##### Gráfico 3 — Comparação Real × Estimado (Utilizando a Média)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+            m1  = mean_by_age.get(1,  float("nan"))
             m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
             m14 = mean_by_age.get(14, float("nan"))
@@ -1586,9 +1587,10 @@ if uploaded_files:
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m3, m7, m14, m28, m63],
+                "Idade (dias)": [1, 3, 7, 14, 28, 63],
+                "Média Real (MPa)": [m1, m3, m7, m14, m28, m63],
                 "fck Projeto (MPa)": [
+                    float("nan"),
                     float("nan"),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
@@ -1679,7 +1681,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (3, 7, 14, 21, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (1, 3, 7, 14, 21, 28, 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1688,18 +1690,19 @@ if uploaded_files:
             # MÉDIAS POR IDADE EM CIMA DE TODOS OS CPs VISÍVEIS
             mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
 
-            # inclui 21 dias quando existir no certificado
-            idades_verif = [3, 7, 14]
+            # inclui somente as idades que existirem no certificado, mantendo a ordem padrão
+            idades_padrao = [1, 3, 7, 14, 21, 28, 63]
             try:
-                if 21 in mean_by_age_all.index:
-                    idades_verif.append(21)
+                idades_existentes = set(pd.to_numeric(df_view["Idade (dias)"], errors="coerce").dropna().astype(int).tolist())
+                idades_verif = [a for a in idades_padrao if a in idades_existentes]
+                if not idades_verif:
+                    idades_verif = [28, 63]
             except Exception:
-                pass
-            idades_verif += [28, 63]
+                idades_verif = [28, 63]
 
             medias = [mean_by_age_all.get(a, float("nan")) for a in idades_verif]
             fck_col = [
-                (float("nan") if a == 3 else (fck_active2 if fck_active2 is not None else float("nan")))
+                (float("nan") if a in (1, 3) else (fck_active2 if fck_active2 is not None else float("nan")))
                 for a in idades_verif
             ]
 
@@ -1720,10 +1723,10 @@ if uploaded_files:
 
             resumo_status = []
             for idade, media, fckp in verif_fck_df2.itertuples(index=False):
-                if pd.isna(media) or (pd.isna(fckp) and idade != 3):
+                if pd.isna(media) or (pd.isna(fckp) and idade not in (1, 3)):
                     resumo_status.append("⚪ Sem dados")
                 else:
-                    if idade in (3, 7, 14, 21):
+                    if idade in (1, 3, 7, 14, 21):
                         resumo_status.append("🟡 Coletando dados")
                     else:
                         if idade == 28:
@@ -1736,12 +1739,12 @@ if uploaded_files:
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
-            # detalhado por CP — incluindo 3 e 14
-            idades_interesse = [3, 7, 14, 21, 28, 63]
+            # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28 e 63 dias
+            idades_interesse = [1, 3, 7, 14, 21, 28, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
-                st.info("Sem CPs de 3/7/14/28/63 dias no filtro atual.")
+                st.info("Sem CPs de 1/3/7/14/21/28/63 dias no filtro atual.")
             else:
                 tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
                 tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
@@ -1825,6 +1828,7 @@ if uploaded_files:
                     return base
                 ordered_cols = (
                     cols_cp
+                    + _cols_age(1)
                     + _cols_age(3)
                     + _cols_age(7)
                     + _cols_age(14)
@@ -2108,7 +2112,7 @@ if uploaded_files:
 
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
-                    story.append(Paragraph("Verificação detalhada por CP (3/7/14/21/28/63 dias)", styles["Heading3"]))
+                    story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/63 dias)", styles["Heading3"]))
 
                     det_df = pv_cp_status.copy()
                     # No relatório básico, não exibir o campo/coluna de alerta de pares
@@ -2127,7 +2131,7 @@ if uploaded_files:
                     if "CP" in det_df.columns:
                         cols.append("CP")
 
-                    age_order = [3, 7, 14, 21, 28, 63]
+                    age_order = [1, 3, 7, 14, 21, 28, 63]
 
                     # adiciona blocos de idades que existirem no PDF (MPa + Status)
                     for _age in age_order:

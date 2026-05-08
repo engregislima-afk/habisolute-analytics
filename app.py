@@ -934,7 +934,7 @@ def extrair_dados_certificado(uploaded_file):
             "Material","Norma Técnica","Corpo de Prova"
         ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
 
-    cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
+    cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$", re.I)
     data_regex = re.compile(r"\d{2}/\d{2}/\d{4}")
     data_token = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     tipo_token = re.compile(r"^A\d$", re.I)
@@ -959,7 +959,7 @@ def extrair_dados_certificado(uploaded_file):
         tok = (tok or "").strip()
         if not tok:
             return False
-        if cp_val and tok == cp_val:
+        if cp_val and tok.strip().upper() == str(cp_val).strip().upper():
             return False
         if relatorio and tok == relatorio:
             return False

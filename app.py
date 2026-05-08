@@ -658,6 +658,62 @@ def _dimensao_cp_por_material(material: str) -> str:
 
     return "Dimensão do corpo de prova não informada"
 
+
+def _normalizar_material(material: str) -> str:
+    t = (material or "").strip().lower()
+    if "argamassa" in t:
+        return "Argamassa"
+    if "graute" in t or "garute" in t:
+        return "Graute"
+    if "concreto" in t:
+        return "Concreto"
+    return "Concreto"
+
+
+def _inferir_material_certificado(cp: str = "", norma_texto: str = "", local_texto: str = "", fallback: str = "Concreto") -> str:
+    """Identifica o material por linha/relatório.
+
+    Regras principais:
+    - CP iniciado por A (ex.: A562) = Argamassa.
+    - Norma NBR 13279 ou texto de argamassa = Argamassa.
+    - Texto/norma com graute/garute/grauteamento = Graute.
+    - Demais casos = Concreto.
+    """
+    cp_s = str(cp or "").strip().upper()
+    norma_s = str(norma_texto or "").lower()
+    local_s = str(local_texto or "").lower()
+    base_s = f"{norma_s} {local_s}"
+
+    if re.fullmatch(r"A\d+(?:\.\d+)?", cp_s):
+        return "Argamassa"
+    if "13279" in base_s or "argamassa" in base_s:
+        return "Argamassa"
+    if "graute" in base_s or "garute" in base_s or "grauteamento" in base_s or "garuteamento" in base_s:
+        return "Graute"
+    return _normalizar_material(fallback)
+
+
+def _resumo_material_norma_df(df_: pd.DataFrame) -> tuple[str, str, str]:
+    """Monta resumo de material/norma/corpo de prova para tela e PDF.
+    Quando houver materiais mistos, mostra todos os identificados.
+    """
+    if df_ is None or df_.empty or "Material" not in df_.columns:
+        material = s.get("rt_material", "Concreto")
+        return material, _norma_por_material(material), _dimensao_cp_por_material(material)
+
+    materiais = []
+    for m in df_["Material"].dropna().astype(str).tolist():
+        nm = _normalizar_material(m)
+        if nm not in materiais:
+            materiais.append(nm)
+    if not materiais:
+        materiais = [s.get("rt_material", "Concreto")]
+
+    material_label = " / ".join(materiais)
+    norma_label = "<br/>".join([_norma_por_material(m) for m in materiais])
+    dimensao_label = "<br/>".join([f"{m}: {_dimensao_cp_por_material(m)}" for m in materiais])
+    return material_label, norma_label, dimensao_label
+
 # =============================================================================
 # Sidebar
 # =============================================================================
@@ -839,7 +895,8 @@ def extrair_dados_certificado(uploaded_file):
     except Exception:
         return (pd.DataFrame(columns=[
             "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
+            "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)",
+            "Material","Norma Técnica","Corpo de Prova"
         ]), "NÃO IDENTIFICADA", "NÃO IDENTIFICADA", "NÃO IDENTIFICADO")
 
     cp_regex = re.compile(r"^(?:[A-Z]{0,2})?\d{3,6}(?:\.\d{3})?$")
@@ -905,6 +962,12 @@ def extrair_dados_certificado(uploaded_file):
     relatorio_atual = None
     fck_por_relatorio: Dict[str, List[float]] = {}
     fck_valores_globais: List[float] = []
+    material_por_relatorio: Dict[str, str] = {}
+    norma_por_relatorio: Dict[str, str] = {}
+    corpo_por_relatorio: Dict[str, str] = {}
+    usina_por_relatorio: Dict[str, str] = {}
+    norma_contexto = ""
+    material_contexto = s.get("rt_material", "Concreto")
 
     for sline in linhas_todas:
         if sline.startswith("Obra:"):
@@ -912,13 +975,28 @@ def extrair_dados_certificado(uploaded_file):
         m_data = data_regex.search(sline)
         if m_data and data_relatorio == "NÃO IDENTIFICADA":
             data_relatorio = m_data.group()
+        if re.search(r"(?i)Norma\s+NBR", sline):
+            norma_contexto = sline.strip()
+            material_contexto = _inferir_material_certificado("", norma_contexto, "", material_contexto)
         if sline.startswith("Relatório:"):
             m_rel = re.search(r"Relatório:\s*(\d+)", sline)
             if m_rel:
                 relatorio_atual = m_rel.group(1)
+                mat_rel = _inferir_material_certificado("", norma_contexto, "", material_contexto)
+                material_por_relatorio[relatorio_atual] = mat_rel
+                norma_por_relatorio[relatorio_atual] = _norma_por_material(mat_rel)
+                corpo_por_relatorio[relatorio_atual] = _dimensao_cp_por_material(mat_rel)
+                m_us = re.search(r"(?i)usina:\s*([A-Za-zÀ-ÿ0-9 .\-]+?)(?:\s+sa[ií]da\s+da\s+usina\b|$)", sline)
+                if m_us:
+                    usina_por_relatorio[relatorio_atual] = _limpa_usina_extra(m_us.group(1)) or _limpa_usina_extra(m_us.group(0))
         m_pecas = pecas_regex.search(sline)
         if m_pecas and relatorio_atual:
-            local_por_relatorio[relatorio_atual] = m_pecas.group(1).strip().rstrip(".")
+            local_txt = m_pecas.group(1).strip().rstrip(".")
+            local_por_relatorio[relatorio_atual] = local_txt
+            mat_rel = _inferir_material_certificado("", norma_por_relatorio.get(relatorio_atual, norma_contexto), local_txt, material_por_relatorio.get(relatorio_atual, material_contexto))
+            material_por_relatorio[relatorio_atual] = mat_rel
+            norma_por_relatorio[relatorio_atual] = _norma_por_material(mat_rel)
+            corpo_por_relatorio[relatorio_atual] = _dimensao_cp_por_material(mat_rel)
         if "fck" in sline.lower():
             valores_fck = _extract_fck_values(sline)
             if valores_fck:
@@ -1004,19 +1082,30 @@ def extrair_dados_certificado(uploaded_file):
                             break
 
                 local = local_por_relatorio.get(relatorio)
+                material_linha = _inferir_material_certificado(
+                    cp,
+                    norma_por_relatorio.get(relatorio, norma_contexto),
+                    local,
+                    material_por_relatorio.get(relatorio, s.get("rt_material", "Concreto"))
+                )
+                norma_linha = _norma_por_material(material_linha)
+                corpo_linha = _dimensao_cp_por_material(material_linha)
+                usina_linha = usina_por_relatorio.get(relatorio, usina_nome)
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
-                    usina_nome,
+                    usina_linha,
                     (abat_nf_val if abat_nf_val is not None else (abat_nf_pdf if abat_nf_pdf is not None else (abat_obra_val if abat_obra_val is not None else abat_obra_pdf))),
                     abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf)))
+                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
+                    material_linha, norma_linha, corpo_linha
                 ])
             except Exception:
                 pass
 
     df = pd.DataFrame(dados, columns=[
         "Relatório","CP","Idade (dias)","Resistência (MPa)","Nota Fiscal","Local",
-        "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)"
+        "Usina","Abatimento NF (mm)","Abatimento NF tol (mm)","Abatimento Obra (mm)",
+        "Material","Norma Técnica","Corpo de Prova"
     ])
 
     if not df.empty:
@@ -1316,9 +1405,7 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
                 abat_nf_label = f"{v:.0f} mm"
         st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
 
-    material_label = s.get("rt_material", "Concreto")
-    norma_label = _norma_por_material(material_label)
-    dimensao_label = _dimensao_cp_por_material(material_label)
+    material_label, norma_label, dimensao_label = _resumo_material_norma_df(df_view)
     st.markdown(
         f"""
         <div class="h-card" style="margin-top:10px; text-align:center; border:1px solid rgba(249,115,22,.45); background:rgba(249,115,22,.07);">
@@ -1384,9 +1471,12 @@ if uploaded_files:
         st.error("⚠️ Não encontrei CPs válidos nos PDFs enviados.")
     else:
         df = pd.concat(frames, ignore_index=True)
-        df["Material"] = s.get("rt_material", "Concreto")
-        df["Norma Técnica"] = _norma_por_material(s.get("rt_material", "Concreto"))
-        df["Corpo de Prova"] = _dimensao_cp_por_material(s.get("rt_material", "Concreto"))
+        if "Material" not in df.columns:
+            df["Material"] = s.get("rt_material", "Concreto")
+        else:
+            df["Material"] = df["Material"].fillna(s.get("rt_material", "Concreto")).apply(_normalizar_material)
+        df["Norma Técnica"] = df["Material"].apply(_norma_por_material)
+        df["Corpo de Prova"] = df["Material"].apply(_dimensao_cp_por_material)
 
         # ===== Validações
         has_nf_violation = False
@@ -1955,9 +2045,7 @@ if uploaded_files:
                     v = float(snf.mode().iloc[0]); t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
                     return f"{v:.0f} ± {t:.0f} mm"
 
-                material_label = s.get("rt_material", "Concreto")
-                norma_label = _norma_por_material(material_label)
-                dimensao_label = _dimensao_cp_por_material(material_label)
+                material_label, norma_label, dimensao_label = _resumo_material_norma_df(df)
 
                 story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))

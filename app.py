@@ -1774,10 +1774,12 @@ if uploaded_files:
 
                 # status columns por idade
                 def _status_text_media(media_idade, age, fckp):
-                    if pd.isna(media_idade) or (fckp is None) or pd.isna(fckp):
+                    if pd.isna(media_idade):
                         return "⚪ Sem dados"
-                    if age in (3, 7, 14, 21):
+                    if age in (1, 3, 7, 14, 21):
                         return "🟡 Coletando dados"
+                    if (fckp is None) or pd.isna(fckp):
+                        return "⚪ Sem dados"
                     return "🟢 Atingiu fck" if float(media_idade) >= float(fckp) else "🔴 Não atingiu fck"
 
                 media_by_age = {}

@@ -636,13 +636,13 @@ def _norma_por_material(material: str) -> str:
     material = (material or "").strip().lower()
 
     if material == "concreto":
-        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos"
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Concreto"
 
     if material == "argamassa":
-        return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos"
+        return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos - Argamassa"
 
     if material == "graute":
-        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos"
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Graute"
 
     return "Norma técnica não informada"
 
@@ -2446,6 +2446,199 @@ if uploaded_files:
                 buffer.close()
                 return pdf
 
+            def _date_label_from_df_pdf(df_: pd.DataFrame) -> str:
+                try:
+                    _d = [_to_date_obj(x) for x in df_["Data Certificado"].dropna().tolist()]
+                    _d = [x for x in _d if x is not None]
+                    if not _d:
+                        return "—"
+                    return min(_d).strftime('%d/%m/%Y') if min(_d) == max(_d) else f"{min(_d).strftime('%d/%m/%Y')} — {max(_d).strftime('%d/%m/%Y')}"
+                except Exception:
+                    return "—"
+
+            def _obra_label_from_df_pdf(df_: pd.DataFrame) -> str:
+                try:
+                    if "Obra" in df_.columns and not df_["Obra"].dropna().empty:
+                        return str(df_["Obra"].mode().iat[0])
+                except Exception:
+                    pass
+                return "—"
+
+            def _stats_cp_idade_pdf(df_: pd.DataFrame) -> pd.DataFrame:
+                if df_ is None or df_.empty:
+                    return pd.DataFrame(columns=["CP", "Idade (dias)", "Média", "Desvio_Padrão", "n"])
+                return (
+                    df_.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count")
+                       .reset_index()
+                )
+
+            def _fig_crescimento_pdf(df_: pd.DataFrame, fck_val: Optional[float]):
+                try:
+                    fig, ax = plt.subplots(figsize=(9.6, 4.9))
+                    dfg = df_.copy()
+                    dfg["Idade (dias)"] = pd.to_numeric(dfg["Idade (dias)"], errors="coerce")
+                    dfg["Resistência (MPa)"] = pd.to_numeric(dfg["Resistência (MPa)"], errors="coerce")
+                    dfg = dfg.dropna(subset=["Idade (dias)", "Resistência (MPa)"])
+                    for cp, sub in dfg.groupby("CP"):
+                        sub = sub.sort_values("Idade (dias)")
+                        ax.plot(sub["Idade (dias)"], sub["Resistência (MPa)"], marker="o", linewidth=1.8, label=f"CP {cp}")
+                    if not dfg.empty:
+                        media = dfg.groupby("Idade (dias)")["Resistência (MPa)"].mean().reset_index()
+                        ax.plot(media["Idade (dias)"], media["Resistência (MPa)"], marker="s", linewidth=2.2, label="Média")
+                    if fck_val is not None and not pd.isna(fck_val):
+                        ax.axhline(float(fck_val), linestyle=":", linewidth=2, color="#ef4444", label=f"fck projeto ({float(fck_val):.1f} MPa)")
+                    ax.set_title("Crescimento da resistência por corpo de prova")
+                    ax.set_xlabel("Idade (dias)")
+                    ax.set_ylabel("Resistência (MPa)")
+                    ax.grid(True, linestyle="--", alpha=0.35)
+                    try:
+                        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                    except Exception:
+                        pass
+                    place_right_legend(ax)
+                    return fig
+                except Exception:
+                    return None
+
+            def _verif_fck_pdf(df_: pd.DataFrame, fck_val: Optional[float]) -> pd.DataFrame:
+                idades_ordem = [1, 3, 7, 14, 21, 28, 63]
+                if df_ is None or df_.empty:
+                    return pd.DataFrame(columns=["Idade (dias)", "Média Real (MPa)", "fck Projeto (MPa)", "Status"])
+                mean_by_age = df_.groupby("Idade (dias)")["Resistência (MPa)"].mean()
+                idades_exist = [a for a in idades_ordem if a in set(pd.to_numeric(df_["Idade (dias)"], errors="coerce").dropna().astype(int).tolist())]
+                rows = []
+                for age in idades_exist:
+                    media = mean_by_age.get(age, float("nan"))
+                    fck_col = float("nan") if age in (1, 3) else (float(fck_val) if fck_val is not None and not pd.isna(fck_val) else float("nan"))
+                    if age in (1, 3, 7, 14, 21):
+                        status = "🟡 Coletando dados"
+                    elif pd.isna(media) or pd.isna(fck_col):
+                        status = "⚪ Sem dados"
+                    else:
+                        status = "🟢 Atingiu fck" if float(media) >= float(fck_col) else "🔴 Não atingiu fck"
+                    rows.append({"Idade (dias)": age, "Média Real (MPa)": media, "fck Projeto (MPa)": fck_col, "Status": status})
+                return pd.DataFrame(rows)
+
+            def _pv_cp_status_pdf(df_: pd.DataFrame, fck_val: Optional[float]) -> pd.DataFrame:
+                idades_interesse = [1, 3, 7, 14, 21, 28, 63]
+                tmp_v = df_[df_["Idade (dias)"].isin(idades_interesse)].copy()
+                if tmp_v.empty:
+                    return pd.DataFrame()
+                tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
+                tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
+                pv_multi = tmp_v.pivot_table(index="CP", columns=["Idade (dias)", "rep"], values="MPa", aggfunc="first").sort_index(axis=1)
+                for age in idades_interesse:
+                    if age not in pv_multi.columns.get_level_values(0):
+                        pv_multi[(age, 1)] = pd.NA
+                pv_multi = pv_multi.sort_index(axis=1)
+
+                def _flat(age, rep):
+                    base = f"{int(age)}d"
+                    return f"{base} (MPa)" if int(rep) == 1 else f"{base} #{int(rep)} (MPa)"
+
+                pv = pv_multi.copy()
+                pv.columns = [_flat(a, r) for (a, r) in pv_multi.columns]
+                pv = pv.reset_index()
+                try:
+                    pv["__cp_sort__"] = pv["CP"].astype(str).str.extract(r"(\d+)").astype(float)
+                    pv = pv.sort_values(["__cp_sort__", "CP"]).drop(columns="__cp_sort__", errors="ignore")
+                except Exception:
+                    pass
+
+                def _status_text(media_idade, age):
+                    if pd.isna(media_idade):
+                        return "⚪ Sem dados"
+                    if age in (1, 3, 7, 14, 21):
+                        return "🟡 Coletando dados"
+                    if fck_val is None or pd.isna(fck_val):
+                        return "⚪ Sem dados"
+                    return "🟢 Atingiu fck" if float(media_idade) >= float(fck_val) else "🔴 Não atingiu fck"
+
+                media_by_age = {}
+                for age in idades_interesse:
+                    if age in pv_multi.columns.get_level_values(0):
+                        media_by_age[age] = pv_multi[age].max(axis=1) if age == 28 else pv_multi[age].mean(axis=1)
+                    else:
+                        media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
+                status_df = pd.DataFrame(index=pv_multi.index)
+                for age in idades_interesse:
+                    status_df[f"Status {age}d"] = [_status_text(media_by_age[age].reindex(pv_multi.index).iloc[i], age) for i in range(len(pv_multi.index))]
+                status_df = status_df.reset_index()
+                pv = pv.merge(status_df, on="CP", how="left")
+
+                def _cols_age(age):
+                    mp_cols = [c for c in pv.columns if str(c).startswith(f"{age}d") and "(MPa)" in str(c)]
+                    st_cols = [c for c in pv.columns if str(c).strip().lower() == f"status {age}d"]
+                    return mp_cols + st_cols
+                ordered_cols = ["CP"] + _cols_age(1) + _cols_age(3) + _cols_age(7) + _cols_age(14) + _cols_age(21) + _cols_age(28) + _cols_age(63)
+                ordered_cols = [c for c in ordered_cols if c in pv.columns]
+                return pv[ordered_cols]
+
+            def gerar_pdf_agrupado_por_fck(df_base: pd.DataFrame, report_mode_atual: str) -> bytes:
+                """Gera um único PDF com uma seção/PDF interno para cada fck detectado."""
+                if df_base is None or df_base.empty:
+                    return b""
+                df_base = _atualizar_material_norma_linhas(df_base.copy())
+                df_base["_FckLabel"] = df_base["Fck Projeto"].apply(_normalize_fck_label)
+                fck_labels_group = [x for x in dict.fromkeys(df_base["_FckLabel"].tolist()) if str(x).strip() and str(x) != "—"]
+                if not fck_labels_group:
+                    fck_labels_group = ["—"]
+
+                from pypdf import PdfReader, PdfWriter
+                writer = PdfWriter()
+                figs_to_close = []
+
+                def _sort_fck_label(lbl):
+                    try:
+                        return float(str(lbl).replace(",", "."))
+                    except Exception:
+                        return 10**9
+
+                for lbl in sorted(fck_labels_group, key=_sort_fck_label):
+                    df_g = df_base[df_base["_FckLabel"] == lbl].drop(columns=["_FckLabel"], errors="ignore").copy()
+                    if df_g.empty:
+                        continue
+                    df_g = _atualizar_material_norma_linhas(df_g)
+                    fck_g = _to_float_or_none(df_g["Fck Projeto"].mode().iat[0]) if "Fck Projeto" in df_g.columns and not df_g["Fck Projeto"].dropna().empty else None
+                    stats_g = _stats_cp_idade_pdf(df_g)
+                    fig_g = _fig_crescimento_pdf(df_g, fck_g)
+                    if fig_g is not None:
+                        figs_to_close.append(fig_g)
+                    verif_g = _verif_fck_pdf(df_g, fck_g)
+                    pv_g = _pv_cp_status_pdf(df_g, fck_g)
+                    pdf_g = gerar_pdf(
+                        df_g,
+                        stats_g,
+                        fig_g,
+                        None,
+                        None,
+                        None,
+                        _obra_label_from_df_pdf(df_g),
+                        _date_label_from_df_pdf(df_g),
+                        _format_float_label(fck_g) if fck_g is not None else str(lbl),
+                        verif_g,
+                        None,
+                        pv_g,
+                        s.get("qr_url", ""),
+                        s.get("rt_responsavel", ""),
+                        s.get("rt_cliente", ""),
+                        s.get("rt_cidade", ""),
+                        report_mode_atual,
+                    )
+                    reader = PdfReader(io.BytesIO(pdf_g))
+                    for page in reader.pages:
+                        writer.add_page(page)
+
+                out = io.BytesIO()
+                writer.write(out)
+                for fg in figs_to_close:
+                    try:
+                        plt.close(fg)
+                    except Exception:
+                        pass
+                return out.getvalue()
+
             has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
             if has_df and CAN_EXPORT:
                 try:
@@ -2489,6 +2682,34 @@ if uploaded_files:
                     if pdf_bytes:
                         try: render_print_block(pdf_bytes, None, brand, brand600)
                         except Exception: pass
+
+                    # ============================================================
+                    # NOVO: Botão de PDF AGRUPADO POR FCK (um único PDF com seções por fck)
+                    # ============================================================
+                    try:
+                        df_agrupado_base = df.loc[mask].drop(columns=["_DataObj"], errors="ignore").copy()
+                        if isinstance(df_agrupado_base, pd.DataFrame) and not df_agrupado_base.empty:
+                            pdf_agrupado_bytes = gerar_pdf_agrupado_por_fck(df_agrupado_base, report_mode)
+                            file_name_agrupado = build_pdf_filename(df_agrupado_base, uploaded_files)
+                            if file_name_agrupado.lower().endswith(".pdf"):
+                                file_name_agrupado = file_name_agrupado[:-4] + "_AGRUPADO_POR_FCK.pdf"
+                            else:
+                                file_name_agrupado = file_name_agrupado + "_AGRUPADO_POR_FCK.pdf"
+                            st.download_button(
+                                "📚 Baixar PDF agrupado por fck",
+                                data=pdf_agrupado_bytes,
+                                file_name=file_name_agrupado,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            log_event("export_pdf_grouped_fck", {
+                                "rows": int(df_agrupado_base.shape[0]),
+                                "fcks": list(map(str, df_agrupado_base.get("Fck Projeto", pd.Series(dtype=str)).dropna().unique().tolist())),
+                                "file_name": file_name_agrupado,
+                                "mode": report_mode,
+                            })
+                    except Exception as e:
+                        st.error(f"Falha ao gerar PDF agrupado por fck: {e}")
 
                     # ============================================================
                     # NOVO: Botão de PDF BÁSICO (Obra + 1ª tabela + Gráfico 1 + Verificação por CP + ID + rodapé)

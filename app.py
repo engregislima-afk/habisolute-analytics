@@ -642,7 +642,7 @@ def _norma_por_material(material: str) -> str:
         return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos"
 
     if material == "graute":
-        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Graute"
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos"
 
     return "Norma técnica não informada"
 

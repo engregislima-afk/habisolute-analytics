@@ -646,6 +646,18 @@ def _norma_por_material(material: str) -> str:
 
     return "Norma técnica não informada"
 
+
+def _dimensao_cp_por_material(material: str) -> str:
+    material = (material or "").strip().lower()
+
+    if material in ("concreto", "graute"):
+        return "Corpo de prova cilíndrico 10 cm x 20 cm"
+
+    if material == "argamassa":
+        return "Corpo de prova prismático 4,00 cm x 4,00 cm"
+
+    return "Dimensão do corpo de prova não informada"
+
 # =============================================================================
 # Sidebar
 # =============================================================================
@@ -669,7 +681,15 @@ with st.sidebar:
         index=materiais_opts.index(material_atual),
         help="Define automaticamente a norma técnica aplicada no cabeçalho do relatório."
     )
-    st.caption(f"Norma aplicada: {_norma_por_material(s['rt_material'])}")
+    st.markdown(
+        f"""
+        <div style='text-align:center; padding:8px 10px; border-radius:10px; border:1px solid var(--line); background:rgba(249,115,22,.08); font-size:12px; line-height:1.35;'>
+            <b>Norma aplicada</b><br>{_norma_por_material(s['rt_material'])}<br>
+            <b>Corpo de prova</b><br>{_dimensao_cp_por_material(s['rt_material'])}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     s["rt_responsavel"] = st.text_input("Responsável técnico", value=s.get("rt_responsavel",""))
     s["rt_cliente"]     = st.text_input("Cliente / Empreendimento", value=s.get("rt_cliente",""))
     s["rt_cidade"]      = st.text_input("Cidade / UF", value=s.get("rt_cidade",""))
@@ -1298,12 +1318,14 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
 
     material_label = s.get("rt_material", "Concreto")
     norma_label = _norma_por_material(material_label)
+    dimensao_label = _dimensao_cp_por_material(material_label)
     st.markdown(
         f"""
-        <div class="h-card" style="margin-top:10px;">
-            <div class="h-kpi-label">Material</div>
+        <div class="h-card" style="margin-top:10px; text-align:center; border:1px solid rgba(249,115,22,.45); background:rgba(249,115,22,.07);">
+            <div class="h-kpi-label">Material / Norma técnica</div>
             <div class="h-kpi">{material_label}</div>
-            <div style="font-size:12px; opacity:.75; margin-top:4px;">{norma_label}</div>
+            <div style="font-size:13px; font-weight:800; margin-top:6px;">{norma_label}</div>
+            <div style="font-size:12px; opacity:.85; margin-top:4px;"><b>Corpo de prova:</b> {dimensao_label}</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -1364,6 +1386,7 @@ if uploaded_files:
         df = pd.concat(frames, ignore_index=True)
         df["Material"] = s.get("rt_material", "Concreto")
         df["Norma Técnica"] = _norma_por_material(s.get("rt_material", "Concreto"))
+        df["Corpo de Prova"] = _dimensao_cp_por_material(s.get("rt_material", "Concreto"))
 
         # ===== Validações
         has_nf_violation = False
@@ -1934,14 +1957,61 @@ if uploaded_files:
 
                 material_label = s.get("rt_material", "Concreto")
                 norma_label = _norma_por_material(material_label)
+                dimensao_label = _dimensao_cp_por_material(material_label)
 
                 story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
                 story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
                 story.append(Paragraph(f"Usina: {_usina_label_from_df(df)}", styles['Normal']))
                 story.append(Paragraph(f"Abatimento de NF: {_abat_nf_header_label(df)}", styles['Normal']))
-                story.append(Paragraph(f"Material: {material_label}", styles['Normal']))
-                story.append(Paragraph(f"Norma técnica aplicada: {norma_label}", styles['Normal']))
+                story.append(Spacer(1, 8))
+
+                from reportlab.lib.enums import TA_CENTER
+                from reportlab.lib.styles import ParagraphStyle
+                norma_title_style = ParagraphStyle(
+                    "norma_title_style",
+                    parent=styles["Normal"],
+                    fontName="Helvetica-Bold",
+                    fontSize=10.5,
+                    leading=13,
+                    alignment=TA_CENTER,
+                    textColor=colors.black,
+                )
+                norma_text_style = ParagraphStyle(
+                    "norma_text_style",
+                    parent=styles["Normal"],
+                    fontName="Helvetica-Bold",
+                    fontSize=9.2,
+                    leading=11,
+                    alignment=TA_CENTER,
+                    textColor=colors.black,
+                )
+                norma_small_style = ParagraphStyle(
+                    "norma_small_style",
+                    parent=styles["Normal"],
+                    fontName="Helvetica",
+                    fontSize=8.8,
+                    leading=10.5,
+                    alignment=TA_CENTER,
+                    textColor=colors.black,
+                )
+                norma_box = Table(
+                    [[Paragraph("NORMA TÉCNICA APLICADA", norma_title_style)],
+                     [Paragraph(f"Material: {material_label}", norma_text_style)],
+                     [Paragraph(norma_label, norma_text_style)],
+                     [Paragraph(f"Corpo de prova: {dimensao_label}", norma_small_style)]],
+                    colWidths=[doc.width]
+                )
+                norma_box.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFF7ED')),
+                    ('BOX', (0, 0), (-1, -1), 1.0, colors.HexColor('#F97316')),
+                    ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#FDBA74')),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                story.append(norma_box)
                 if cliente:
                     story.append(Paragraph(f"Cliente / Empreendimento: {cliente}", styles['Normal']))
                 if cidade:

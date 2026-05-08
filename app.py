@@ -2576,18 +2576,20 @@ if uploaded_files:
                 return pv[ordered_cols]
 
             def gerar_pdf_agrupado_por_fck(df_base: pd.DataFrame, report_mode_atual: str) -> bytes:
-                """Gera um único PDF com uma seção/PDF interno para cada fck detectado."""
+                """Gera um único PDF com seções separadas por fck, sem depender do módulo pypdf."""
+                from reportlab.lib import colors as _C
+                from reportlab.lib.enums import TA_CENTER, TA_LEFT
+                from reportlab.lib.styles import ParagraphStyle
+                import io, tempfile
+
                 if df_base is None or df_base.empty:
                     return b""
+
                 df_base = _atualizar_material_norma_linhas(df_base.copy())
                 df_base["_FckLabel"] = df_base["Fck Projeto"].apply(_normalize_fck_label)
                 fck_labels_group = [x for x in dict.fromkeys(df_base["_FckLabel"].tolist()) if str(x).strip() and str(x) != "—"]
                 if not fck_labels_group:
                     fck_labels_group = ["—"]
-
-                from pypdf import PdfReader, PdfWriter
-                writer = PdfWriter()
-                figs_to_close = []
 
                 def _sort_fck_label(lbl):
                     try:
@@ -2595,49 +2597,265 @@ if uploaded_files:
                     except Exception:
                         return 10**9
 
+                buffer = io.BytesIO()
+                pagesize = landscape(A4)
+                doc = SimpleDocTemplate(buffer, pagesize=pagesize, leftMargin=18, rightMargin=18, topMargin=26, bottomMargin=56)
+                styles = getSampleStyleSheet()
+                styles["Title"].fontName = "Helvetica-Bold";  styles["Title"].fontSize = 18
+                styles["Heading2"].fontName = "Helvetica-Bold"; styles["Heading2"].fontSize = 14
+                styles["Heading3"].fontName = "Helvetica-Bold"; styles["Heading3"].fontSize = 12
+                styles["Normal"].fontName = "Helvetica"; styles["Normal"].fontSize = 9
+
+                story = []
+                story.append(Paragraph("<b>Habisolute Engenharia e Controle Tecnológico</b>", styles['Title']))
+                story.append(Paragraph("Relatório Técnico de Rompimento de Corpos de Prova — Agrupado por fck", styles['Heading2']))
+                story.append(Spacer(1, 8))
+
+                norma_text_style = ParagraphStyle(
+                    "norma_text_style_grouped",
+                    parent=styles["Normal"],
+                    fontName="Helvetica-Bold",
+                    fontSize=9.2,
+                    leading=11,
+                    alignment=TA_CENTER,
+                    textColor=colors.black,
+                )
+                norma_small_style = ParagraphStyle(
+                    "norma_small_style_grouped",
+                    parent=styles["Normal"],
+                    fontName="Helvetica",
+                    fontSize=8.8,
+                    leading=10.5,
+                    alignment=TA_CENTER,
+                    textColor=colors.black,
+                )
+                st_head = ParagraphStyle("th_grouped", fontName="Helvetica-Bold", fontSize=7.4, leading=8.4, alignment=TA_CENTER)
+                st_num  = ParagraphStyle("tn_grouped", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_CENTER)
+                st_txt  = ParagraphStyle("tt_grouped", fontName="Helvetica",      fontSize=7.0, leading=8.0, alignment=TA_LEFT, wordWrap="CJK")
+
+                def _esc(x):
+                    s0 = "" if x is None else str(x)
+                    if s0.lower() == "nan":
+                        s0 = ""
+                    return (s0.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>"))
+
+                def _cell(v, style=st_txt):
+                    return Paragraph(_esc(v), style)
+
+                def _usina_label_from_df_group(df_: pd.DataFrame) -> str:
+                    if "Usina" not in df_.columns:
+                        return "—"
+                    seri = df_["Usina"].dropna().astype(str)
+                    if seri.empty:
+                        return "—"
+                    m = seri.mode()
+                    return str(m.iat[0]) if not m.empty else "—"
+
+                def _abat_nf_header_label_group(df_: pd.DataFrame) -> str:
+                    snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
+                    stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
+                    if snf.empty:
+                        return "—"
+                    v = float(snf.mode().iloc[0])
+                    if not stol.empty:
+                        t = float(stol.mode().iloc[0])
+                        return f"{v:.0f} ± {t:.0f} mm"
+                    return f"{v:.0f} mm"
+
+                def _add_principal_table(df_g: pd.DataFrame):
+                    headers = ["Relatório", "CP", "Idade (dias)", "Resistência (MPa)", "Nota Fiscal", "Local", "Usina", "Abatimento NF (mm)", "Abatimento Obra (mm)", "Arquivo"]
+                    df_tab = df_g.copy()
+                    for col in headers:
+                        if col not in df_tab.columns:
+                            df_tab[col] = ""
+                    usable = float(doc.width)
+                    base = [46, 58, 44, 60, 62, None, 62, 72, 78, 96]
+                    fixed_sum = sum(w for w in base if w is not None)
+                    local_w = max(140.0, usable - fixed_sum)
+                    col_widths = [(local_w if w is None else float(w)) for w in base]
+                    total_w = sum(col_widths)
+                    if total_w > usable:
+                        scale = usable / total_w
+                        col_widths = [w * scale for w in col_widths]
+
+                    num_cols = {"Relatório", "Idade (dias)", "Resistência (MPa)", "Abatimento NF (mm)", "Abatimento Obra (mm)"}
+                    rows = [[_cell(h, st_head) for h in headers]]
+                    for row in df_tab[headers].values.tolist():
+                        rows.append([_cell(v, st_num if h in num_cols else st_txt) for h, v in zip(headers, row)])
+                    t = Table(rows, colWidths=col_widths, repeatRows=1, splitByRow=1)
+                    t.setStyle(TableStyle([
+                        ("BACKGROUND", (0,0), (-1,0), _C.lightgrey),
+                        ("GRID", (0,0), (-1,-1), 0.35, _C.black),
+                        ("VALIGN", (0,0), (-1,-1), "TOP"),
+                        ("LEFTPADDING", (0,0), (-1,-1), 2),
+                        ("RIGHTPADDING", (0,0), (-1,-1), 2),
+                        ("TOPPADDING", (0,0), (-1,-1), 1),
+                        ("BOTTOMPADDING", (0,0), (-1,-1), 1),
+                    ]))
+                    story.append(t)
+                    story.append(Spacer(1, 8))
+
+                def _add_fig(fig):
+                    if fig is None:
+                        return
+                    try:
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                        tmp.close()
+                        fig.savefig(tmp.name, dpi=180, bbox_inches="tight")
+                        img = RLImage(tmp.name)
+                        max_w = doc.width * 0.88
+                        max_h = 260
+                        ratio = min(max_w / float(img.imageWidth), max_h / float(img.imageHeight))
+                        img.drawWidth = float(img.imageWidth) * ratio
+                        img.drawHeight = float(img.imageHeight) * ratio
+                        story.append(img)
+                        story.append(Spacer(1, 8))
+                    except Exception:
+                        pass
+
+                def _add_pv_table(pv_df: pd.DataFrame):
+                    if pv_df is None or pv_df.empty:
+                        return
+                    det_df = pv_df.copy()
+                    cols = []
+                    if "CP" in det_df.columns:
+                        cols.append("CP")
+                    age_order = [1, 3, 7, 14, 21, 28, 63]
+                    def _has_numeric(_ser):
+                        _s = pd.to_numeric(_ser, errors="coerce")
+                        return _s.notna().any()
+                    for age in age_order:
+                        mp_cols = [c for c in det_df.columns if str(c).startswith(f"{age}d") and "(MPa)" in str(c)]
+                        status_cols = [c for c in det_df.columns if str(c).strip().lower() == f"status {age}d".lower()]
+                        present = any(_has_numeric(det_df[c]) for c in mp_cols) if mp_cols else False
+                        if present:
+                            for c in mp_cols:
+                                if _has_numeric(det_df[c]):
+                                    cols.append(c)
+                            cols.extend(status_cols)
+                    if not cols:
+                        cols = list(det_df.columns)
+                    cols = [c for c in cols if c in det_df.columns]
+                    det_df = det_df[cols].copy()
+
+                    def _format_value(v):
+                        if v is None or (isinstance(v, float) and pd.isna(v)):
+                            return "—"
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            return f"{float(v):.2f}".rstrip("0").rstrip(".")
+                        return str(v)
+
+                    weights = []
+                    for c in cols:
+                        if c == "CP": weights.append(1.2)
+                        elif "Status" in str(c): weights.append(1.7)
+                        else: weights.append(1.0)
+                    tot = sum(weights) if weights else 1.0
+                    col_widths = [max(28.0, doc.width * (w / tot)) for w in weights]
+
+                    rows = [[_cell(c, st_head) for c in cols]]
+                    for row in det_df.values.tolist():
+                        out = []
+                        for c, v in zip(cols, row):
+                            style = st_txt if "Status" in str(c) else st_num
+                            out.append(_cell(_format_value(v), style))
+                        rows.append(out)
+                    t = Table(rows, colWidths=col_widths, repeatRows=1, splitByRow=1)
+                    ts = [
+                        ("BACKGROUND", (0,0), (-1,0), _C.lightgrey),
+                        ("GRID", (0,0), (-1,-1), 0.35, _C.black),
+                        ("VALIGN", (0,0), (-1,-1), "TOP"),
+                        ("LEFTPADDING", (0,0), (-1,-1), 2),
+                        ("RIGHTPADDING", (0,0), (-1,-1), 2),
+                        ("TOPPADDING", (0,0), (-1,-1), 1),
+                        ("BOTTOMPADDING", (0,0), (-1,-1), 1),
+                    ]
+                    for r_i, row in enumerate(det_df.values.tolist(), start=1):
+                        for c_i, col_name in enumerate(cols):
+                            if "Status" not in str(col_name):
+                                continue
+                            txt = str(row[c_i]).lower()
+                            if "analisando" in txt or "coletando" in txt:
+                                ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#facc15")))
+                            elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                                ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#ef4444")))
+                            elif "atingiu" in txt or "dentro" in txt:
+                                ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#16a34a")))
+                            elif "sem dados" in txt:
+                                ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#e5e7eb")))
+                    t.setStyle(TableStyle(ts))
+                    story.append(t)
+                    story.append(Spacer(1, 8))
+
+                figs_to_close = []
+                first_group = True
                 for lbl in sorted(fck_labels_group, key=_sort_fck_label):
                     df_g = df_base[df_base["_FckLabel"] == lbl].drop(columns=["_FckLabel"], errors="ignore").copy()
                     if df_g.empty:
                         continue
                     df_g = _atualizar_material_norma_linhas(df_g)
                     fck_g = _to_float_or_none(df_g["Fck Projeto"].mode().iat[0]) if "Fck Projeto" in df_g.columns and not df_g["Fck Projeto"].dropna().empty else None
-                    stats_g = _stats_cp_idade_pdf(df_g)
+                    fck_label = _format_float_label(fck_g) if fck_g is not None else str(lbl)
+                    material_label, norma_label, dimensao_label = _resumo_material_norma_df(df_g)
+
+                    if not first_group:
+                        story.append(PageBreak())
+                    first_group = False
+
+                    story.append(Paragraph(f"<b>Grupo fck {fck_label} MPa</b>", styles["Heading2"]))
+                    story.append(Paragraph(f"Obra: {_obra_label_from_df_pdf(df_g)}", styles['Normal']))
+                    story.append(Paragraph(f"Período (datas dos certificados): {_date_label_from_df_pdf(df_g)}", styles['Normal']))
+                    story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
+                    story.append(Paragraph(f"Usina: {_usina_label_from_df_group(df_g)}", styles['Normal']))
+                    story.append(Paragraph(f"Abatimento de NF: {_abat_nf_header_label_group(df_g)}", styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+                    norma_box = Table(
+                        [[Paragraph(f"Material: {material_label}", norma_text_style)],
+                         [Paragraph(norma_label, norma_text_style)],
+                         [Paragraph(f"Corpo de prova: {dimensao_label}", norma_small_style)]],
+                        colWidths=[doc.width]
+                    )
+                    norma_box.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFF7ED')),
+                        ('BOX', (0, 0), (-1, -1), 1.0, colors.HexColor('#F97316')),
+                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#FDBA74')),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ]))
+                    story.append(norma_box)
+                    story.append(Spacer(1, 8))
+
+                    _add_principal_table(df_g)
                     fig_g = _fig_crescimento_pdf(df_g, fck_g)
                     if fig_g is not None:
                         figs_to_close.append(fig_g)
-                    verif_g = _verif_fck_pdf(df_g, fck_g)
+                    _add_fig(fig_g)
                     pv_g = _pv_cp_status_pdf(df_g, fck_g)
-                    pdf_g = gerar_pdf(
-                        df_g,
-                        stats_g,
-                        fig_g,
-                        None,
-                        None,
-                        None,
-                        _obra_label_from_df_pdf(df_g),
-                        _date_label_from_df_pdf(df_g),
-                        _format_float_label(fck_g) if fck_g is not None else str(lbl),
-                        verif_g,
-                        None,
-                        pv_g,
-                        s.get("qr_url", ""),
-                        s.get("rt_responsavel", ""),
-                        s.get("rt_cliente", ""),
-                        s.get("rt_cidade", ""),
-                        report_mode_atual,
-                    )
-                    reader = PdfReader(io.BytesIO(pdf_g))
-                    for page in reader.pages:
-                        writer.add_page(page)
+                    if pv_g is not None and not pv_g.empty:
+                        story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/63 dias)", styles["Heading3"]))
+                        _add_pv_table(pv_g)
 
-                out = io.BytesIO()
-                writer.write(out)
+                try:
+                    _cp_key = "|".join(sorted(set(df_base["CP"].dropna().astype(str).tolist()))) if "CP" in df_base.columns else ""
+                    _base_id = f"AGRUPADO|{len(df_base)}|{_cp_key}"
+                    doc_id_pdf = "HAB-" + hashlib.sha1(_base_id.encode("utf-8")).hexdigest()[:12].upper()
+                    story.append(Spacer(1, 10))
+                    story.append(Paragraph(f"<b>ID do documento:</b> {doc_id_pdf}", styles["Normal"]))
+                except Exception:
+                    pass
+
+                doc.build(story, canvasmaker=NumberedCanvas)
                 for fg in figs_to_close:
                     try:
                         plt.close(fg)
                     except Exception:
                         pass
-                return out.getvalue()
+                pdf = buffer.getvalue()
+                buffer.close()
+                return pdf
 
             has_df = isinstance(df_view, pd.DataFrame) and (not df_view.empty)
             if has_df and CAN_EXPORT:

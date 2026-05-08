@@ -675,8 +675,9 @@ def _inferir_material_certificado(cp: str = "", norma_texto: str = "", local_tex
 
     Regras principais:
     - CP iniciado por A (ex.: A562) = Argamassa.
-    - Norma NBR 13279 ou texto de argamassa = Argamassa.
     - Texto/norma com graute/garute/grauteamento = Graute.
+    - CP numérico (ex.: 045.172) = Concreto, exceto quando o bloco/local indicar Graute.
+    - Norma NBR 13279 ou texto de argamassa = Argamassa quando não houver CP numérico.
     - Demais casos = Concreto.
     """
     cp_s = str(cp or "").strip().upper()
@@ -684,13 +685,47 @@ def _inferir_material_certificado(cp: str = "", norma_texto: str = "", local_tex
     local_s = str(local_texto or "").lower()
     base_s = f"{norma_s} {local_s}"
 
+    # CPs de argamassa na base Habisolute normalmente começam com A: A562, A039.258 etc.
     if re.fullmatch(r"A\d+(?:\.\d+)?", cp_s):
         return "Argamassa"
-    if "13279" in base_s or "argamassa" in base_s:
-        return "Argamassa"
+
+    # Graute tem prioridade sobre concreto quando o próprio bloco/local indicar grauteamento.
     if "graute" in base_s or "garute" in base_s or "grauteamento" in base_s or "garuteamento" in base_s:
         return "Graute"
+
+    # CP numérico é tratado como concreto, salvo regra de graute acima.
+    if re.fullmatch(r"\d{3,6}(?:\.\d{3})?", cp_s):
+        return "Concreto"
+
+    # Sem CP numérico, usa a norma/texto do bloco.
+    if "13279" in base_s or "argamassa" in base_s:
+        return "Argamassa"
+
     return _normalizar_material(fallback)
+
+
+def _atualizar_material_norma_linhas(df_: pd.DataFrame) -> pd.DataFrame:
+    """Recalcula Material/Norma/Corpo de Prova linha a linha após filtros.
+
+    Isso garante que, ao mudar o fck para análise, a norma exibida acompanhe
+    o grupo realmente selecionado, mesmo quando o certificado tiver Argamassa,
+    Concreto e Graute no mesmo PDF.
+    """
+    if df_ is None or df_.empty:
+        return df_
+    df_ = df_.copy()
+    materiais = []
+    for _, row in df_.iterrows():
+        cp = row.get("CP", "")
+        local = row.get("Local", "")
+        norma_atual = row.get("Norma Técnica", "")
+        material_atual = row.get("Material", s.get("rt_material", "Concreto"))
+        mat = _inferir_material_certificado(cp, norma_atual, local, material_atual)
+        materiais.append(mat)
+    df_["Material"] = materiais
+    df_["Norma Técnica"] = [_norma_por_material(m) for m in materiais]
+    df_["Corpo de Prova"] = [_dimensao_cp_por_material(m) for m in materiais]
+    return df_
 
 
 def _resumo_material_norma_df(df_: pd.DataFrame) -> tuple[str, str, str]:
@@ -1471,12 +1506,9 @@ if uploaded_files:
         st.error("⚠️ Não encontrei CPs válidos nos PDFs enviados.")
     else:
         df = pd.concat(frames, ignore_index=True)
-        if "Material" not in df.columns:
-            df["Material"] = s.get("rt_material", "Concreto")
-        else:
-            df["Material"] = df["Material"].fillna(s.get("rt_material", "Concreto")).apply(_normalizar_material)
-        df["Norma Técnica"] = df["Material"].apply(_norma_por_material)
-        df["Corpo de Prova"] = df["Material"].apply(_dimensao_cp_por_material)
+        # Atualiza material/norma/corpo de prova linha a linha antes das validações.
+        # Isso evita que certificados mistos fiquem presos no primeiro material detectado.
+        df = _atualizar_material_norma_linhas(df)
 
         # ===== Validações
         has_nf_violation = False
@@ -1580,6 +1612,10 @@ if uploaded_files:
         else:
             selected_fck_label = fck_labels[0] if fck_labels else "—"
         df_view = df_view.drop(columns=["_FckLabel"], errors="ignore")
+
+        # Recalcula material/norma/corpo de prova conforme o fck selecionado.
+        # Ex.: fck 6 = Argamassa, fck 25 = Concreto, fck 15 = Graute quando o bloco indicar graute.
+        df_view = _atualizar_material_norma_linhas(df_view)
 
         if df_view.empty:
             st.info("Nenhum dado disponível para o fck selecionado.")

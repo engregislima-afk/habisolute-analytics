@@ -171,6 +171,13 @@ s.setdefault("rt_responsavel", "")
 s.setdefault("rt_cliente", "")
 s.setdefault("rt_cidade", "")
 s.setdefault("rt_material", "Concreto")
+# dados de calibração das prensas para exibir no PDF
+s.setdefault("cal_prensa_concreto_nome", "")
+s.setdefault("cal_prensa_concreto_cert", "")
+s.setdefault("cal_prensa_concreto_validade", "")
+s.setdefault("cal_prensa_argamassa_nome", "")
+s.setdefault("cal_prensa_argamassa_cert", "")
+s.setdefault("cal_prensa_argamassa_validade", "")
 
 # Recupera usuário após refresh
 if s.get("logged_in") and not s.get("username"):
@@ -636,7 +643,7 @@ def _norma_por_material(material: str) -> str:
     material = (material or "").strip().lower()
 
     if material == "concreto":
-        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos"
+        return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Concreto"
 
     if material == "argamassa":
         return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos - Argamassa"
@@ -749,6 +756,70 @@ def _resumo_material_norma_df(df_: pd.DataFrame) -> tuple[str, str, str]:
     dimensao_label = "<br/>".join([f"{m}: {_dimensao_cp_por_material(m)}" for m in materiais])
     return material_label, norma_label, dimensao_label
 
+
+def _fmt_data_calibracao(valor: Any) -> str:
+    """Formata data de validade da calibração para dd/mm/aaaa quando possível."""
+    if valor is None:
+        return ""
+    txt = str(valor).strip()
+    if not txt or txt.lower() in ("none", "nan", "nat"):
+        return ""
+    try:
+        dt = pd.to_datetime(valor, errors="coerce", dayfirst=True)
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+    except Exception:
+        pass
+    return txt
+
+
+def _dados_calibracao_por_material(material: str) -> str:
+    """Retorna texto de calibração da prensa conforme o material.
+
+    Concreto e Graute usam a prensa de concreto/graute.
+    Argamassa usa a prensa de argamassa.
+    """
+    mat = _normalizar_material(material)
+    if mat == "Argamassa":
+        nome = s.get("cal_prensa_argamassa_nome", "")
+        cert = s.get("cal_prensa_argamassa_cert", "")
+        validade = s.get("cal_prensa_argamassa_validade", "")
+    else:
+        nome = s.get("cal_prensa_concreto_nome", "")
+        cert = s.get("cal_prensa_concreto_cert", "")
+        validade = s.get("cal_prensa_concreto_validade", "")
+
+    nome = str(nome or "").strip()
+    cert = str(cert or "").strip()
+    validade = _fmt_data_calibracao(validade)
+
+    partes = []
+    if nome:
+        partes.append(f"Prensa: {nome}")
+    if cert:
+        partes.append(f"Certificado: {cert}")
+    if validade:
+        partes.append(f"Validade: {validade}")
+
+    return " | ".join(partes) if partes else "Calibração da prensa não informada"
+
+
+def _resumo_calibracao_df(df_: pd.DataFrame) -> str:
+    """Monta resumo da calibração por material presente no grupo filtrado."""
+    if df_ is None or df_.empty or "Material" not in df_.columns:
+        mat = _normalizar_material(s.get("rt_material", "Concreto"))
+        return f"{mat} — {_dados_calibracao_por_material(mat)}"
+
+    materiais = []
+    for m in df_["Material"].dropna().astype(str).tolist():
+        nm = _normalizar_material(m)
+        if nm not in materiais:
+            materiais.append(nm)
+    if not materiais:
+        materiais = [_normalizar_material(s.get("rt_material", "Concreto"))]
+
+    return "<br/>".join([f"{m} — {_dados_calibracao_por_material(m)}" for m in materiais])
+
 # =============================================================================
 # Sidebar
 # =============================================================================
@@ -784,6 +855,43 @@ with st.sidebar:
     s["rt_responsavel"] = st.text_input("Responsável técnico", value=s.get("rt_responsavel",""))
     s["rt_cliente"]     = st.text_input("Cliente / Empreendimento", value=s.get("rt_cliente",""))
     s["rt_cidade"]      = st.text_input("Cidade / UF", value=s.get("rt_cidade",""))
+
+    st.markdown("---")
+    st.markdown("#### 🧪 Calibração das prensas")
+    with st.expander("Prensa de Concreto / Graute", expanded=False):
+        s["cal_prensa_concreto_nome"] = st.text_input(
+            "Nome da prensa - Concreto/Graute",
+            value=s.get("cal_prensa_concreto_nome", ""),
+            placeholder="Ex.: P01 - 4HCI 100 tf"
+        )
+        s["cal_prensa_concreto_cert"] = st.text_input(
+            "Nº do certificado - Concreto/Graute",
+            value=s.get("cal_prensa_concreto_cert", ""),
+            placeholder="Ex.: ACTEST 04114A26"
+        )
+        s["cal_prensa_concreto_validade"] = st.date_input(
+            "Validade da calibração - Concreto/Graute",
+            value=None,
+            key="cal_prensa_concreto_validade_input"
+        )
+
+    with st.expander("Prensa de Argamassa", expanded=False):
+        s["cal_prensa_argamassa_nome"] = st.text_input(
+            "Nome da prensa - Argamassa",
+            value=s.get("cal_prensa_argamassa_nome", ""),
+            placeholder="Ex.: Prensa Argamassa"
+        )
+        s["cal_prensa_argamassa_cert"] = st.text_input(
+            "Nº do certificado - Argamassa",
+            value=s.get("cal_prensa_argamassa_cert", ""),
+            placeholder="Ex.: Certificado nº ..."
+        )
+        s["cal_prensa_argamassa_validade"] = st.date_input(
+            "Validade da calibração - Argamassa",
+            value=None,
+            key="cal_prensa_argamassa_validade_input"
+        )
+
     st.markdown("---")
     st.caption(f"Usuário: **{nome_login}** ({papel})")
 
@@ -2082,6 +2190,7 @@ if uploaded_files:
                     return f"{v:.0f} ± {t:.0f} mm"
 
                 material_label, norma_label, dimensao_label = _resumo_material_norma_df(df)
+                calibracao_label = _resumo_calibracao_df(df)
 
                 story.append(Paragraph(f"Obra: {obra_label}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {data_label}", styles['Normal']))
@@ -2121,6 +2230,7 @@ if uploaded_files:
                 )
                 norma_box = Table(
                     [[Paragraph(f"Material: {material_label}", norma_text_style)],
+                     [Paragraph(f"Calibração: {calibracao_label}", norma_small_style)],
                      [Paragraph(norma_label, norma_text_style)],
                      [Paragraph(f"Corpo de prova: {dimensao_label}", norma_small_style)]],
                     colWidths=[doc.width]
@@ -2797,6 +2907,7 @@ if uploaded_files:
                     fck_g = _to_float_or_none(df_g["Fck Projeto"].mode().iat[0]) if "Fck Projeto" in df_g.columns and not df_g["Fck Projeto"].dropna().empty else None
                     fck_label = _format_float_label(fck_g) if fck_g is not None else str(lbl)
                     material_label, norma_label, dimensao_label = _resumo_material_norma_df(df_g)
+                    calibracao_label = _resumo_calibracao_df(df_g)
 
                     if not first_group:
                         story.append(PageBreak())
@@ -2812,6 +2923,7 @@ if uploaded_files:
 
                     norma_box = Table(
                         [[Paragraph(f"Material: {material_label}", norma_text_style)],
+                         [Paragraph(f"Calibração: {calibracao_label}", norma_small_style)],
                          [Paragraph(norma_label, norma_text_style)],
                          [Paragraph(f"Corpo de prova: {dimensao_label}", norma_small_style)]],
                         colWidths=[doc.width]

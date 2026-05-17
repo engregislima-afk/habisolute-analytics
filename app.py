@@ -1840,15 +1840,19 @@ if uploaded_files:
             m3  = mean_by_age.get(3,  float("nan"))
             m7  = mean_by_age.get(7,  float("nan"))
             m14 = mean_by_age.get(14, float("nan"))
+            m21 = mean_by_age.get(21, float("nan"))
             m28 = mean_by_age.get(28, float("nan"))
+            m56 = mean_by_age.get(56, float("nan"))
             m63 = mean_by_age.get(63, float("nan"))
 
             verif_fck_df = pd.DataFrame({
-                "Idade (dias)": [1, 3, 7, 14, 28, 63],
-                "Média Real (MPa)": [m1, m3, m7, m14, m28, m63],
+                "Idade (dias)": [1, 3, 7, 14, 21, 28, 56, 63],
+                "Média Real (MPa)": [m1, m3, m7, m14, m21, m28, m56, m63],
                 "fck Projeto (MPa)": [
                     float("nan"),
                     float("nan"),
+                    (fck_active if fck_active is not None else float("nan")),
+                    (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
                     (fck_active if fck_active is not None else float("nan")),
@@ -1938,7 +1942,7 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (1, 3, 7, 14, 21, 28, 63 dias quando tiver)")
+            st.write("#### ✅ Verificação do fck de Projeto (1, 3, 7, 14, 21, 28, 56 e 63 dias quando tiver)")
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -1948,7 +1952,7 @@ if uploaded_files:
             mean_by_age_all = df_view.groupby("Idade (dias)")["Resistência (MPa)"].mean()
 
             # inclui somente as idades que existirem no certificado, mantendo a ordem padrão
-            idades_padrao = [1, 3, 7, 14, 21, 28, 63]
+            idades_padrao = [1, 3, 7, 14, 21, 28, 56, 63]
             try:
                 idades_existentes = set(pd.to_numeric(df_view["Idade (dias)"], errors="coerce").dropna().astype(int).tolist())
                 idades_verif = [a for a in idades_padrao if a in idades_existentes]
@@ -1997,11 +2001,11 @@ if uploaded_files:
             st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28 e 63 dias
-            idades_interesse = [1, 3, 7, 14, 21, 28, 63]
+            idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
             if tmp_v.empty:
-                st.info("Sem CPs de 1/3/7/14/21/28/63 dias no filtro atual.")
+                st.info("Sem CPs de 1/3/7/14/21/28/56/63 dias no filtro atual.")
             else:
                 tmp_v["MPa"] = pd.to_numeric(tmp_v["Resistência (MPa)"], errors="coerce")
                 tmp_v["rep"] = tmp_v.groupby(["CP", "Idade (dias)"]).cumcount() + 1
@@ -2417,7 +2421,7 @@ if uploaded_files:
 
                 if include_cp_det and pv_cp_status is not None and not pv_cp_status.empty:
                     story.append(PageBreak())
-                    story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/63 dias)", styles["Heading3"]))
+                    story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/56/63 dias)", styles["Heading3"]))
 
                     det_df = pv_cp_status.copy()
                     # No relatório básico, não exibir o campo/coluna de alerta de pares
@@ -2436,7 +2440,7 @@ if uploaded_files:
                     if "CP" in det_df.columns:
                         cols.append("CP")
 
-                    age_order = [1, 3, 7, 14, 21, 28, 63]
+                    age_order = [1, 3, 7, 14, 21, 28, 56, 63]
 
                     # adiciona blocos de idades que existirem no PDF (MPa + Status)
                     for _age in age_order:
@@ -2612,7 +2616,7 @@ if uploaded_files:
                     return None
 
             def _verif_fck_pdf(df_: pd.DataFrame, fck_val: Optional[float]) -> pd.DataFrame:
-                idades_ordem = [1, 3, 7, 14, 21, 28, 63]
+                idades_ordem = [1, 3, 7, 14, 21, 28, 56, 63]
                 if df_ is None or df_.empty:
                     return pd.DataFrame(columns=["Idade (dias)", "Média Real (MPa)", "fck Projeto (MPa)", "Status"])
                 mean_by_age = df_.groupby("Idade (dias)")["Resistência (MPa)"].mean()
@@ -2631,7 +2635,7 @@ if uploaded_files:
                 return pd.DataFrame(rows)
 
             def _pv_cp_status_pdf(df_: pd.DataFrame, fck_val: Optional[float]) -> pd.DataFrame:
-                idades_interesse = [1, 3, 7, 14, 21, 28, 63]
+                idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
                 tmp_v = df_[df_["Idade (dias)"].isin(idades_interesse)].copy()
                 if tmp_v.empty:
                     return pd.DataFrame()
@@ -2681,7 +2685,7 @@ if uploaded_files:
                     mp_cols = [c for c in pv.columns if str(c).startswith(f"{age}d") and "(MPa)" in str(c)]
                     st_cols = [c for c in pv.columns if str(c).strip().lower() == f"status {age}d"]
                     return mp_cols + st_cols
-                ordered_cols = ["CP"] + _cols_age(1) + _cols_age(3) + _cols_age(7) + _cols_age(14) + _cols_age(21) + _cols_age(28) + _cols_age(63)
+                ordered_cols = ["CP"] + _cols_age(1) + _cols_age(3) + _cols_age(7) + _cols_age(14) + _cols_age(21) + _cols_age(28) + _cols_age(56) + _cols_age(63)
                 ordered_cols = [c for c in ordered_cols if c in pv.columns]
                 return pv[ordered_cols]
 
@@ -2830,7 +2834,7 @@ if uploaded_files:
                     cols = []
                     if "CP" in det_df.columns:
                         cols.append("CP")
-                    age_order = [1, 3, 7, 14, 21, 28, 63]
+                    age_order = [1, 3, 7, 14, 21, 28, 56, 63]
                     def _has_numeric(_ser):
                         _s = pd.to_numeric(_ser, errors="coerce")
                         return _s.notna().any()
@@ -2947,7 +2951,7 @@ if uploaded_files:
                     _add_fig(fig_g)
                     pv_g = _pv_cp_status_pdf(df_g, fck_g)
                     if pv_g is not None and not pv_g.empty:
-                        story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/63 dias)", styles["Heading3"]))
+                        story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/56/63 dias)", styles["Heading3"]))
                         _add_pv_table(pv_g)
 
                 try:

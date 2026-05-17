@@ -929,7 +929,7 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
     if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".")
+    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".").replace(" ", "")
     m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
     if not m: return None, None
     try:
@@ -1049,13 +1049,17 @@ def extrair_dados_certificado(uploaded_file):
     float_token = re.compile(r"^\d+[.,]\d+$")
 
     # NOTA FISCAL — aceita números com separadores e combinações alfa-numéricas
-    # Exemplos: NA, AB0236, 001, 1236, 1.236, 12.369, 25.969.789, etc.
+    # Exemplos: NA, AB0236, 001, 1236, 1.236, 12.369, 131,711, 25.969.789, etc.
     def _clean_nf_token(t: str) -> str:
         if t is None:
             return ""
         t0 = str(t).strip()
         # remove pontuação periférica, mantendo separadores internos (.,-,/)
         t0 = t0.strip(" \t\r\n,;:()[]{}<>")
+        # NF pode vir com vírgula como separador no PDF, ex.: 131,711.
+        # Para não confundir com número decimal, normalizamos como separador interno de NF.
+        if re.fullmatch(r"\d{1,3},\d{3}(?:,\d{3})*", t0):
+            t0 = t0.replace(",", ".")
         return t0
 
     def _is_nf_token(tok: str, cp_val: str, relatorio: str = "") -> bool:
@@ -1073,13 +1077,15 @@ def extrair_dados_certificado(uploaded_file):
             return False
 
         t = tok.strip().upper()
+        if re.fullmatch(r"\d{1,3},\d{3}(?:,\d{3})*", t):
+            t = t.replace(",", ".")
 
         # 1-2 dígitos normalmente são betoneira/idade
         if re.fullmatch(r"\d{1,2}", t):
             return False
 
         # somente caracteres esperados
-        if re.fullmatch(r"[A-Z0-9][A-Z0-9.\-/]{0,24}", t) is None:
+        if re.fullmatch(r"[A-Z0-9][A-Z0-9.,\-/]{0,24}", t) is None:
             return False
 
         # só números (>=3 dígitos)
@@ -1087,7 +1093,7 @@ def extrair_dados_certificado(uploaded_file):
             return True
 
         # com separador de milhar (037.421, 1.236, 25.969.789)
-        if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", t):
+        if re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+", t):
             return True
 
         # alfanumérico (H682, A039.258)
@@ -1237,9 +1243,9 @@ def extrair_dados_certificado(uploaded_file):
                 dados.append([
                     relatorio, cp, idade, resistência, (nf if nf else relatorio), local,
                     usina_linha,
-                    (abat_nf_val if abat_nf_val is not None else (abat_nf_pdf if abat_nf_pdf is not None else (abat_obra_val if abat_obra_val is not None else abat_obra_pdf))),
+                    (abat_nf_val if abat_nf_val is not None else abat_nf_pdf),
                     abat_nf_tol,
-                    (abat_obra_val if abat_obra_val is not None else (abat_obra_pdf if abat_obra_pdf is not None else (abat_nf_val if abat_nf_val is not None else abat_nf_pdf))),
+                    (abat_obra_val if abat_obra_val is not None else abat_obra_pdf),
                     material_linha, norma_linha, corpo_linha
                 ])
             except Exception:

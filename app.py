@@ -2006,7 +2006,7 @@ if uploaded_files:
             verif_fck_df2["Status"] = resumo_status
             st.dataframe(verif_fck_df2, use_container_width=True)
 
-            # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28 e 63 dias
+            # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28, 56 e 63 dias
             idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
             tmp_v = df_view[df_view["Idade (dias)"].isin(idades_interesse)].copy()
             pv_cp_status = None
@@ -2103,6 +2103,7 @@ if uploaded_files:
                     + _cols_age(14)
                     + _cols_age(21)
                     + _cols_age(28)
+                    + _cols_age(56)
                     + _cols_age(63)
                     + ["Alerta Pares (Δ>2 MPa)"]
                 )

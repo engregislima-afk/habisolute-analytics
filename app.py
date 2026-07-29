@@ -20,6 +20,9 @@ from reportlab.platypus import (
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfgen import canvas as pdfcanvas
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
+from reportlab.platypus import KeepTogether, HRFlowable
 
 # ===== Rodapé e numeração do PDF =====
 FOOTER_TEXT = (
@@ -28,6 +31,74 @@ FOOTER_TEXT = (
     "Resultados apresentados sem considerar a incerteza de medição +- 0,80Mpa."
 )
 FOOTER_BRAND_TEXT = "Sistema Desenvolvido por IA e pela Habisolute Engenharia"
+HABISOLUTE_SITE_URL = "https://www.habisoluteengenharia.com.br/"
+
+
+def _qr_area_cliente_flowables(styles):
+    """Bloco discreto exibido no encerramento de todos os PDFs."""
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.styles import ParagraphStyle
+
+    qr = QrCodeWidget(HABISOLUTE_SITE_URL)
+    bounds = qr.getBounds()
+    width = bounds[2] - bounds[0]
+    height = bounds[3] - bounds[1]
+    qr_size = 46
+    drawing = Drawing(qr_size, qr_size, transform=[qr_size / width, 0, 0, qr_size / height, 0, 0])
+    drawing.add(qr)
+
+    title_style = ParagraphStyle(
+        "qr_area_cliente_title",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=10.5,
+        textColor=colors.HexColor("#374151"),
+        alignment=TA_LEFT,
+    )
+    text_style = ParagraphStyle(
+        "qr_area_cliente_text",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#6B7280"),
+        alignment=TA_LEFT,
+    )
+
+    text = [
+        Paragraph("Acesse a Área do Cliente", title_style),
+        Paragraph(
+            "Aponte a câmera do celular para o QR Code e acesse o site da Habisolute.",
+            text_style,
+        ),
+        Paragraph("www.habisoluteengenharia.com.br", text_style),
+    ]
+    text_table = Table([[item] for item in text], colWidths=[250])
+    text_table.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+
+    block = Table([[drawing, text_table]], colWidths=[58, 260], hAlign="RIGHT")
+    block.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#D1D5DB")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
+    ]))
+
+    return [
+        Spacer(1, 12),
+        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#D1D5DB"), spaceBefore=0, spaceAfter=7),
+        KeepTogether([block]),
+    ]
 
 class NumberedCanvas(pdfcanvas.Canvas):
     ORANGE = colors.HexColor("#c6c9cf")
@@ -165,7 +236,6 @@ s["is_admin"] = True
 s["must_change"] = False
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
-s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
 s.setdefault("last_sel_rels", [])
@@ -193,10 +263,8 @@ def _apply_query_prefs():
             return x[0] if isinstance(x, list) else x
         theme = _first(qp.get("theme") or qp.get("t"))
         brand = _first(qp.get("brand") or qp.get("b"))
-        qr    = _first(qp.get("q") or qp.get("qr") or qp.get("u"))
         if theme in ("Escuro moderno","Claro corporativo"): s["theme_mode"] = theme
         if brand in ("Laranja","Azul","Verde","Roxo"): s["brand"] = brand
-        if qr: s["qr_url"] = qr
     except Exception:
         pass
 _apply_query_prefs()
@@ -420,7 +488,7 @@ _render_header()
 # Toolbar de preferências
 # =============================================================================
 st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns([1.1, 1.1, 2.5, 1.1])
+c1, c2, c3 = st.columns([1.2, 1.2, 1.0])
 with c1:
     s["theme_mode"] = st.radio("Tema", ["Escuro moderno","Claro corporativo"],
                               index=0 if s.get("theme_mode")=="Escuro moderno" else 1, horizontal=True)
@@ -428,17 +496,14 @@ with c2:
     s["brand"] = st.selectbox("🎨 Cor da marca", ["Laranja","Azul","Verde","Roxo"],
                               index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja")))
 with c3:
-    s["qr_url"] = st.text_input("URL do resumo (QR opcional na capa do PDF)", value=s.get("qr_url",""),
-                                placeholder="https://exemplo.com/resumo")
-with c4:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
         save_user_prefs({
-            "theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"]
+            "theme_mode": s["theme_mode"], "brand": s["brand"]
         })
         try:
             qp = st.query_params
-            qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
+            qp.update({"theme": s["theme_mode"], "brand": s["brand"]})
         except Exception:
             pass
         st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
@@ -2135,7 +2200,6 @@ if uploaded_files:
                           verif_fck_df: Optional[pd.DataFrame],
                           cond_df: Optional[pd.DataFrame],
                           pv_cp_status: Optional[pd.DataFrame],
-                          qr_url: str,
                           responsavel: str,
                           cliente: str,
                           cidade: str,
@@ -2250,8 +2314,6 @@ if uploaded_files:
                     story.append(Paragraph(f"Cidade / UF: {cidade}", styles['Normal']))
                 if responsavel:
                     story.append(Paragraph(f"Responsável técnico: {responsavel}", styles['Normal']))
-                if qr_url:
-                    story.append(Paragraph(f"Resumo/QR: {qr_url}", styles['Normal']))
                 story.append(Spacer(1, 8))
 
                 # =========================
@@ -2550,6 +2612,7 @@ if uploaded_files:
                 story.append(Spacer(1, 10))
                 story.append(Paragraph(f"<b>ID do documento:</b> {doc_id_pdf}", styles["Normal"]))
 
+                story.extend(_qr_area_cliente_flowables(styles))
                 doc.build(story, canvasmaker=NumberedCanvas)
                 pdf = buffer.getvalue()
                 buffer.close()
@@ -2958,6 +3021,7 @@ if uploaded_files:
                 except Exception:
                     pass
 
+                story.extend(_qr_area_cliente_flowables(styles))
                 doc.build(story, canvasmaker=NumberedCanvas)
                 for fg in figs_to_close:
                     try:
@@ -2986,7 +3050,6 @@ if uploaded_files:
                         verif_fck_df2 if 'verif_fck_df2' in locals() else None,
                         cond_df if 'cond_df' in locals() else None,
                         pv_cp_status if 'pv_cp_status' in locals() else None,
-                        s.get("qr_url",""),
                         s.get("rt_responsavel",""),
                         s.get("rt_cliente",""),
                         s.get("rt_cidade",""),
@@ -3059,7 +3122,6 @@ if uploaded_files:
                             verif_fck_df2 if 'verif_fck_df2' in locals() else None,
                             cond_df if 'cond_df' in locals() else None,
                             pv_cp_status if 'pv_cp_status' in locals() else None,
-                            s.get("qr_url",""),
                             s.get("rt_responsavel",""),
                             s.get("rt_cliente",""),
                             s.get("rt_cidade",""),

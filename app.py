@@ -157,8 +157,12 @@ def save_user_prefs(prefs: Dict[str, Any], key: str = "default") -> None:
 
 # ===== Estado =====
 s = st.session_state
-s.setdefault("logged_in", False); s.setdefault("username", None); s.setdefault("is_admin", False)
-s.setdefault("must_change", False)
+# Acesso direto: autenticação removida.
+# Mantemos um usuário interno fixo apenas para auditoria e permissões do sistema.
+s["logged_in"] = True
+s["username"] = "Habisolute"
+s["is_admin"] = True
+s["must_change"] = False
 s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("qr_url", load_user_prefs().get("qr_url", ""))
@@ -179,10 +183,7 @@ s.setdefault("cal_prensa_argamassa_nome", "")
 s.setdefault("cal_prensa_argamassa_cert", "")
 s.setdefault("cal_prensa_argamassa_validade", "")
 
-# Recupera usuário após refresh
-if s.get("logged_in") and not s.get("username"):
-    _p = load_user_prefs()
-    if _p.get("last_user"): s["username"] = _p["last_user"]
+# O sistema abre diretamente, sem depender de usuário ou senha salvos.
 
 def _apply_query_prefs():
     try:
@@ -410,15 +411,8 @@ def _force_change_password_ui(username: str):
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
-# Tela de login
+# Acesso direto (tela de login removida)
 # =============================================================================
-if not s["logged_in"]:
-    _auth_login_ui()
-    st.stop()
-
-if s.get("must_change", False):
-    _force_change_password_ui(s["username"])
-    st.stop()
 
 # Cabeçalho
 _render_header()
@@ -438,28 +432,21 @@ with c3:
                                 placeholder="https://exemplo.com/resumo")
 with c4:
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-            save_user_prefs({
-                "theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"],
-                "last_user": s.get("username") or load_user_prefs().get("last_user","")
-            })
-            try:
-                qp = st.query_params
-                qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
-            except Exception:
-                pass
-            st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
-    with col_b:
-        if st.button("Sair", use_container_width=True, key="k_logout"):
-            log_event("logout", {"username": s.get("username")})
-            s["logged_in"] = False; st.rerun()
+    if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+        save_user_prefs({
+            "theme_mode": s["theme_mode"], "brand": s["brand"], "qr_url": s["qr_url"]
+        })
+        try:
+            qp = st.query_params
+            qp.update({"theme": s["theme_mode"], "brand": s["brand"], "q": s["qr_url"]})
+        except Exception:
+            pass
+        st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---- Boas-vindas do usuário
-nome_login = s.get("username") or load_user_prefs().get("last_user") or "—"
-papel = "Admin" if s.get("is_admin") else "Usuário"
+nome_login = "Habisolute"
+papel = "Acesso direto"
 st.markdown(
     f"""
     <div style="margin:10px 0 4px 0; padding:10px 12px; border-radius:12px;
@@ -470,15 +457,16 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-CAN_ADMIN  = bool(s.get("is_admin", False))
-CAN_EXPORT = CAN_ADMIN
+# Sem login, todas as ferramentas e exportações ficam disponíveis.
+CAN_ADMIN = True
+CAN_EXPORT = True
 
 def _empty_audit_df():
     return pd.DataFrame(columns=["ts", "user", "level", "action", "meta"])
 
 df_log = _empty_audit_df()
 
-if CAN_ADMIN:
+if False:  # Painel de usuários desativado porque o login foi removido.
     with st.expander("👤 Painel de Usuários (Admin)", expanded=False):
         st.markdown("Cadastre, ative/desative e redefina senhas dos usuários do sistema.")
         tab1, tab2, tab3 = st.tabs(["Usuários", "Novo usuário", "Auditoria"])

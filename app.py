@@ -1348,7 +1348,9 @@ def compute_exec_kpis(df_view: pd.DataFrame, fck_val: Optional[float]):
     def _pct_hit(age):
         if fck_val is None or pd.isna(fck_val): return None
         sub = df_view[df_view["Idade (dias)"] == age]
-        g = sub.groupby("CP")["Resistência (MPa)"].max() if age == 28 else sub.groupby("CP")["Resistência (MPa)"].mean()
+        # Regra Habisolute: se pelo menos 1 corpo de prova do par atingir o fck,
+        # o CP é considerado aprovado naquela idade.
+        g = sub.groupby("CP")["Resistência (MPa)"].max()
         if g.empty: return None
         return float((g >= fck_val).mean() * 100.0)
     pct28 = _pct_hit(28)
@@ -2105,7 +2107,12 @@ if uploaded_files:
                 media_by_age = {}
                 for age in idades_interesse:
                     if age in pv_multi.columns.get_level_values(0):
-                        media_by_age[age] = (pv_multi[age].max(axis=1) if age == 28 else pv_multi[age].mean(axis=1))
+                        # Para as idades de verificação final, basta 1 resultado do par atingir o fck.
+                        media_by_age[age] = (
+                            pv_multi[age].max(axis=1)
+                            if age in (28, 56, 63)
+                            else pv_multi[age].mean(axis=1)
+                        )
                     else:
                         media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
 
@@ -2730,7 +2737,12 @@ if uploaded_files:
                 media_by_age = {}
                 for age in idades_interesse:
                     if age in pv_multi.columns.get_level_values(0):
-                        media_by_age[age] = pv_multi[age].max(axis=1) if age == 28 else pv_multi[age].mean(axis=1)
+                        # Para as idades de verificação final, basta 1 resultado do par atingir o fck.
+                        media_by_age[age] = (
+                            pv_multi[age].max(axis=1)
+                            if age in (28, 56, 63)
+                            else pv_multi[age].mean(axis=1)
+                        )
                     else:
                         media_by_age[age] = pd.Series(pd.NA, index=pv_multi.index)
                 status_df = pd.DataFrame(index=pv_multi.index)

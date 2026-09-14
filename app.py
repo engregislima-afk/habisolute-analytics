@@ -294,21 +294,13 @@ if s.get("theme_mode") == "Escuro moderno":
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#0b0f19; --panel:#0f172a; --surface:#111827; --text:#e5e7eb; --muted:#a3a9b7; --line:rgba(148,163,184,.18);
+      --bg:#07111c; --surface:#0a1623; --panel:#0c1928; --panel2:#101f30;
+      --text:#f8fafc; --muted:#94a3b8; --line:#21364a; --soft-line:rgba(148,163,184,.14);
+      --shadow:0 16px 42px rgba(0,0,0,.20); --table-head:#102134; --table-row:#081521;
     }}
-    .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
-    .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
-    .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:rgba(148,163,184,.10); font-size:12.5px; }}
-    .stButton > button, .stDownloadButton > button {{
-      background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
-      padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.18) !important;
-    }}
-    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div, .stDateInput input {{
-      background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important;
-    }}
-    .stExpander > details > summary {{ background: var(--panel) !important; color: var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
+    .stApp, .main {{ background:linear-gradient(180deg,#06101a 0%,#08131f 45%,#07111c 100%) !important; color:var(--text)!important; }}
+    .block-container{{ padding-top:18px!important; padding-bottom:48px!important; max-width:{MAX_W}px!important; }}
+    section[data-testid="stSidebar"] > div{{background:linear-gradient(180deg,#07111c,#0a1623)!important;border-right:1px solid var(--line)!important;}}
     </style>
     """
 else:
@@ -317,23 +309,163 @@ else:
     <style>
     :root {{
       --brand:{brand}; --brand-600:{brand600}; --brand-700:{brand700};
-      --bg:#f8fafc; --surface:#ffffff; --panel:#ffffff; --text:#0f172a; --muted:#475569; --line:rgba(2,6,23,.10);
+      --bg:#f3f6f9; --surface:#ffffff; --panel:#ffffff; --panel2:#f8fafc;
+      --text:#0f172a; --muted:#64748b; --line:#d8e1ea; --soft-line:rgba(15,23,42,.08);
+      --shadow:0 14px 34px rgba(15,23,42,.08); --table-head:#f1f5f9; --table-row:#ffffff;
     }}
-    .stApp, .main {{ background: var(--bg) !important; color: var(--text) !important; }}
-    .block-container{{ padding-top:56px; max-width: {MAX_W}px; }}
-    .h-card{{ background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
-    .h-kpi-label{{ font-size:12px; color:var(--muted) }} .h-kpi{{ font-size:22px; font-weight:800; }}
-    .pill{{ display:inline-flex; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--text); font-size:12.5px; }}
-    .stButton > button, .stDownloadButton > button {{
-      background: linear-gradient(180deg, {brand}, {brand600}) !important; color:#fff !important; border:0 !important; border-radius:12px !important;
-      padding:12px 16px !important; font-weight:800 !important; box-shadow:0 8px 20px rgba(0,0,0,.08) !important;
-    }}
-    .stTextInput input, .stNumberInput input, .stDateInput input {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line) !important; }}
-    .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line) !important; }}
-    .stExpander > details > summary {{ background:#fff !important; color:var(--text) !important; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }}
+    .stApp, .main {{ background:linear-gradient(180deg,#f8fafc 0%,#f3f6f9 100%) !important; color:var(--text)!important; }}
+    .block-container{{ padding-top:18px!important; padding-bottom:48px!important; max-width:{MAX_W}px!important; }}
+    section[data-testid="stSidebar"] > div{{background:#ffffff!important;border-right:1px solid var(--line)!important;}}
     </style>
     """
+
+css += f"""
+<style>
+html{{scroll-behavior:smooth}}
+[data-testid="stHeader"]{{background:transparent!important}}
+#MainMenu, footer{{visibility:hidden}}
+hr{{border-color:var(--soft-line)!important}}
+
+.h-card{{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:14px 15px;box-shadow:var(--shadow)}}
+.h-kpi-label{{font-size:11px;color:var(--muted);font-weight:750;letter-spacing:.35px;text-transform:uppercase}}
+.h-kpi{{font-size:22px;font-weight:900;color:var(--text);line-height:1.08;margin-top:5px}}
+.pill{{display:inline-flex;gap:8px;align-items:center;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);font-size:12.5px}}
+
+.ui-statusbar{{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 0 16px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--muted);font-size:12px}}
+.ui-statusbar b{{color:var(--text)}}
+
+.ui-section-head{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:18px 0 10px}}
+.ui-section-head-left{{display:flex;align-items:center;gap:11px}}
+.ui-section-ico{{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.28);font-size:17px}}
+.ui-section-title{{font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.2px}}
+.ui-section-sub{{font-size:11.5px;color:var(--muted);margin-top:2px}}
+.ui-chip{{font-size:11px;font-weight:800;color:#fb923c;padding:6px 9px;border:1px solid rgba(249,115,22,.25);background:rgba(249,115,22,.08);border-radius:999px;white-space:nowrap}}
+
+.stTextInput input,.stNumberInput input,.stDateInput input{{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--line)!important;border-radius:10px!important}}
+.stSelectbox div[data-baseweb="select"]>div,.stMultiSelect div[data-baseweb="select"]>div{{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--line)!important;border-radius:10px!important}}
+.stTextInput label,.stNumberInput label,.stDateInput label,.stSelectbox label,.stMultiSelect label,.stRadio label,.stSlider label{{color:var(--muted)!important;font-weight:700!important}}
+
+.stButton>button,.stDownloadButton>button{{background:linear-gradient(180deg,{brand},{brand600})!important;color:white!important;border:1px solid rgba(255,255,255,.06)!important;border-radius:11px!important;padding:10px 15px!important;font-weight:850!important;box-shadow:0 8px 18px rgba(0,0,0,.13)!important;transition:.18s ease!important}}
+.stButton>button:hover,.stDownloadButton>button:hover{{transform:translateY(-1px);box-shadow:0 12px 24px rgba(0,0,0,.18)!important}}
+
+[data-testid="stFileUploader"]{{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:12px 14px;box-shadow:var(--shadow)}}
+[data-testid="stFileUploaderDropzone"]{{background:rgba(148,163,184,.045)!important;border:1px dashed rgba(249,115,22,.42)!important;border-radius:13px!important}}
+
+.stTabs [data-baseweb="tab-list"]{{gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px;margin:2px 0 14px;box-shadow:0 8px 24px rgba(0,0,0,.06)}}
+.stTabs [data-baseweb="tab"]{{height:42px;border-radius:10px;padding:0 16px;color:var(--muted);font-weight:850;background:transparent}}
+.stTabs [aria-selected="true"]{{background:linear-gradient(180deg,rgba(249,115,22,.18),rgba(249,115,22,.08))!important;color:#fb923c!important}}
+.stTabs [data-baseweb="tab-highlight"]{{display:none}}
+
+.stExpander details{{border:1px solid var(--line)!important;border-radius:13px!important;background:var(--panel)!important;overflow:hidden}}
+.stExpander details summary{{background:var(--panel2)!important;color:var(--text)!important;padding:10px 13px!important;font-weight:800!important}}
+
+[data-testid="stDataFrame"]{{border:1px solid var(--line)!important;border-radius:14px!important;overflow:hidden!important;background:var(--panel)!important;box-shadow:0 8px 24px rgba(0,0,0,.06)!important}}
+[data-testid="stDataFrame"] [role="columnheader"]{{background:var(--table-head)!important;font-weight:850!important}}
+
+[data-testid="stAlert"]{{border-radius:12px!important;border:1px solid var(--line)!important;box-shadow:0 6px 20px rgba(0,0,0,.05)!important}}
+[data-testid="stVerticalBlockBorderWrapper"]{{border-color:var(--line)!important;border-radius:16px!important;background:linear-gradient(180deg,var(--panel2),var(--panel))!important;box-shadow:0 10px 26px rgba(0,0,0,.07)!important}}
+
+.ui-table-head{{display:flex;justify-content:space-between;align-items:flex-end;gap:15px;margin:6px 0 8px}}
+.ui-table-title{{font-size:15px;font-weight:900;color:var(--text)}}
+.ui-table-sub{{font-size:11px;color:var(--muted);margin-top:2px}}
+.ui-table-count{{font-size:10.5px;color:var(--muted);border:1px solid var(--line);background:var(--panel2);padding:5px 8px;border-radius:999px;white-space:nowrap}}
+
+.ui-chart-head{{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:13px 0 7px;padding:0 2px}}
+.ui-chart-title{{font-size:15px;font-weight:900;color:var(--text)}}
+.ui-chart-sub{{font-size:11px;color:var(--muted);margin-top:2px}}
+.ui-chart-tag{{font-size:10.5px;color:#fb923c;border:1px solid rgba(249,115,22,.24);background:rgba(249,115,22,.07);padding:5px 8px;border-radius:999px}}
+
+.sidebar-brand{{padding:12px 12px 13px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(145deg,var(--panel2),var(--panel));margin:2px 0 14px}}
+.sidebar-brand-title{{font-size:18px;font-weight:950;color:var(--text);letter-spacing:.5px}}
+.sidebar-brand-title span{{color:#f97316}}
+.sidebar-brand-sub{{font-size:10px;color:var(--muted);letter-spacing:.7px;margin-top:4px}}
+section[data-testid="stSidebar"] .stExpander details{{box-shadow:none!important}}
+
+.ov-kpis{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:3px 0 10px}}
+.ov-card{{min-height:92px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:15px;padding:13px 14px;box-shadow:0 9px 24px rgba(0,0,0,.07)}}
+.ov-label{{font-size:10.5px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.35px}}
+.ov-value{{font-size:19px;color:var(--text);font-weight:950;line-height:1.08;margin-top:8px;word-break:break-word}}
+.ov-hint{{font-size:10px;color:var(--muted);margin-top:6px}}
+.ov-tech{{display:grid;grid-template-columns:1.05fr 1.8fr 1fr;gap:10px;margin:10px 0}}
+.ov-tech-card{{background:linear-gradient(180deg,rgba(249,115,22,.09),var(--panel));border:1px solid rgba(249,115,22,.30);border-radius:14px;padding:12px 14px}}
+.ov-tech-label{{font-size:10px;color:#fb923c;font-weight:900;text-transform:uppercase;letter-spacing:.35px}}
+.ov-tech-value{{font-size:14px;color:var(--text);font-weight:850;margin-top:5px;line-height:1.25}}
+.ov-semaforo{{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid var(--line);background:var(--panel);border-radius:13px;padding:10px 13px;margin:10px 0 12px}}
+.ov-semaforo-main{{font-size:13px;font-weight:900}}
+.ov-semaforo-sub{{font-size:10.5px;color:var(--muted);margin-top:2px}}
+
+.export-checks{{display:flex;flex-wrap:wrap;gap:7px;margin:5px 0 12px}}
+.export-check{{font-size:11px;font-weight:800;padding:7px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel2)}}
+
+@media(max-width:1400px){{.ov-kpis{{grid-template-columns:repeat(3,1fr)}}}}
+@media(max-width:900px){{.ov-kpis{{grid-template-columns:repeat(2,1fr)}}.ov-tech{{grid-template-columns:1fr}}.ui-statusbar{{align-items:flex-start;flex-direction:column}}}}
+</style>
+"""
 st.markdown(css, unsafe_allow_html=True)
+
+def _ui_section(title: str, subtitle: str = "", icon: str = "◆", chip: str = "") -> str:
+    import html as _html
+    chip_html = f'<div class="ui-chip">{_html.escape(chip)}</div>' if chip else ""
+    return f"""
+    <div class="ui-section-head">
+      <div class="ui-section-head-left">
+        <div class="ui-section-ico">{icon}</div>
+        <div><div class="ui-section-title">{_html.escape(title)}</div><div class="ui-section-sub">{_html.escape(subtitle)}</div></div>
+      </div>
+      {chip_html}
+    </div>
+    """
+
+def render_screen_table(df_: pd.DataFrame, title: str, subtitle: str = "", height: Optional[int] = None, hide_index: bool = True):
+    import html as _html
+    if df_ is None:
+        return
+    nrows = len(df_) if hasattr(df_, "__len__") else 0
+    st.markdown(
+        f'<div class="ui-table-head"><div><div class="ui-table-title">{_html.escape(title)}</div><div class="ui-table-sub">{_html.escape(subtitle)}</div></div><div class="ui-table-count">{nrows} linha(s)</div></div>',
+        unsafe_allow_html=True
+    )
+    kwargs = dict(use_container_width=True, hide_index=hide_index)
+    if height is not None:
+        kwargs["height"] = height
+    st.dataframe(df_, **kwargs)
+
+def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLISE"):
+    """Estiliza somente a cópia mostrada na tela. O figure original continua intacto para os PDFs."""
+    import copy
+    import html as _html
+    if fig is None:
+        return
+    st.markdown(
+        f'<div class="ui-chart-head"><div><div class="ui-chart-title">{_html.escape(title)}</div><div class="ui-chart-sub">{_html.escape(subtitle)}</div></div><div class="ui-chart-tag">{_html.escape(tag)}</div></div>',
+        unsafe_allow_html=True
+    )
+    try:
+        fscreen = copy.deepcopy(fig)
+        dark = s.get("theme_mode") == "Escuro moderno"
+        fig_bg = "#0a1623" if dark else "#ffffff"
+        ax_bg = "#0b1928" if dark else "#fbfdff"
+        txt = "#e5edf6" if dark else "#0f172a"
+        muted = "#9fb0c3" if dark else "#64748b"
+        grid = "#294157" if dark else "#dbe5ee"
+        fscreen.patch.set_facecolor(fig_bg)
+        for ax in fscreen.axes:
+            ax.set_facecolor(ax_bg)
+            ax.title.set_color(txt); ax.title.set_fontweight("bold")
+            ax.xaxis.label.set_color(muted); ax.yaxis.label.set_color(muted)
+            ax.tick_params(colors=muted)
+            for sp in ax.spines.values():
+                sp.set_color(grid); sp.set_alpha(.75)
+            ax.grid(True, linestyle="--", alpha=.28, color=grid)
+            leg = ax.get_legend()
+            if leg is not None:
+                frame = leg.get_frame(); frame.set_facecolor(fig_bg); frame.set_edgecolor(grid); frame.set_alpha(.96)
+                for t in leg.get_texts():
+                    t.set_color(txt)
+        st.pyplot(fscreen, use_container_width=True)
+        plt.close(fscreen)
+    except Exception:
+        st.pyplot(fig, use_container_width=True)
 
 def _render_header():
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -503,40 +635,36 @@ def _force_change_password_ui(username: str):
 # Cabeçalho
 _render_header()
 # =============================================================================
-# Toolbar de preferências
+# Aparência do painel
 # =============================================================================
-st.markdown("<div class='prefs-bar'>", unsafe_allow_html=True)
-c1, c2, c3 = st.columns([1.2, 1.2, 1.0])
-with c1:
-    s["theme_mode"] = st.radio("Tema", ["Escuro moderno","Claro corporativo"],
-                              index=0 if s.get("theme_mode")=="Escuro moderno" else 1, horizontal=True)
-with c2:
-    s["brand"] = st.selectbox("🎨 Cor da marca", ["Laranja","Azul","Verde","Roxo"],
-                              index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja")))
-with c3:
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
-        save_user_prefs({
-            "theme_mode": s["theme_mode"], "brand": s["brand"]
-        })
-        try:
-            qp = st.query_params
-            qp.update({"theme": s["theme_mode"], "brand": s["brand"]})
-        except Exception:
-            pass
-        st.success("Preferências salvas! Dica: adicione esta página aos favoritos.")
-st.markdown("</div>", unsafe_allow_html=True)
+with st.expander("🎨 Aparência e preferências do painel", expanded=False):
+    c1, c2, c3 = st.columns([1.2, 1.2, 1.0])
+    with c1:
+        s["theme_mode"] = st.radio(
+            "Tema", ["Escuro moderno","Claro corporativo"],
+            index=0 if s.get("theme_mode")=="Escuro moderno" else 1,
+            horizontal=True
+        )
+    with c2:
+        s["brand"] = st.selectbox(
+            "Cor de destaque", ["Laranja","Azul","Verde","Roxo"],
+            index=["Laranja","Azul","Verde","Roxo"].index(s.get("brand","Laranja"))
+        )
+    with c3:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        if st.button("💾 Salvar como padrão", use_container_width=True, key="k_save"):
+            save_user_prefs({"theme_mode": s["theme_mode"], "brand": s["brand"]})
+            try:
+                qp = st.query_params
+                qp.update({"theme": s["theme_mode"], "brand": s["brand"]})
+            except Exception:
+                pass
+            st.success("Preferências salvas.")
 
-# ---- Boas-vindas do usuário
 nome_login = "Habisolute"
 papel = "Acesso direto"
 st.markdown(
-    f"""
-    <div style="margin:10px 0 4px 0; padding:10px 12px; border-radius:12px;
-                border:1px solid var(--line); background:rgba(148,163,184,.10); font-weight:600;">
-      👋 Olá, <b>{nome_login}</b> — <span style="opacity:.85">{papel}</span>
-    </div>
-    """,
+    f'<div class="ui-statusbar"><div><b>Habisolute Analytics</b> • ambiente de controle tecnológico</div><div>Usuário: <b>{nome_login}</b> • {papel}</div></div>',
     unsafe_allow_html=True
 )
 
@@ -895,7 +1023,13 @@ def _resumo_calibracao_df(df_: pd.DataFrame) -> str:
 # Sidebar
 # =============================================================================
 with st.sidebar:
-    st.markdown("### ⚙️ Opções do relatório")
+    st.markdown("""
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-title">H<span>ABI</span>SOLUTE</div>
+      <div class="sidebar-brand-sub">PAINEL DE CONTROLE</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("### ⚙️ Configurações")
     s["wide_layout"] = st.toggle("Tela larga (1800px)", value=bool(s.get("wide_layout", True)), key="opt_wide_layout")
     s["BATCH_MODE"] = st.toggle("Modo Lote (vários PDFs)", value=bool(s["BATCH_MODE"]), key="opt_batch_mode")
     if s["BATCH_MODE"] != s["_prev_batch"]:
@@ -1622,17 +1756,17 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
 # =============================================================================
 # Uploader
 # =============================================================================
-st.caption("Envie certificados em PDF e gere análises, gráficos, KPIs e relatório final com capa personalizada.")
+st.markdown(_ui_section("Importar certificados", "Envie os PDFs de rompimento para iniciar a análise.", "📄", "PDF"), unsafe_allow_html=True)
 
 BATCH_MODE = bool(s.get("BATCH_MODE", False))
 _uploader_key = f"uploader_{'multi' if BATCH_MODE else 'single'}_{s['uploader_key']}"
 
 if BATCH_MODE:
-    uploaded_files = st.file_uploader("📁 PDF(s)", type=["pdf"], accept_multiple_files=True,
-                                      key=_uploader_key, help="Carregue 1 ou mais PDFs.")
+    uploaded_files = st.file_uploader("Arraste ou selecione os certificados", type=["pdf"], accept_multiple_files=True,
+                                      key=_uploader_key, help="Carregue um ou mais PDFs de certificados.")
 else:
-    up1 = st.file_uploader("📁 PDF (1 arquivo)", type=["pdf"], accept_multiple_files=False,
-                           key=_uploader_key, help="Carregue 1 PDF.")
+    up1 = st.file_uploader("Arraste ou selecione um certificado", type=["pdf"], accept_multiple_files=False,
+                           key=_uploader_key, help="Carregue um PDF de certificado.")
     uploaded_files = [up1] if up1 is not None else []
 
 # =============================================================================
@@ -1780,67 +1914,69 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     fck_val = float(fck_series_all.mode().iloc[0]) if not fck_series_all.empty else None
     KPIs = compute_exec_kpis(df_view, fck_val)
 
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    with k1: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Obra</div><div class="h-kpi">{obra_label}</div></div>', unsafe_allow_html=True)
-    with k2: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Datas dos certificados</div><div class="h-kpi">{data_label}</div></div>', unsafe_allow_html=True)
-    with k3: st.markdown(f'<div class="h-card"><div class="h-kpi-label">fck de projeto (MPa)</div><div class="h-kpi">{fck_label}</div></div>', unsafe_allow_html=True)
-    with k4: st.markdown(f'<div class="h-card"><div class="h-kpi-label">Tolerância aplicada (MPa)</div><div class="h-kpi">±{TOL_MP:.1f}</div></div>', unsafe_allow_html=True)
-    with k5: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 28d</div><div class="h-kpi">{_fmt_pct(KPIs["pct28"])}</div></div>', unsafe_allow_html=True)
-    with k6: st.markdown(f'<div class="h-card"><div class="h-kpi-label">CPs ≥ fck aos 63d</div><div class="h-kpi">{_fmt_pct(KPIs["pct63"])}</div></div>', unsafe_allow_html=True)
+    n_relatorios = df_view["Relatório"].nunique()
+    media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
+    dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
+    snf = _pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
+    stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
+    abat_nf_label = "—"
+    if snf is not None and not snf.dropna().empty:
+        v = float(snf.dropna().mode().iloc[0])
+        if stol is not None and not stol.dropna().empty:
+            t = float(stol.dropna().mode().iloc[0])
+            abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
+        else:
+            abat_nf_label = f"{v:.0f} mm"
 
-    e1, e2, e3, e4 = st.columns(4)
-    with e1:
-        media_txt = "--" if KPIs["media"] is None else f"{KPIs['media']:.1f} MPa"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Média geral</div><div class="h-kpi">{media_txt}</div></div>', unsafe_allow_html=True)
-    with e2:
-        dp_txt = "--" if KPIs["dp"] is None else f"{KPIs['dp']:.1f}"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Desvio-padrão</div><div class="h-kpi">{dp_txt}</div></div>', unsafe_allow_html=True)
-    with e3:
-        n_relatorios = df_view["Relatório"].nunique()
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Relatórios lidos</div><div class="h-kpi">{n_relatorios}</div></div>', unsafe_allow_html=True)
-    with e4:
-        snf = _pd.to_numeric(df_view.get("Abatimento NF (mm)"), errors="coerce")
-        stol = _pd.to_numeric(df_view.get("Abatimento NF tol (mm)"), errors="coerce") if "Abatimento NF tol (mm)" in df_view.columns else _pd.Series(dtype=float)
-        abat_nf_label = "—"
-        if snf is not None and not snf.dropna().empty:
-            v = float(snf.dropna().mode().iloc[0])
-            if stol is not None and not stol.dropna().empty:
-                t = float(stol.dropna().mode().iloc[0]); abat_nf_label = f"{v:.0f} ± {t:.0f} mm"
-            else:
-                abat_nf_label = f"{v:.0f} mm"
-        st.markdown(f'<div class="h-card"><div class="h-kpi-label">Abatimento NF</div><div class="h-kpi">{abat_nf_label}</div></div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="ov-kpis">
+          <div class="ov-card"><div class="ov-label">Obra</div><div class="ov-value">{obra_label}</div><div class="ov-hint">Empreendimento analisado</div></div>
+          <div class="ov-card"><div class="ov-label">Certificados</div><div class="ov-value">{data_label}</div><div class="ov-hint">Período selecionado</div></div>
+          <div class="ov-card"><div class="ov-label">FCK de projeto</div><div class="ov-value">{fck_label} MPa</div><div class="ov-hint">Resistência especificada</div></div>
+          <div class="ov-card"><div class="ov-label">CPs ≥ FCK · 28d</div><div class="ov-value">{_fmt_pct(KPIs['pct28'])}</div><div class="ov-hint">Melhor resultado do par</div></div>
+          <div class="ov-card"><div class="ov-label">CPs ≥ FCK · 63d</div><div class="ov-value">{_fmt_pct(KPIs['pct63'])}</div><div class="ov-hint">Melhor resultado do par</div></div>
+          <div class="ov-card"><div class="ov-label">Relatórios</div><div class="ov-value">{n_relatorios}</div><div class="ov-hint">Documentos no filtro atual</div></div>
+        </div>
+        <div class="ov-kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+          <div class="ov-card"><div class="ov-label">Média geral</div><div class="ov-value">{media_txt}</div><div class="ov-hint">Todas as leituras visíveis</div></div>
+          <div class="ov-card"><div class="ov-label">Desvio-padrão</div><div class="ov-value">{dp_txt}</div><div class="ov-hint">Dispersão global</div></div>
+          <div class="ov-card"><div class="ov-label">Abatimento NF</div><div class="ov-value">{abat_nf_label}</div><div class="ov-hint">Valor predominante</div></div>
+          <div class="ov-card"><div class="ov-label">Tolerância Real × Est.</div><div class="ov-value">±{TOL_MP:.1f} MPa</div><div class="ov-hint">Faixa de comparação</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     material_label, norma_label, dimensao_label = _resumo_material_norma_df(df_view)
     st.markdown(
         f"""
-        <div class="h-card" style="margin-top:10px; text-align:center; border:1px solid rgba(249,115,22,.45); background:rgba(249,115,22,.07);">
-            <div class="h-kpi-label">Material / Norma técnica</div>
-            <div class="h-kpi">{material_label}</div>
-            <div style="font-size:13px; font-weight:800; margin-top:6px;">{norma_label}</div>
-            <div style="font-size:12px; opacity:.85; margin-top:4px;"><b>Corpo de prova:</b> {dimensao_label}</div>
+        <div class="ov-tech">
+          <div class="ov-tech-card"><div class="ov-tech-label">Material</div><div class="ov-tech-value">{material_label}</div></div>
+          <div class="ov-tech-card"><div class="ov-tech-label">Norma técnica</div><div class="ov-tech-value">{norma_label}</div></div>
+          <div class="ov-tech-card"><div class="ov-tech-label">Corpo de prova</div><div class="ov-tech-value">{dimensao_label}</div></div>
+        </div>
+        <div class="ov-semaforo">
+          <div>
+            <div class="ov-semaforo-main" style="color:{KPIs['status_cor']}">{KPIs['status_txt']}</div>
+            <div class="ov-semaforo-sub">Semáforo executivo: 28 dias = 60% · 63 dias = 40%</div>
+          </div>
+          <div class="ov-semaforo-sub">≥ 90% Bom &nbsp;•&nbsp; ≥ 75% Atenção &nbsp;•&nbsp; &lt; 75% Crítico</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.markdown(f"<div class='pill' style='margin:8px 0 2px 0; color:{KPIs['status_cor']}; font-weight:800'>{KPIs['status_txt']}</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div style='font-size:13px; margin-bottom:10px; line-height:1.4'>
-        28 dias tem peso 60% e 63 dias 40% para o semáforo. Faixas: ≥90% Bom • ≥75% Atenção • &lt;75% Crítico.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if outliers_df is not None and not outliers_df.empty:
-        st.markdown("##### ⚠️ CPs fora da curva (Δ > σ definido)")
-        st.dataframe(outliers_df, use_container_width=True)
-
-    st.write("#### Resultados Individuais")
-    st.dataframe(df_view, use_container_width=True)
-    st.write("#### Estatísticas por CP")
-    st.dataframe(stats_cp_idade, use_container_width=True)
+    t_res, t_stats, t_alerts = st.tabs(["📋 Resultados individuais", "📐 Estatísticas por CP", "⚠️ Alertas / outliers"])
+    with t_res:
+        render_screen_table(df_view, "Resultados individuais", "Leituras extraídas dos certificados selecionados.")
+    with t_stats:
+        render_screen_table(stats_cp_idade, "Estatísticas por CP e idade", "Média, desvio-padrão e quantidade de leituras.")
+    with t_alerts:
+        if outliers_df is not None and not outliers_df.empty:
+            render_screen_table(outliers_df, "CPs fora da curva", "Resultados acima do limite de sigma configurado.")
+        else:
+            st.success("Nenhum outlier identificado para o limite de sigma atual.")
 
 # =============================================================================
 # Pipeline principal
@@ -1893,7 +2029,7 @@ if uploaded_files:
                 detalhes = (nf_rel[nf_rel["Nota Fiscal"].isin(viol_nf)]
                             .groupby(["Nota Fiscal","Relatório"])["CP"].nunique().reset_index())
                 st.error("🚨 **Nota Fiscal repetida em relatórios diferentes!** Confira o PDF de origem.")
-                st.dataframe(detalhes.rename(columns={"CP":"#CPs distintos"}), use_container_width=True)
+                render_screen_table(detalhes.rename(columns={"CP":"#CPs distintos"}), "Notas fiscais repetidas", "A mesma NF foi localizada em relatórios diferentes.")
                 try:
                     log_event("violation_nf_duplicate", {
                         "nf_list": list(map(str, viol_nf)),
@@ -1910,7 +2046,7 @@ if uploaded_files:
                 detalhes_cp = (cp_rel[cp_rel["CP"].isin(viol_cp)]
                                .groupby(["CP","Relatório"])["Idade (dias)"].count().reset_index(name="#leituras"))
                 st.error("🚨 **CP repetido em relatórios diferentes!**")
-                st.dataframe(detalhes_cp, use_container_width=True)
+                render_screen_table(detalhes_cp, "CPs repetidos", "O mesmo CP foi localizado em relatórios diferentes.")
                 try:
                     log_event("violation_cp_duplicate", {
                         "cp_list": list(map(str, viol_cp)),
@@ -1920,7 +2056,7 @@ if uploaded_files:
                     pass
 
         # ---------------- Filtros (corrigido p/ não quebrar)
-        st.markdown("#### Filtros")
+        st.markdown(_ui_section("Filtros da análise", "Refine relatórios, período e FCK antes de visualizar os resultados.", "🔎", "FILTROS"), unsafe_allow_html=True)
         fc1, fc2, fc3 = st.columns([2.0, 2.0, 1.0])
 
         with fc1:
@@ -2021,21 +2157,33 @@ if uploaded_files:
             outliers_df = None
 
         # ---------------------------------------------------------------
+        # NAVEGAÇÃO PRINCIPAL DA ANÁLISE
+        # ---------------------------------------------------------------
+        st.markdown(_ui_section("Painel de resultados", "Navegue entre visão geral, gráficos, verificação do FCK e exportações.", "▦", "ANÁLISE"), unsafe_allow_html=True)
+        tab_overview, tab_graphs, tab_fck, tab_exports = st.tabs([
+            "▦ Visão geral", "📈 Gráficos", "✅ Verificação FCK", "⬇ Exportações"
+        ])
+
+        # ---------------------------------------------------------------
         # SEÇÃO 1 — dados lidos / visão geral
         # ---------------------------------------------------------------
-        with st.expander("1) 📦 Dados lidos / visão geral", expanded=True):
-            st.success("✅ Certificados lidos com sucesso e dados estruturados.")
+        with tab_overview:
+            st.markdown("<div style='font-size:12px;color:var(--muted);margin:2px 0 10px'>Dados estruturados com sucesso a partir dos certificados selecionados.</div>", unsafe_allow_html=True)
             render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
 
         # ---------------------------------------------------------------
         # SEÇÃO 2 — gráficos
         # ---------------------------------------------------------------
-        with st.expander("2) 📊 Análises e gráficos (4 gráficos)", expanded=True):
-            st.sidebar.subheader("🎯 Foco nos gráficos")
-            cp_foco_manual = st.sidebar.text_input("Digitar CP p/ gráficos (opcional)", "", key="cp_manual")
-            cp_select = st.sidebar.selectbox("CP para gráficos", ["(Todos)"] + sorted(df_view["CP"].astype(str).unique()),
-                                             key="cp_select")
+        with tab_graphs:
+            st.markdown(_ui_section("Análises gráficas", "Visualize a evolução da resistência e compare resultados reais e estimados.", "📈", "4 GRÁFICOS"), unsafe_allow_html=True)
+            gc1, gc2 = st.columns([1.2, 1.2])
+            with gc1:
+                cp_foco_manual = st.text_input("Focar em um CP (opcional)", "", key="cp_manual", placeholder="Ex.: 048.214")
+            with gc2:
+                cp_select = st.selectbox("Selecionar CP", ["(Todos)"] + sorted(df_view["CP"].astype(str).unique()), key="cp_select")
             cp_focus = (cp_foco_manual.strip() or (cp_select if cp_select != "(Todos)" else "")).strip()
+            if cp_focus:
+                st.markdown(f"<div class='ui-chip' style='display:inline-flex;margin:0 0 10px'>Foco atual: CP {cp_focus}</div>", unsafe_allow_html=True)
             df_plot = df_view[df_view["CP"].astype(str) == cp_focus].copy() if cp_focus else df_view.copy()
 
             fck_series_focus = pd.to_numeric(df_plot["Fck Projeto"], errors="coerce").dropna()
@@ -2047,7 +2195,6 @@ if uploaded_files:
             stats_all_focus = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].agg(mean="mean", std="std", count="count").reset_index()
 
             # === Gráfico 1
-            st.write("##### Gráfico 1 — Crescimento da Resistência (Real)")
             fig1, ax = plt.subplots(figsize=(9.6, 4.9))
             for cp, sub in df_plot.groupby("CP"):
                 sub = sub.sort_values("Idade (dias)")
@@ -2064,13 +2211,12 @@ if uploaded_files:
             ax.set_title("Crescimento da resistência por corpo de prova")
             place_right_legend(ax)
             ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-            st.pyplot(fig1)
+            render_screen_chart(fig1, "Crescimento da resistência", "Evolução real por corpo de prova ao longo das idades.", "GRÁFICO 1")
             if CAN_EXPORT:
                 _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
 
             # === Gráfico 2 — curva estimada
-            st.write("##### Gráfico 2 — Curva Estimada (Referência técnica)")
             fig2, est_df = None, None
             fck28 = df_plot.loc[df_plot["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
             fck7  = df_plot.loc[df_plot["Idade (dias)"] == 7,  "Resistência (MPa)"].mean()
@@ -2087,7 +2233,7 @@ if uploaded_files:
                 ax2.set_title("Curva estimada")
                 ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
                 place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig2)
+                render_screen_chart(fig2, "Curva estimada", "Referência técnica calculada a partir dos dados disponíveis.", "GRÁFICO 2")
                 if CAN_EXPORT:
                     _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
@@ -2095,7 +2241,6 @@ if uploaded_files:
                 st.info("Não foi possível calcular a curva estimada (sem médias em 7 ou 28 dias).")
 
             # === Gráfico 3 — comparações
-            st.write("##### Gráfico 3 — Comparação Real × Estimado (Utilizando a Média)")
             fig3, cond_df, verif_fck_df = None, None, None
             mean_by_age = df_plot.groupby("Idade (dias)")["Resistência (MPa)"].mean()
             m1  = mean_by_age.get(1,  float("nan"))
@@ -2135,7 +2280,7 @@ if uploaded_files:
                 ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
                 ax3.set_title("Comparação Real × Estimado (médias)")
                 place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig3)
+                render_screen_chart(fig3, "Comparação Real × Estimado", "Médias reais comparadas com a curva de referência.", "GRÁFICO 3")
                 if CAN_EXPORT:
                     _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
@@ -2157,13 +2302,11 @@ if uploaded_files:
                 })
                 cond_df["Δ (Real-Est.)"] = cond_df["Média Real (MPa)"] - cond_df["Estimado (MPa)"]
                 cond_df["Status"] = [_status_row(d, _TOL) for d in cond_df["Δ (Real-Est.)"]]
-                st.write("#### 📊 Condição Real × Estimado (médias)")
-                st.dataframe(cond_df, use_container_width=True)
+                render_screen_table(cond_df, "Condição Real × Estimado", "Resumo das diferenças entre média real e curva estimada.")
             else:
                 st.info("Sem curva estimada → não é possível comparar médias (Gráfico 3).")
 
             # === Gráfico 4 — pareamento ponto-a-ponto (melhorado)
-            st.write("##### Gráfico 4 — Real × Estimado ponto-a-ponto (por CP, linha ligada)")
             fig4, pareamento_df = None, None
             if est_df is not None and not est_df.empty:
                 est_map = dict(zip(est_df["Idade (dias)"], est_df["Resistência (MPa)"]))
@@ -2190,21 +2333,20 @@ if uploaded_files:
                 ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
                 ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
                 place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
-                st.pyplot(fig4)
+                render_screen_chart(fig4, "Real × Estimado ponto a ponto", "Diferença entre cada leitura real e sua referência estimada.", "GRÁFICO 4")
                 if CAN_EXPORT:
                     _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
                     st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")
                 pareamento_df = pd.DataFrame(pares, columns=["CP","Idade (dias)","Real (MPa)","Estimado (MPa)","Δ","Status"]).sort_values(["CP","Idade (dias)"])
-                st.write("#### 📑 Pareamento ponto-a-ponto (tela)")
-                st.dataframe(pareamento_df, use_container_width=True)
+                render_screen_table(pareamento_df, "Pareamento ponto a ponto", "Detalhamento das diferenças por CP e idade.")
             else:
                 st.info("Sem curva estimada → não é possível parear pontos (Gráfico 4).")
 
         # ---------------------------------------------------------------
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
-        with st.expander("3) ✅ Verificação do fck / CP detalhado", expanded=True):
-            st.write("#### ✅ Verificação do fck de Projeto (1, 3, 7, 14, 21, 28, 56 e 63 dias quando tiver)")
+        with tab_fck:
+            st.markdown(_ui_section("Verificação do FCK", "Situação por corpo de prova e idade, considerando a regra de aprovação pelo melhor resultado do par.", "✅", "CONTROLE"), unsafe_allow_html=True)
 
             # usa o conjunto filtrado completo (df_view), não o df_plot
             fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -2261,7 +2403,7 @@ if uploaded_files:
                             resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
             verif_fck_df2["Status"] = resumo_status
             with st.expander("📋 Resumo técnico por idade", expanded=False):
-                st.dataframe(verif_fck_df2, use_container_width=True)
+                render_screen_table(verif_fck_df2, "Resumo por idade", "Média real comparada ao FCK de projeto.")
 
             # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28, 56 e 63 dias
             idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
@@ -2373,15 +2515,15 @@ if uploaded_files:
                 pv_cp_status = pv.copy()
                 render_fck_dashboard(pv_cp_status, fck_active2)
                 with st.expander("🔎 Ver tabela técnica original", expanded=False):
-                    st.dataframe(pv_cp_status, use_container_width=True)
+                    render_screen_table(pv_cp_status, "Tabela técnica completa", "Dados consolidados usados pelo painel de verificação.")
 
         # ---------------------------------------------------------------
         # SEÇÃO 4 — exportações
         # ---------------------------------------------------------------
-        with st.expander("4) ⬇️ Exportações", expanded=True):
+        with tab_exports:
+            st.markdown(_ui_section("Exportações", "Gere arquivos e relatórios a partir do conjunto filtrado.", "⬇", "ARQUIVOS"), unsafe_allow_html=True)
 
             # checklist visual
-            st.markdown("##### ✅ Checklist antes de exportar")
             items = []
             items.append(("✅ Dados disponíveis", not df_view.empty))
             items.append(("✅ Sem falha de leitura", True))
@@ -2391,9 +2533,12 @@ if uploaded_files:
                 items.append(("⚠️ Há CP em mais de um relatório", False))
             if multiple_fck_detected:
                 items.append(("⚠️ Múltiplos fck detectados — filtrado para 1", True))
+            _check_html = ['<div class="export-checks">']
             for label, ok in items:
-                color = "#16a34a" if ok else "#f97316"
-                st.markdown(f"<div style='color:{color};font-size:13px;margin-bottom:3px;'>{label}</div>", unsafe_allow_html=True)
+                color = "#4ade80" if ok else "#fb923c"
+                _check_html.append(f'<div class="export-check" style="color:{color}">{label}</div>')
+            _check_html.append('</div>')
+            st.markdown("".join(_check_html), unsafe_allow_html=True)
 
             report_mode = st.radio(
                 "Modo do relatório PDF",

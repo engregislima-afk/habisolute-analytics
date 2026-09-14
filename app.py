@@ -336,12 +336,30 @@ else:
 st.markdown(css, unsafe_allow_html=True)
 
 def _render_header():
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st.markdown(
-        "<div style='display:flex;justify-content:space-between;align-items:center;'>"
-        "<span style='font-weight:800; font-size:22px; color: var(--text)'>🏗️ Habisolute IA</span>"
-        "<span style='font-size:12.5px; opacity:.7'>Envie certificados e gere análises, gráficos e PDF.</span>"
-        "</div>",
+        """
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;
+                    padding:18px 22px;margin-bottom:12px;border-radius:18px;
+                    background:linear-gradient(135deg,#07111d 0%,#0b1827 58%,#101827 100%);
+                    border:1px solid rgba(148,163,184,.18);box-shadow:0 16px 42px rgba(0,0,0,.18);">
+          <div style="display:flex;align-items:center;gap:16px;min-width:0">
+            <div style="width:5px;height:56px;border-radius:99px;background:#f97316;box-shadow:0 0 22px rgba(249,115,22,.35)"></div>
+            <div>
+              <div style="font-size:28px;line-height:1;font-weight:900;letter-spacing:.5px;color:white">
+                H<span style="color:#f97316">ABI</span>SOLUTE
+              </div>
+              <div style="font-size:11px;letter-spacing:1.25px;margin-top:7px;color:#cbd5e1">
+                ENGENHARIA E CONTROLE TECNOLÓGICO
+              </div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:17px;font-weight:800;color:#f8fafc">Habisolute Analytics</div>
+            <div style="font-size:12px;margin-top:4px;color:#94a3b8">Certificados • Resistência • Controle tecnológico</div>
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
@@ -1376,6 +1394,189 @@ def place_right_legend(ax):
               frameon=False, ncol=1, handlelength=2.2, handletextpad=0.8, labelspacing=0.35, prop={"size": 9})
     plt.subplots_adjust(right=0.80)
 
+
+def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
+    """Painel visual premium da verificação do FCK sem alterar a lógica técnica."""
+    import html as _html
+    import re as _re
+
+    if pv_df is None or pv_df.empty:
+        st.info("Sem dados para montar o painel de verificação do FCK.")
+        return
+
+    dfp = pv_df.copy()
+
+    def _mp_cols(age):
+        cols = []
+        for c in dfp.columns:
+            if _re.match(rf"^{age}d(?:\s+#\d+)?\s+\(MPa\)$", str(c)):
+                cols.append(c)
+        def _rep_key(col):
+            m = _re.search(r"#(\d+)", str(col))
+            return int(m.group(1)) if m else 1
+        return sorted(cols, key=_rep_key)
+
+    ages = []
+    for age in (1, 3, 7, 14, 21, 28, 56, 63):
+        cols = _mp_cols(age)
+        if cols and any(pd.to_numeric(dfp[c], errors="coerce").notna().any() for c in cols):
+            ages.append(age)
+
+    def _status_col(age):
+        c = f"Status {age}d"
+        return c if c in dfp.columns else None
+
+    def _status_kind(txt):
+        t = str(txt or "").lower()
+        if "não atingiu" in t or "nao atingiu" in t:
+            return "bad"
+        if "atingiu" in t:
+            return "ok"
+        if "coletando" in t or "análise" in t or "analise" in t:
+            return "wait"
+        return "none"
+
+    def _clean_status(txt):
+        t = str(txt or "")
+        for symbol in ("🟢", "🔴", "🟡", "⚪", "🟠", "✅", "⚠️"):
+            t = t.replace(symbol, "")
+        return t.strip() or "Sem dados"
+
+    def _fmt(v):
+        try:
+            if pd.isna(v):
+                return "—"
+            return f"{float(v):.2f}".replace(".", ",")
+        except Exception:
+            return "—"
+
+    # Situação final: usa a idade final mais avançada disponível para cada CP.
+    final_states = []
+    for _, r in dfp.iterrows():
+        state = "wait"
+        for age in (63, 56, 28):
+            vals = pd.to_numeric(pd.Series([r.get(c) for c in _mp_cols(age)]), errors="coerce").dropna()
+            if not vals.empty:
+                sc = _status_col(age)
+                state = _status_kind(r.get(sc, "")) if sc else "none"
+                break
+        final_states.append(state)
+
+    total = len(dfp)
+    ok_count = sum(x == "ok" for x in final_states)
+    bad_count = sum(x == "bad" for x in final_states)
+    wait_count = total - ok_count - bad_count
+    ok_pct = (100.0 * ok_count / total) if total else 0.0
+    fck_txt = "—" if fck_value is None or pd.isna(fck_value) else f"{float(fck_value):.0f} MPa"
+
+    preferred_final = next((a for a in (63, 56, 28) if a in ages), None)
+    max_final = None
+    max_cp = "—"
+    media_bests = []
+    for _, r in dfp.iterrows():
+        cp = str(r.get("CP", "—"))
+        vals_all = []
+        for age in (28, 56, 63):
+            for c in _mp_cols(age):
+                vv = pd.to_numeric(pd.Series([r.get(c)]), errors="coerce").dropna()
+                if not vv.empty:
+                    vals_all.append(float(vv.iloc[0]))
+        if vals_all:
+            m = max(vals_all)
+            if max_final is None or m > max_final:
+                max_final = m
+                max_cp = cp
+        if preferred_final is not None:
+            vals_pref = pd.to_numeric(pd.Series([r.get(c) for c in _mp_cols(preferred_final)]), errors="coerce").dropna()
+            if not vals_pref.empty:
+                media_bests.append(float(vals_pref.max()))
+
+    media_final = (sum(media_bests) / len(media_bests)) if media_bests else None
+    max_final_txt = "—" if max_final is None else f"{max_final:.2f} MPa".replace(".", ",")
+    media_final_txt = "—" if media_final is None else f"{media_final:.2f} MPa".replace(".", ",")
+    age_final_txt = "—" if preferred_final is None else f"{preferred_final} dias"
+
+    css = """
+    <style>
+      .hf-wrap{--line:#21364a;--muted:#91a4b9;background:linear-gradient(145deg,#06101a,#091522 55%,#07111d);
+        border:1px solid #1d3042;border-radius:20px;padding:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);margin:6px 0 14px;overflow:hidden}
+      .hf-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:4px 6px 14px}
+      .hf-title{font-size:24px;font-weight:900;color:#f8fafc;letter-spacing:-.3px}.hf-sub{font-size:13px;color:#aebed0;margin-top:4px}
+      .hf-rule{font-size:12px;color:#cbd5e1;background:#101f30;border:1px solid #263b50;border-radius:999px;padding:7px 11px;white-space:nowrap}.hf-rule b{color:#fb923c}
+      .hf-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+      .hf-kpi{background:linear-gradient(180deg,#0e1c2c,#0a1623);border:1px solid #22364a;border-radius:14px;padding:13px 14px;min-height:74px}
+      .hf-kl{font-size:11px;color:#9fb0c3;margin-bottom:7px}.hf-kv{font-size:23px;color:#fff;font-weight:900;line-height:1}.hf-ks{font-size:11px;color:#73869b;margin-top:6px}
+      .hf-box{overflow-x:auto;border:1px solid #203448;border-radius:14px;background:#07111b}.hf-table{border-collapse:separate;border-spacing:0;width:100%;min-width:1080px;color:#e5edf6;font-size:12px}
+      .hf-table th,.hf-table td{border-right:1px solid #203448;border-bottom:1px solid #203448;padding:9px 10px;text-align:center;vertical-align:middle}.hf-table th:last-child,.hf-table td:last-child{border-right:0}.hf-table tr:last-child td{border-bottom:0}
+      .hf-table thead tr:first-child th{background:#122235;color:#f8fafc;font-weight:850}.hf-table thead tr:nth-child(2) th{background:#0c1a29;color:#aebed0;font-size:11px}
+      .hf-table tbody tr{background:#08131f}.hf-table tbody tr:nth-child(even){background:#0a1622}.hf-table tbody tr:hover{background:#0e1d2c}.hf-cp{font-weight:900;font-size:13px;color:#fff;text-align:left!important;white-space:nowrap}.hf-val{font-weight:800;color:#f8fafc;white-space:nowrap}
+      .hf-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 8px;font-weight:850;white-space:nowrap;border:1px solid transparent}.hf-dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:currentColor;box-shadow:0 0 10px currentColor}
+      .hf-ok{color:#62e887;background:rgba(34,197,94,.10);border-color:rgba(74,222,128,.22)}.hf-bad{color:#ff6374;background:rgba(244,63,94,.11);border-color:rgba(251,75,95,.22)}.hf-wait{color:#ffd54a;background:rgba(250,204,21,.09);border-color:rgba(250,204,21,.18)}.hf-none{color:#d8d4ff;background:rgba(196,181,253,.08);border-color:rgba(196,181,253,.16)}
+      .hf-final{min-width:126px;justify-content:center;border-radius:8px}.hf-final-ok{color:#70f08e;background:rgba(34,197,94,.18);border:1px solid rgba(74,222,128,.28)}.hf-final-bad{color:#ff6b7d;background:rgba(244,63,94,.18);border:1px solid rgba(251,75,95,.28)}.hf-final-wait{color:#ffd95e;background:rgba(245,158,11,.17);border:1px solid rgba(250,204,21,.24)}
+      .hf-foot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}.hf-mini{background:#0a1724;border:1px solid #203448;border-radius:12px;padding:11px 13px}.hf-ml{font-size:10.5px;color:#8ea2b8}.hf-mv{font-size:18px;font-weight:900;color:#f8fafc;margin-top:4px}.hf-ms{font-size:10.5px;color:#74879b;margin-top:3px}
+      @media(max-width:900px){.hf-kpis{grid-template-columns:repeat(2,1fr)}.hf-foot{grid-template-columns:1fr}.hf-top{align-items:flex-start;flex-direction:column}}
+    </style>
+    """
+
+    parts = [css, '<div class="hf-wrap">']
+    parts.append(
+        '<div class="hf-top"><div><div class="hf-title">Verificação do FCK por Corpo de Prova</div>'
+        '<div class="hf-sub">Resultados de resistência à compressão • leitura consolidada por idade</div></div>'
+        '<div class="hf-rule">Regra Habisolute: <b>1 CP do par ≥ FCK = aprovado</b></div></div>'
+    )
+    parts.append(
+        f'<div class="hf-kpis">'
+        f'<div class="hf-kpi"><div class="hf-kl">FCK DE PROJETO</div><div class="hf-kv">{_html.escape(fck_txt)}</div><div class="hf-ks">Meta especificada</div></div>'
+        f'<div class="hf-kpi"><div class="hf-kl">TOTAL DE CPs</div><div class="hf-kv">{total}</div><div class="hf-ks">Corpos de prova acompanhados</div></div>'
+        f'<div class="hf-kpi"><div class="hf-kl">ATINGIRAM O FCK</div><div class="hf-kv" style="color:#65e887">{ok_count} <span style="font-size:14px;color:#9fb0c3">({ok_pct:.0f}%)</span></div><div class="hf-ks">Na última idade disponível</div></div>'
+        f'<div class="hf-kpi"><div class="hf-kl">EM ACOMPANHAMENTO</div><div class="hf-kv" style="color:#ffd54a">{wait_count}</div><div class="hf-ks">Ainda sem situação final</div></div>'
+        f'</div>'
+    )
+
+    h1 = '<tr><th rowspan="2" style="text-align:left">CP</th>'
+    for age in ages:
+        h1 += f'<th colspan="2">{age} DIAS</th>'
+    h1 += '<th rowspan="2">SITUAÇÃO FINAL</th></tr>'
+    h2 = '<tr>' + ''.join('<th>MPa</th><th>Status</th>' for _ in ages) + '</tr>'
+
+    rows = []
+    for i, (_, r) in enumerate(dfp.iterrows()):
+        row = [f'<tr><td class="hf-cp">{_html.escape(str(r.get("CP", "—")))}</td>']
+        for age in ages:
+            vals = []
+            for c in _mp_cols(age):
+                v = pd.to_numeric(pd.Series([r.get(c)]), errors="coerce").dropna()
+                if not v.empty:
+                    vals.append(_fmt(float(v.iloc[0])))
+            values_txt = ' / '.join(vals) if vals else '—'
+            sc = _status_col(age)
+            status_raw = r.get(sc, '') if sc else ''
+            kind = _status_kind(status_raw)
+            label = _html.escape(_clean_status(status_raw))
+            row.append(f'<td class="hf-val">{values_txt}</td>')
+            row.append(f'<td><span class="hf-badge hf-{kind}"><span class="hf-dot"></span>{label}</span></td>')
+
+        state = final_states[i] if i < len(final_states) else 'wait'
+        if state == 'ok':
+            flabel, fclass = 'CONFORME', 'hf-final-ok'
+        elif state == 'bad':
+            flabel, fclass = 'NÃO CONFORME', 'hf-final-bad'
+        else:
+            flabel, fclass = 'EM ANÁLISE', 'hf-final-wait'
+        row.append(f'<td><span class="hf-badge hf-final {fclass}">{flabel}</span></td></tr>')
+        rows.append(''.join(row))
+
+    parts.append('<div class="hf-box"><table class="hf-table"><thead>' + h1 + h2 + '</thead><tbody>' + ''.join(rows) + '</tbody></table></div>')
+    parts.append(
+        f'<div class="hf-foot">'
+        f'<div class="hf-mini"><div class="hf-ml">MAIOR RESISTÊNCIA FINAL</div><div class="hf-mv">{max_final_txt}</div><div class="hf-ms">CP {_html.escape(max_cp)}</div></div>'
+        f'<div class="hf-mini"><div class="hf-ml">MÉDIA DOS MELHORES RESULTADOS</div><div class="hf-mv">{media_final_txt}</div><div class="hf-ms">Referência: {age_final_txt}</div></div>'
+        f'<div class="hf-mini"><div class="hf-ml">LEGENDA</div><div class="hf-mv" style="font-size:13px">🟢 Atingiu &nbsp; 🟡 Coletando &nbsp; 🔴 Não atingiu</div><div class="hf-ms">Valores em MPa</div></div>'
+        f'</div>'
+    )
+    parts.append('</div>')
+    st.markdown(''.join(parts), unsafe_allow_html=True)
+
 def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, brand600: str):
     b64_all = base64.b64encode(pdf_all).decode()
     cp_btn = ""
@@ -2059,7 +2260,8 @@ if uploaded_files:
                         else:
                             resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
             verif_fck_df2["Status"] = resumo_status
-            st.dataframe(verif_fck_df2, use_container_width=True)
+            with st.expander("📋 Resumo técnico por idade", expanded=False):
+                st.dataframe(verif_fck_df2, use_container_width=True)
 
             # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28, 56 e 63 dias
             idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
@@ -2169,7 +2371,9 @@ if uploaded_files:
                 )
                 pv = pv[ordered_cols]
                 pv_cp_status = pv.copy()
-                st.dataframe(pv_cp_status, use_container_width=True)
+                render_fck_dashboard(pv_cp_status, fck_active2)
+                with st.expander("🔎 Ver tabela técnica original", expanded=False):
+                    st.dataframe(pv_cp_status, use_container_width=True)
 
         # ---------------------------------------------------------------
         # SEÇÃO 4 — exportações

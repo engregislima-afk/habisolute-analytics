@@ -2159,7 +2159,6 @@ if uploaded_files:
         # ---------------------------------------------------------------
         # NAVEGAÇÃO PRINCIPAL DA ANÁLISE
         # ---------------------------------------------------------------
-        st.markdown(_ui_section("Painel de resultados", "Resultados exibidos em sequência, diretamente na página.", "▦", "ANÁLISE"), unsafe_allow_html=True)
 
         # ---------------------------------------------------------------
         # SEÇÃO 1 — dados lidos / visão geral

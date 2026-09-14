@@ -2159,13 +2159,7 @@ if uploaded_files:
         # ---------------------------------------------------------------
         # NAVEGAÇÃO PRINCIPAL DA ANÁLISE
         # ---------------------------------------------------------------
-        st.markdown(_ui_section("Painel de resultados", "Todos os resultados são exibidos em sequência, um abaixo do outro.", "▦", "ANÁLISE"), unsafe_allow_html=True)
-        st.markdown("""
-        <div class="ui-statusbar" style="margin:0 0 16px 0">
-          <div><b>Exibição contínua:</b> todos os resultados aparecem abaixo, em sequência.</div>
-          <div class="ui-chip">Visão geral ↓ Gráficos ↓ Verificação FCK ↓ Exportações</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_ui_section("Painel de resultados", "Resultados exibidos em sequência, diretamente na página.", "▦", "ANÁLISE"), unsafe_allow_html=True)
 
         # ---------------------------------------------------------------
         # SEÇÃO 1 — dados lidos / visão geral

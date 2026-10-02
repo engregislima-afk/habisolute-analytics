@@ -2116,6 +2116,335 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
             st.success("Nenhum outlier identificado para o limite de sigma atual.")
 
 # =============================================================================
+# CENTRAL DE ALERTAS TÉCNICOS / MAPA DE CALOR
+# =============================================================================
+def build_technical_alert_snapshot(
+    df_: pd.DataFrame,
+    tol_mp: float,
+    outliers_df: Optional[pd.DataFrame] = None,
+    viol_cp: Optional[list] = None,
+    viol_nf: Optional[list] = None,
+) -> Dict[str, Any]:
+    """Consolida ocorrências técnicas para leitura rápida, sem alterar regras de aprovação."""
+    import pandas as _pd
+
+    ages = [1, 3, 7, 14, 21, 28, 56, 63]
+    final_ages = [63, 56, 28]
+    empty = {
+        "problem_cps": set(), "pair_cps": set(), "fck_bad_cps": set(),
+        "real_est_cps": set(), "outlier_cps": set(), "duplicate_cps": set(),
+        "nf_duplicate_cps": set(), "pair_details": [], "fck_details": [],
+        "real_est_details": [], "attention_df": _pd.DataFrame(), "heatmap": {},
+        "ages": [], "fck": None, "est_map": {}, "pending_final": 0,
+    }
+    if df_ is None or df_.empty or "CP" not in df_.columns:
+        return empty
+
+    d = df_.copy()
+    d["CP"] = d["CP"].astype(str)
+    d["Idade (dias)"] = _pd.to_numeric(d["Idade (dias)"], errors="coerce")
+    d["Resistência (MPa)"] = _pd.to_numeric(d["Resistência (MPa)"], errors="coerce")
+    d = d.dropna(subset=["Idade (dias)", "Resistência (MPa)"])
+    if d.empty:
+        return empty
+    d["Idade (dias)"] = d["Idade (dias)"].astype(int)
+
+    fck_s = _pd.to_numeric(d.get("Fck Projeto"), errors="coerce").dropna()
+    fck_val = float(fck_s.mode().iloc[0]) if not fck_s.empty else None
+
+    # Curva de referência: mantém exatamente a mesma lógica dos gráficos atuais.
+    est_map = {}
+    m28 = d.loc[d["Idade (dias)"] == 28, "Resistência (MPa)"].mean()
+    m7 = d.loc[d["Idade (dias)"] == 7, "Resistência (MPa)"].mean()
+    if _pd.notna(m28):
+        est_map = {7: float(m28) * 0.65, 28: float(m28), 63: float(m28) * 1.15}
+    elif _pd.notna(m7):
+        f28e = float(m7) / 0.70
+        est_map = {7: float(m7), 28: f28e, 63: f28e * 1.15}
+
+    pair_details = []
+    pair_cps = set()
+    pair_delta_by_cp_age = {}
+    for (cp, age), g in d.groupby(["CP", "Idade (dias)"], sort=False):
+        vals = g["Resistência (MPa)"].dropna().astype(float)
+        if len(vals) >= 2:
+            vmin, vmax = float(vals.min()), float(vals.max())
+            delta = vmax - vmin
+            pair_delta_by_cp_age[(str(cp), int(age))] = delta
+            if delta > 2.0:
+                pair_cps.add(str(cp))
+                pair_details.append({
+                    "CP": str(cp), "Idade (dias)": int(age),
+                    "Menor (MPa)": vmin, "Maior (MPa)": vmax,
+                    "Δ par (MPa)": delta,
+                })
+
+    # FCK: mesma leitura do painel — usa a idade final mais avançada disponível
+    # e, dentro do par, considera o melhor resultado.
+    fck_bad_cps = set()
+    fck_details = []
+    pending_final = 0
+    if fck_val is not None:
+        for cp, g in d.groupby("CP", sort=False):
+            chosen_age = None
+            vals = None
+            for age in final_ages:
+                vv = g.loc[g["Idade (dias)"] == age, "Resistência (MPa)"].dropna().astype(float)
+                if not vv.empty:
+                    chosen_age, vals = age, vv
+                    break
+            if chosen_age is None:
+                pending_final += 1
+                continue
+            best = float(vals.max())
+            if best < float(fck_val):
+                cp_s = str(cp)
+                fck_bad_cps.add(cp_s)
+                fck_details.append({
+                    "CP": cp_s, "Idade final (dias)": int(chosen_age),
+                    "Melhor resultado (MPa)": best, "FCK (MPa)": float(fck_val),
+                    "Déficit (MPa)": float(fck_val) - best,
+                })
+
+    # Real x estimado: ponto a ponto nas idades para as quais existe referência.
+    real_est_cps = set()
+    real_est_details = []
+    for _, r in d.iterrows():
+        age = int(r["Idade (dias)"])
+        if age not in est_map:
+            continue
+        real = float(r["Resistência (MPa)"])
+        est = float(est_map[age])
+        delta = real - est
+        if abs(delta) > float(tol_mp):
+            cp_s = str(r["CP"])
+            real_est_cps.add(cp_s)
+            real_est_details.append({
+                "CP": cp_s, "Idade (dias)": age, "Real (MPa)": real,
+                "Estimado (MPa)": est, "Δ Real-Est. (MPa)": delta,
+            })
+
+    outlier_cps = set()
+    if outliers_df is not None and not outliers_df.empty and "CP" in outliers_df.columns:
+        outlier_cps = set(outliers_df["CP"].dropna().astype(str).tolist())
+
+    present_cps = set(d["CP"].dropna().astype(str).tolist())
+    duplicate_cps = set(map(str, viol_cp or [])) & present_cps
+    nf_duplicate_cps = set()
+    if viol_nf and "Nota Fiscal" in d.columns:
+        nf_duplicate_cps = set(
+            d.loc[d["Nota Fiscal"].astype(str).isin(set(map(str, viol_nf))), "CP"]
+             .dropna().astype(str).tolist()
+        )
+
+    # Índice de atenção = quantidade de categorias distintas com ocorrência.
+    reasons = {cp: [] for cp in present_cps}
+    for cp in pair_cps: reasons.setdefault(cp, []).append("Δ par > 2 MPa")
+    for cp in fck_bad_cps: reasons.setdefault(cp, []).append("FCK não atingido")
+    for cp in real_est_cps: reasons.setdefault(cp, []).append("Real × estimado fora da tolerância")
+    for cp in outlier_cps: reasons.setdefault(cp, []).append("Outlier")
+    for cp in duplicate_cps: reasons.setdefault(cp, []).append("CP em relatórios diferentes")
+    for cp in nf_duplicate_cps: reasons.setdefault(cp, []).append("NF em relatórios diferentes")
+
+    attention_rows = []
+    for cp, rs in reasons.items():
+        if rs:
+            attention_rows.append({
+                "CP": cp,
+                "Índice de atenção": len(rs),
+                "Ocorrências": " • ".join(rs),
+            })
+    attention_df = _pd.DataFrame(attention_rows)
+    if not attention_df.empty:
+        attention_df = attention_df.sort_values(
+            ["Índice de atenção", "CP"], ascending=[False, True], kind="stable"
+        ).reset_index(drop=True)
+
+    problem_cps = pair_cps | fck_bad_cps | real_est_cps | outlier_cps | duplicate_cps | nf_duplicate_cps
+
+    # Mapa de calor: cada célula representa a leitura consolidada CP × idade.
+    heatmap = {}
+    ages_present = [a for a in ages if a in set(d["Idade (dias)"].tolist())]
+    for cp, g in d.groupby("CP", sort=False):
+        cp_s = str(cp)
+        heatmap[cp_s] = {}
+        for age in ages_present:
+            vals = g.loc[g["Idade (dias)"] == age, "Resistência (MPa)"].dropna().astype(float)
+            if vals.empty:
+                heatmap[cp_s][age] = {"state": "none", "text": "—", "title": "Sem dados"}
+                continue
+
+            best, meanv = float(vals.max()), float(vals.mean())
+            pair_delta = pair_delta_by_cp_age.get((cp_s, age))
+            pair_bad = pair_delta is not None and pair_delta > 2.0
+            fck_bad = age in (28, 56, 63) and fck_val is not None and best < float(fck_val)
+            fck_ok = age in (28, 56, 63) and fck_val is not None and best >= float(fck_val)
+            curve_bad = age in est_map and any(abs(float(v) - float(est_map[age])) > float(tol_mp) for v in vals)
+
+            title = f"Resultados: {' / '.join(f'{float(v):.2f}' for v in vals)} MPa"
+            if pair_delta is not None:
+                title += f" | Δ par: {pair_delta:.2f} MPa"
+
+            if fck_bad and pair_bad:
+                state, text = "badpair", f"🔴 FCK · 🟠 Δ{pair_delta:.1f}"
+            elif fck_bad:
+                state, text = "bad", f"🔴 {best:.1f}"
+            elif pair_bad:
+                state, text = "pair", f"🟠 Δ{pair_delta:.1f}"
+            elif fck_ok:
+                state, text = "ok", f"🟢 {best:.1f}"
+            elif curve_bad:
+                state, text = "curve", f"🟣 {meanv:.1f}"
+            else:
+                state, text = "wait", f"🟡 {meanv:.1f}"
+            heatmap[cp_s][age] = {"state": state, "text": text, "title": title}
+
+    return {
+        "problem_cps": problem_cps,
+        "pair_cps": pair_cps,
+        "fck_bad_cps": fck_bad_cps,
+        "real_est_cps": real_est_cps,
+        "outlier_cps": outlier_cps,
+        "duplicate_cps": duplicate_cps,
+        "nf_duplicate_cps": nf_duplicate_cps,
+        "pair_details": pair_details,
+        "fck_details": fck_details,
+        "real_est_details": real_est_details,
+        "attention_df": attention_df,
+        "heatmap": heatmap,
+        "ages": ages_present,
+        "fck": fck_val,
+        "est_map": est_map,
+        "pending_final": pending_final,
+    }
+
+
+def render_technical_alert_center(snapshot: Dict[str, Any], has_nf_violation: bool = False,
+                                  has_cp_violation: bool = False, multiple_fck_detected: bool = False):
+    """Central visual para decidir rapidamente onde concentrar a revisão."""
+    import html as _html
+
+    problem_cps = snapshot.get("problem_cps", set())
+    pair_cps = snapshot.get("pair_cps", set())
+    fck_bad_cps = snapshot.get("fck_bad_cps", set())
+    real_est_cps = snapshot.get("real_est_cps", set())
+    outlier_cps = snapshot.get("outlier_cps", set())
+    dup_cps = snapshot.get("duplicate_cps", set()) | snapshot.get("nf_duplicate_cps", set())
+    pair_occ = len(snapshot.get("pair_details", []))
+    real_occ = len(snapshot.get("real_est_details", []))
+
+    if problem_cps:
+        banner_title = "OCORRÊNCIAS TÉCNICAS DETECTADAS"
+        banner_sub = f"{len(problem_cps)} CP(s) merecem conferência prioritária. Clique nos cartões para ir direto à análise relacionada."
+        banner_color = "#ff5e7a"
+        banner_bg = "rgba(255,94,122,.10)"
+    else:
+        banner_title = "SEM OCORRÊNCIAS TÉCNICAS CRÍTICAS NO FILTRO ATUAL"
+        banner_sub = "O painel não encontrou FCK final não atendido, pares com Δ > 2 MPa, desvios Real × Estimado ou outliers."
+        banner_color = "#00e676"
+        banner_bg = "rgba(0,230,118,.08)"
+
+    integrity_n = len(dup_cps)
+    if has_nf_violation and not snapshot.get("nf_duplicate_cps"):
+        integrity_n += 1
+    if has_cp_violation and not snapshot.get("duplicate_cps"):
+        integrity_n += 1
+
+    cards = [
+        ("FCK NÃO ATINGIDO", len(fck_bad_cps), "CPs na idade final disponível", "#ff3b5c", "#fck-verification"),
+        ("PARES Δ > 2 MPa", len(pair_cps), f"{pair_occ} ocorrência(s)", "#ff8a00", "#pair-analysis"),
+        ("REAL × ESTIMADO", len(real_est_cps), f"{real_occ} ponto(s) fora da tolerância", "#8b5cf6", "#graphs"),
+        ("OUTLIERS", len(outlier_cps), "Limite sigma configurado", "#00e5ff", "#overview-alerts"),
+        ("INTEGRIDADE", integrity_n, "CP/NF em relatórios diferentes", "#ffd60a", "#overview-alerts"),
+        ("CPs PRIORITÁRIOS", len(problem_cps), "União das ocorrências", "#ff5e7a" if problem_cps else "#00e676", "#attention-map"),
+    ]
+
+    html = [f"""
+    <style>
+      .ta-wrap{{background:linear-gradient(145deg,#050b12,#07121e 58%,#081724);border:1px solid #19364a;border-radius:20px;padding:16px;margin:8px 0 14px;box-shadow:0 18px 46px rgba(0,0,0,.22)}}
+      .ta-banner{{border:1px solid {banner_color}55;background:{banner_bg};border-radius:14px;padding:12px 14px;margin-bottom:12px;box-shadow:inset 4px 0 0 {banner_color}}}
+      .ta-title{{font-size:17px;font-weight:950;color:{banner_color};letter-spacing:.25px}}.ta-sub{{font-size:11.5px;color:#9fb0c3;margin-top:4px}}
+      .ta-grid{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}}
+      .ta-card{{display:block;text-decoration:none;background:linear-gradient(180deg,#0d1c2b,#091522);border:1px solid #203b50;border-radius:13px;padding:11px 12px;min-height:86px;transition:.15s ease}}
+      .ta-card:hover{{transform:translateY(-2px);border-color:#3d617c;box-shadow:0 10px 24px rgba(0,0,0,.22)}}
+      .ta-label{{font-size:9.5px;color:#88a0b6;font-weight:850;letter-spacing:.45px}}.ta-value{{font-size:24px;font-weight:950;margin-top:7px;line-height:1}}.ta-hint{{font-size:9.8px;color:#6f879d;margin-top:7px;line-height:1.25}}
+      @media(max-width:1200px){{.ta-grid{{grid-template-columns:repeat(3,1fr)}}}} @media(max-width:720px){{.ta-grid{{grid-template-columns:repeat(2,1fr)}}}}
+    </style>
+    <div class="ta-wrap"><div class="ta-banner"><div class="ta-title">⚡ {_html.escape(banner_title)}</div><div class="ta-sub">{_html.escape(banner_sub)}</div></div><div class="ta-grid">
+    """]
+    for label, value, hint, color, href in cards:
+        html.append(
+            f'<a class="ta-card" href="{href}"><div class="ta-label">{_html.escape(label)}</div>'
+            f'<div class="ta-value" style="color:{color};text-shadow:0 0 18px {color}33">{value}</div>'
+            f'<div class="ta-hint">{_html.escape(hint)}</div></a>'
+        )
+    html.append('</div></div>')
+    st.markdown(''.join(html), unsafe_allow_html=True)
+
+    att = snapshot.get("attention_df")
+    if att is not None and not att.empty:
+        top = att.head(8).copy()
+        st.markdown(
+            "<div id='attention-map'></div><div class='ui-table-title'>🎯 CPs prioritários para revisão</div>"
+            "<div class='ui-table-sub' style='margin-bottom:7px'>Ordenados pelo número de categorias de ocorrência, sem atribuir aprovação ou reprovação adicional.</div>",
+            unsafe_allow_html=True,
+        )
+        st.dataframe(top, use_container_width=True, hide_index=True, height=min(110 + 35 * len(top), 390))
+
+
+def render_cp_heatmap(snapshot: Dict[str, Any], only_problem: bool = False):
+    """Mapa de calor textual CP × idade com prioridade para ocorrências técnicas."""
+    import html as _html
+    heatmap = snapshot.get("heatmap", {}) or {}
+    ages = snapshot.get("ages", []) or []
+    problem_cps = set(snapshot.get("problem_cps", set()) or set())
+    if not heatmap or not ages:
+        return
+
+    cps = list(heatmap.keys())
+    if only_problem:
+        cps = [cp for cp in cps if cp in problem_cps]
+    if not cps:
+        st.success("Modo 'somente problemas': nenhum CP com ocorrência técnica no filtro atual.")
+        return
+
+    def _cp_key(cp):
+        import re as _re
+        m = _re.search(r"(\d+)", str(cp))
+        return (int(m.group(1)) if m else 10**12, str(cp))
+    cps = sorted(cps, key=_cp_key)
+
+    css = """
+    <style>
+      .hm-wrap{overflow-x:auto;border:1px solid #1b3a4f;border-radius:15px;background:#06111b;margin:7px 0 16px;box-shadow:0 12px 28px rgba(0,0,0,.17)}
+      .hm-table{width:100%;min-width:850px;border-collapse:separate;border-spacing:4px;padding:5px;color:#e8f2fb;font-size:11px}
+      .hm-table th{padding:8px 7px;color:#91a9bf;font-size:10px;letter-spacing:.35px}.hm-cp{text-align:left!important;font-weight:900;color:#f8fafc!important;white-space:nowrap;padding:0 10px!important}
+      .hm-cell{border-radius:9px;padding:8px 7px!important;text-align:center;white-space:nowrap;border:1px solid transparent;font-weight:850}
+      .hm-none{background:#0c1823;color:#64788b;border-color:#172b3b}.hm-wait{background:rgba(250,204,21,.10);color:#ffe067;border-color:rgba(250,204,21,.22)}
+      .hm-ok{background:rgba(0,230,118,.11);color:#65f1a2;border-color:rgba(0,230,118,.25)}.hm-bad{background:rgba(255,59,92,.14);color:#ff7188;border-color:rgba(255,59,92,.30)}
+      .hm-pair{background:rgba(255,138,0,.14);color:#ffad42;border-color:rgba(255,138,0,.32)}.hm-curve{background:rgba(139,92,246,.14);color:#b99cff;border-color:rgba(139,92,246,.30)}
+      .hm-badpair{background:linear-gradient(135deg,rgba(255,59,92,.18),rgba(255,138,0,.15));color:#ffd0a1;border-color:rgba(255,94,122,.38)}
+    </style>
+    """
+    parts = [css, '<div class="hm-wrap"><table class="hm-table"><thead><tr><th style="text-align:left">CP</th>']
+    for age in ages:
+        parts.append(f'<th>{age} DIAS</th>')
+    parts.append('</tr></thead><tbody>')
+    for cp in cps:
+        parts.append(f'<tr><td class="hm-cp">{_html.escape(str(cp))}</td>')
+        for age in ages:
+            cell = heatmap.get(cp, {}).get(age, {"state":"none","text":"—","title":"Sem dados"})
+            parts.append(
+                f'<td class="hm-cell hm-{_html.escape(str(cell.get("state","none")))}" title="{_html.escape(str(cell.get("title","")))}">'
+                f'{_html.escape(str(cell.get("text","—")))}</td>'
+            )
+        parts.append('</tr>')
+    parts.append('</tbody></table></div>')
+    st.markdown(''.join(parts), unsafe_allow_html=True)
+    st.caption("Mapa: 🟢 FCK atendido na idade final • 🔴 FCK não atendido • 🟠 Δ do par > 2 MPa • 🟣 Real × Estimado fora da tolerância • 🟡 acompanhamento.")
+
+
+# =============================================================================
 # Pipeline principal
 # =============================================================================
 if uploaded_files:
@@ -2156,6 +2485,8 @@ if uploaded_files:
         # ===== Validações
         has_nf_violation = False
         has_cp_violation = False
+        viol_nf = []
+        viol_cp = []
 
         if not df.empty:
             nf_rel = df.dropna(subset=["Nota Fiscal","Relatório"]).astype({"Relatório": str})
@@ -2294,12 +2625,72 @@ if uploaded_files:
             outliers_df = None
 
         # ---------------------------------------------------------------
+        # CENTRAL DE ALERTAS TÉCNICOS — leitura imediata antes das análises
+        # ---------------------------------------------------------------
+        tech_snapshot = build_technical_alert_snapshot(
+            df_view,
+            float(s["TOL_MP"]),
+            outliers_df=outliers_df,
+            viol_cp=viol_cp,
+            viol_nf=viol_nf,
+        )
+        st.markdown(_ui_section(
+            "Central de Alertas Técnicos",
+            "Identifique primeiro os CPs que merecem revisão e depois aprofunde a análise.",
+            "⚡", "DIAGNÓSTICO"
+        ), unsafe_allow_html=True)
+        render_technical_alert_center(
+            tech_snapshot,
+            has_nf_violation=has_nf_violation,
+            has_cp_violation=has_cp_violation,
+            multiple_fck_detected=multiple_fck_detected,
+        )
+
+        problem_cps = set(tech_snapshot.get("problem_cps", set()) or set())
+        only_problem_mode = st.toggle(
+            "🔍 Mostrar somente CPs com ocorrência técnica",
+            value=False,
+            key="only_problem_cps",
+            disabled=(len(problem_cps) == 0),
+            help="Filtra as análises abaixo para CPs com FCK não atingido, Δ do par > 2 MPa, Real × Estimado fora da tolerância, outlier ou duplicidade."
+        )
+
+        if only_problem_mode and problem_cps:
+            total_before = int(df_view["CP"].astype(str).nunique())
+            df_view = df_view[df_view["CP"].astype(str).isin(problem_cps)].copy()
+            total_after = int(df_view["CP"].astype(str).nunique())
+            st.markdown(
+                f"<div style='margin:7px 0 10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,94,122,.30);background:rgba(255,94,122,.07);font-size:12px;color:var(--muted)'>"
+                f"🔍 <b style='color:#ff5e7a'>Modo revisão ativo:</b> mostrando {total_after} de {total_before} CPs. "
+                f"As análises e exportações abaixo seguem este filtro enquanto ele estiver ativo.</div>",
+                unsafe_allow_html=True,
+            )
+            stats_cp_idade = (
+                df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
+                       .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
+            )
+            if outliers_df is not None and not outliers_df.empty:
+                outliers_df = outliers_df[outliers_df["CP"].astype(str).isin(problem_cps)].copy()
+
+        st.markdown(
+            "<div id='attention-map'></div>" +
+            _ui_section(
+                "Mapa de calor dos CPs",
+                "Leitura rápida por idade: cores e símbolos mostram onde concentrar a conferência.",
+                "▦", "MAPA TÉCNICO"
+            ),
+            unsafe_allow_html=True,
+        )
+        render_cp_heatmap(tech_snapshot, only_problem=bool(only_problem_mode))
+
+        # ---------------------------------------------------------------
         # NAVEGAÇÃO PRINCIPAL DA ANÁLISE
         # ---------------------------------------------------------------
 
         # ---------------------------------------------------------------
         # SEÇÃO 1 — dados lidos / visão geral
         # ---------------------------------------------------------------
+        st.markdown("<div id='overview-alerts'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section("Visão geral", "Indicadores, resultados individuais, estatísticas e alertas do conjunto selecionado.", "▦", "RESUMO"), unsafe_allow_html=True)
         st.markdown("<div style='font-size:12px;color:var(--muted);margin:2px 0 10px'>Dados estruturados com sucesso a partir dos certificados selecionados.</div>", unsafe_allow_html=True)
         render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
@@ -2307,6 +2698,7 @@ if uploaded_files:
         # ---------------------------------------------------------------
         # SEÇÃO 2 — gráficos
         # ---------------------------------------------------------------
+        st.markdown("<div id='graphs'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section("Análises gráficas", "Visualize a evolução da resistência e compare resultados reais e estimados.", "📈", "4 GRÁFICOS"), unsafe_allow_html=True)
         gc1, gc2 = st.columns([1.2, 1.2])
         with gc1:
@@ -2477,6 +2869,7 @@ if uploaded_files:
         # ---------------------------------------------------------------
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
+        st.markdown("<div id='fck-verification'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section("Verificação do FCK", "Situação por corpo de prova e idade, considerando a regra de aprovação pelo melhor resultado do par.", "✅", "CONTROLE"), unsafe_allow_html=True)
 
         # usa o conjunto filtrado completo (df_view), não o df_plot
@@ -2711,6 +3104,7 @@ if uploaded_files:
             )
             tem_alerta_par = ocorrencias_alerta > 0
 
+            st.markdown("<div id='pair-analysis'></div>", unsafe_allow_html=True)
             st.markdown(
                 _ui_section(
                     "Tabela técnica e consistência dos pares",

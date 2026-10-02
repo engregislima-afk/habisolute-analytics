@@ -431,37 +431,148 @@ def render_screen_table(df_: pd.DataFrame, title: str, subtitle: str = "", heigh
     st.dataframe(df_, **kwargs)
 
 def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLISE"):
-    """Estiliza somente a cópia mostrada na tela. O figure original continua intacto para os PDFs."""
+    """Renderização tecnológica somente na tela; o figure original continua intacto para PDFs/exportações."""
     import copy
     import html as _html
+    import matplotlib.patheffects as _pe
+    from matplotlib.collections import PolyCollection, LineCollection
+
     if fig is None:
         return
+
     st.markdown(
-        f'<div class="ui-chart-head"><div><div class="ui-chart-title">{_html.escape(title)}</div><div class="ui-chart-sub">{_html.escape(subtitle)}</div></div><div class="ui-chart-tag">{_html.escape(tag)}</div></div>',
+        f"""<div class="ui-chart-head" style="padding:10px 12px;border:1px solid rgba(0,229,255,.16);border-radius:13px;background:linear-gradient(90deg,rgba(0,229,255,.055),rgba(139,92,246,.035),transparent);box-shadow:inset 3px 0 0 rgba(0,229,255,.75)">
+        <div><div class="ui-chart-title">{_html.escape(title)}</div><div class="ui-chart-sub">{_html.escape(subtitle)}</div></div>
+        <div class="ui-chart-tag" style="color:#00e5ff;border-color:rgba(0,229,255,.30);background:rgba(0,229,255,.08);box-shadow:0 0 16px rgba(0,229,255,.08)">{_html.escape(tag)}</div></div>""",
         unsafe_allow_html=True
     )
+
     try:
         fscreen = copy.deepcopy(fig)
-        dark = s.get("theme_mode") == "Escuro moderno"
-        fig_bg = "#0a1623" if dark else "#ffffff"
-        ax_bg = "#0b1928" if dark else "#fbfdff"
-        txt = "#e5edf6" if dark else "#0f172a"
-        muted = "#9fb0c3" if dark else "#64748b"
-        grid = "#294157" if dark else "#dbe5ee"
-        fscreen.patch.set_facecolor(fig_bg)
+
+        # Paleta neon/tecnológica exclusiva da visualização em tela.
+        palette = [
+            "#00E5FF",  # cyan
+            "#FF8A00",  # laranja vivo
+            "#00E676",  # verde neon
+            "#8B5CF6",  # violeta
+            "#FF3DCC",  # magenta
+            "#2F80FF",  # azul elétrico
+            "#FFD60A",  # amarelo
+            "#A3FF12",  # lima
+            "#FF5E7A",  # coral
+            "#22D3EE",  # turquesa
+        ]
+        tech_bg = "#050B12"
+        panel_bg = "#07111D"
+        text_main = "#F3F8FF"
+        text_muted = "#8FA7BE"
+        grid_major = "#244258"
+        grid_minor = "#173044"
+        spine = "#2A4A60"
+
+        fscreen.patch.set_facecolor(tech_bg)
+        fscreen.patch.set_edgecolor("#16364A")
+        fscreen.patch.set_linewidth(1.0)
+
         for ax in fscreen.axes:
-            ax.set_facecolor(ax_bg)
-            ax.title.set_color(txt); ax.title.set_fontweight("bold")
-            ax.xaxis.label.set_color(muted); ax.yaxis.label.set_color(muted)
-            ax.tick_params(colors=muted)
+            ax.set_facecolor(panel_bg)
+            ax.title.set_color(text_main)
+            ax.title.set_fontweight("bold")
+            ax.title.set_fontsize(max(ax.title.get_fontsize(), 12))
+            ax.xaxis.label.set_color(text_muted)
+            ax.yaxis.label.set_color(text_muted)
+            ax.tick_params(axis="both", colors=text_muted, labelsize=9, length=4, width=.8)
+
+            # Moldura fina com aspecto de painel técnico.
             for sp in ax.spines.values():
-                sp.set_color(grid); sp.set_alpha(.75)
-            ax.grid(True, linestyle="--", alpha=.28, color=grid)
+                sp.set_color(spine)
+                sp.set_alpha(.85)
+                sp.set_linewidth(.9)
+
+            # Grade dupla: principal + secundária, discreta.
+            ax.minorticks_on()
+            ax.grid(True, which="major", linestyle="--", linewidth=.75, alpha=.50, color=grid_major)
+            ax.grid(True, which="minor", linestyle=":", linewidth=.45, alpha=.24, color=grid_minor)
+            ax.set_axisbelow(True)
+
+            # Recolore as séries usando o significado da legenda sempre que possível.
+            normal_idx = 0
+            for line in ax.get_lines():
+                label = str(line.get_label() or "")
+                low = label.lower()
+
+                if "fck" in low or "projeto" in low:
+                    color = "#FF3B5C"
+                    line.set_linestyle(":")
+                    line.set_linewidth(max(line.get_linewidth(), 2.4))
+                elif "média" in low or "media" in low or ("real" in low and "cp " not in low):
+                    color = "#00E5FF"
+                    line.set_linewidth(max(line.get_linewidth(), 2.5))
+                elif "estim" in low or "curva estimada" in low:
+                    color = "#FF8A00"
+                    line.set_linewidth(max(line.get_linewidth(), 2.2))
+                else:
+                    color = palette[normal_idx % len(palette)]
+                    normal_idx += 1
+                    line.set_linewidth(max(line.get_linewidth(), 1.9))
+
+                line.set_color(color)
+                line.set_alpha(.98)
+                if line.get_marker() not in (None, "None", "", " "):
+                    line.set_markerfacecolor(color)
+                    line.set_markeredgecolor("#EAF7FF")
+                    line.set_markeredgewidth(.8)
+                    line.set_markersize(max(float(line.get_markersize() or 0), 6.2))
+
+                # Glow sutil para destacar as curvas sem comprometer leitura técnica.
+                try:
+                    lw = float(line.get_linewidth())
+                    line.set_path_effects([
+                        _pe.Stroke(linewidth=lw + 4.0, foreground=color, alpha=.10),
+                        _pe.Stroke(linewidth=lw + 1.8, foreground=color, alpha=.15),
+                        _pe.Normal(),
+                    ])
+                except Exception:
+                    pass
+
+            # Faixas de desvio padrão e linhas verticais também recebem tratamento visual.
+            for coll in ax.collections:
+                label = str(coll.get_label() or "").lower()
+                try:
+                    if isinstance(coll, PolyCollection):
+                        fill = "#00E5FF" if ("dp" in label or "real" in label) else "#8B5CF6"
+                        coll.set_facecolor(fill)
+                        coll.set_edgecolor(fill)
+                        coll.set_alpha(.12)
+                    elif isinstance(coll, LineCollection):
+                        coll.set_color("#4CC9F0")
+                        coll.set_alpha(.45)
+                        coll.set_linewidth(.9)
+                except Exception:
+                    pass
+
+            # Textos anotados (ex.: valores da curva estimada).
+            for t in ax.texts:
+                t.set_color("#DDF7FF")
+                t.set_fontweight("bold")
+                try:
+                    t.set_bbox(dict(boxstyle="round,pad=0.22", facecolor="#0A1A27", edgecolor="#21465C", alpha=.92))
+                except Exception:
+                    pass
+
+            ax.margins(x=.035, y=.10)
+
             leg = ax.get_legend()
             if leg is not None:
-                frame = leg.get_frame(); frame.set_facecolor(fig_bg); frame.set_edgecolor(grid); frame.set_alpha(.96)
+                frame = leg.get_frame()
+                frame.set_facecolor("#081522")
+                frame.set_edgecolor("#24465D")
+                frame.set_alpha(.97)
                 for t in leg.get_texts():
-                    t.set_color(txt)
+                    t.set_color("#DDEBFA")
+                    t.set_fontsize(9)
+
         st.pyplot(fscreen, use_container_width=True)
         plt.close(fscreen)
     except Exception:

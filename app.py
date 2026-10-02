@@ -1540,6 +1540,25 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
 
     dfp = pv_df.copy()
 
+    # Alerta de consistência entre resultados do mesmo par.
+    # Importante: este alerta NÃO altera a regra de aprovação do FCK;
+    # ele serve para chamar a atenção para diferenças internas > 2,0 MPa.
+    pair_alert_col = next(
+        (c for c in dfp.columns if "Alerta Pares" in str(c) or "Δ>2 MPa" in str(c)),
+        None
+    )
+
+    def _has_pair_alert(value) -> bool:
+        txt = str(value or "").lower()
+        return bool(txt.strip()) and (("2 mpa" in txt) or ("Δ" in str(value)) or ("delta" in txt))
+
+    pair_alert_flags = [
+        _has_pair_alert(r.get(pair_alert_col, "")) if pair_alert_col else False
+        for _, r in dfp.iterrows()
+    ]
+    pair_alert_count = sum(pair_alert_flags)
+    pair_alert_color = "#ff6b7d" if pair_alert_count else "#65e887"
+
     def _mp_cols(age):
         cols = []
         for c in dfp.columns:
@@ -1637,7 +1656,7 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
       .hf-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:4px 6px 14px}
       .hf-title{font-size:24px;font-weight:900;color:#f8fafc;letter-spacing:-.3px}.hf-sub{font-size:13px;color:#aebed0;margin-top:4px}
       .hf-rule{font-size:12px;color:#cbd5e1;background:#101f30;border:1px solid #263b50;border-radius:999px;padding:7px 11px;white-space:nowrap}.hf-rule b{color:#fb923c}
-      .hf-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+      .hf-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
       .hf-kpi{background:linear-gradient(180deg,#0e1c2c,#0a1623);border:1px solid #22364a;border-radius:14px;padding:13px 14px;min-height:74px}
       .hf-kl{font-size:11px;color:#9fb0c3;margin-bottom:7px}.hf-kv{font-size:23px;color:#fff;font-weight:900;line-height:1}.hf-ks{font-size:11px;color:#73869b;margin-top:6px}
       .hf-box{overflow-x:auto;border:1px solid #203448;border-radius:14px;background:#07111b}.hf-table{border-collapse:separate;border-spacing:0;width:100%;min-width:1080px;color:#e5edf6;font-size:12px}
@@ -1655,8 +1674,8 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
     parts = [css, '<div class="hf-wrap">']
     parts.append(
         '<div class="hf-top"><div><div class="hf-title">Verificação do FCK por Corpo de Prova</div>'
-        '<div class="hf-sub">Resultados de resistência à compressão • leitura consolidada por idade</div></div>'
-        '<div class="hf-rule">Regra Habisolute: <b>1 CP do par ≥ FCK = aprovado</b></div></div>'
+        '<div class="hf-sub">Resultados de resistência à compressão • leitura consolidada por idade • alerta de consistência dos pares</div></div>'
+        '<div class="hf-rule">FCK: <b>1 CP do par ≥ FCK = aprovado</b> &nbsp;•&nbsp; Pares: <b>Δ &gt; 2,0 MPa = revisar</b></div></div>'
     )
     parts.append(
         f'<div class="hf-kpis">'
@@ -1664,13 +1683,14 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
         f'<div class="hf-kpi"><div class="hf-kl">TOTAL DE CPs</div><div class="hf-kv">{total}</div><div class="hf-ks">Corpos de prova acompanhados</div></div>'
         f'<div class="hf-kpi"><div class="hf-kl">ATINGIRAM O FCK</div><div class="hf-kv" style="color:#65e887">{ok_count} <span style="font-size:14px;color:#9fb0c3">({ok_pct:.0f}%)</span></div><div class="hf-ks">Na última idade disponível</div></div>'
         f'<div class="hf-kpi"><div class="hf-kl">EM ACOMPANHAMENTO</div><div class="hf-kv" style="color:#ffd54a">{wait_count}</div><div class="hf-ks">Ainda sem situação final</div></div>'
+        f'<div class="hf-kpi"><div class="hf-kl">ALERTAS DE PARES</div><div class="hf-kv" style="color:{pair_alert_color}">{pair_alert_count}</div><div class="hf-ks">Diferença interna &gt; 2,0 MPa</div></div>'
         f'</div>'
     )
 
     h1 = '<tr><th rowspan="2" style="text-align:left">CP</th>'
     for age in ages:
         h1 += f'<th colspan="2">{age} DIAS</th>'
-    h1 += '<th rowspan="2">SITUAÇÃO FINAL</th></tr>'
+    h1 += '<th rowspan="2">PARES</th><th rowspan="2">SITUAÇÃO FINAL</th></tr>'
     h2 = '<tr>' + ''.join('<th>MPa</th><th>Status</th>' for _ in ages) + '</tr>'
 
     rows = []
@@ -1689,6 +1709,12 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
             label = _html.escape(_clean_status(status_raw))
             row.append(f'<td class="hf-val">{values_txt}</td>')
             row.append(f'<td><span class="hf-badge hf-{kind}"><span class="hf-dot"></span>{label}</span></td>')
+
+        pair_alert = pair_alert_flags[i] if i < len(pair_alert_flags) else False
+        if pair_alert:
+            row.append('<td><span class="hf-badge hf-final hf-final-bad">REVISAR Δ&gt;2</span></td>')
+        else:
+            row.append('<td><span class="hf-badge hf-final hf-final-ok">OK</span></td>')
 
         state = final_states[i] if i < len(final_states) else 'wait'
         if state == 'ok':
@@ -2462,30 +2488,69 @@ if uploaded_files:
                     for i in range(len(pv_multi.index))
                 ]
 
-            # alerta de pares
-            def _delta_flag(row_vals: pd.Series) -> bool:
-                vals = pd.to_numeric(row_vals.dropna(), errors="coerce").dropna().astype(float)
-                if vals.empty:
-                    return False
-                return (vals.max() - vals.min()) > 2.0
+            # ===============================================================
+            # ALERTA DE CONSISTÊNCIA DOS PARES
+            # ===============================================================
+            # Mantém a regra original: diferença entre o maior e o menor
+            # resultado da MESMA idade > 2,0 MPa gera alerta.
+            #
+            # Além do sinalizador simples (usado também no PDF), montamos
+            # dados detalhados para a tela: CP, idade, menor/maior resultado
+            # e o delta exato. O mapeamento é feito por CP para não correr
+            # risco de desalinhamento após a ordenação numérica dos CPs.
+            LIMITE_DELTA_PAR_MPA = 2.0
 
-            alerta_pares = []
+            alerta_por_cp = {}
+            maior_delta_por_cp = {}
+            detalhe_por_cp = {}
+            alertas_detalhados = []
+
             for idx_ in pv_multi.index:
-                flag = False
+                deltas_validos = []
+                detalhes_cp = []
+
                 for age in idades_interesse:
                     cols = [c for c in pv_multi.columns if c[0] == age]
                     if not cols:
                         continue
-                    series_age = pv_multi.loc[idx_, cols]
-                    if _delta_flag(series_age):
-                        flag = True
-                        break
-                alerta_pares.append("🟠 Δ pares > 2 MPa" if flag else "")
+
+                    vals = pd.to_numeric(
+                        pd.Series(pv_multi.loc[idx_, cols]),
+                        errors="coerce"
+                    ).dropna().astype(float)
+
+                    # Só existe comparação de "par" quando há pelo menos
+                    # dois resultados válidos na mesma idade.
+                    if len(vals) < 2:
+                        continue
+
+                    vmin = float(vals.min())
+                    vmax = float(vals.max())
+                    delta = vmax - vmin
+                    deltas_validos.append(delta)
+
+                    if delta > LIMITE_DELTA_PAR_MPA:
+                        detalhes_cp.append(
+                            f"{age}d: Δ {delta:.2f} MPa"
+                        )
+                        alertas_detalhados.append({
+                            "CP": idx_,
+                            "Idade (dias)": int(age),
+                            "Menor resultado (MPa)": vmin,
+                            "Maior resultado (MPa)": vmax,
+                            "Δ do par (MPa)": delta,
+                            "Situação": "🚨 REVISAR",
+                        })
+
+                tem_alerta = bool(detalhes_cp)
+                alerta_por_cp[idx_] = "🟠 Δ pares > 2 MPa" if tem_alerta else ""
+                maior_delta_por_cp[idx_] = max(deltas_validos) if deltas_validos else float("nan")
+                detalhe_por_cp[idx_] = " • ".join(detalhes_cp) if detalhes_cp else "Dentro do limite"
 
             pv = pv.merge(status_df, left_on="CP", right_index=True, how="left")
-            pv["Alerta Pares (Δ>2 MPa)"] = alerta_pares
+            pv["Alerta Pares (Δ>2 MPa)"] = pv["CP"].map(alerta_por_cp).fillna("")
 
-            # ordem de colunas
+            # ordem de colunas — preserva a estrutura usada pelo PDF
             cols_cp = ["CP"]
             def _cols_age(age):
                 base = [c for c in pv.columns if c.startswith(f"{age}d")]
@@ -2493,6 +2558,7 @@ if uploaded_files:
                 if status_col in pv.columns:
                     base = base + [status_col]
                 return base
+
             ordered_cols = (
                 cols_cp
                 + _cols_age(1)
@@ -2507,9 +2573,175 @@ if uploaded_files:
             )
             pv = pv[ordered_cols]
             pv_cp_status = pv.copy()
+
+            # O painel principal agora também mostra uma coluna "PARES"
+            # e um KPI com a quantidade de CPs que exigem revisão.
             render_fck_dashboard(pv_cp_status, fck_active2)
-            with st.expander("🔎 Ver tabela técnica original", expanded=False):
-                render_screen_table(pv_cp_status, "Tabela técnica completa", "Dados consolidados usados pelo painel de verificação.")
+
+            # ===============================================================
+            # TABELA TÉCNICA / ALERTAS — DESTAQUE DE TELA
+            # ===============================================================
+            # Esta área fica visível logo abaixo do painel. Quando existe
+            # problema, os detalhes são mostrados imediatamente e a tabela
+            # completa abre automaticamente.
+            alertas_df = pd.DataFrame(alertas_detalhados)
+            if not alertas_df.empty:
+                alertas_df = alertas_df.sort_values(
+                    ["Δ do par (MPa)", "CP", "Idade (dias)"],
+                    ascending=[False, True, True],
+                    kind="stable"
+                ).reset_index(drop=True)
+
+            cps_com_alerta = int(alertas_df["CP"].nunique()) if not alertas_df.empty else 0
+            ocorrencias_alerta = int(len(alertas_df))
+            maior_delta_geral = (
+                float(alertas_df["Δ do par (MPa)"].max())
+                if not alertas_df.empty else 0.0
+            )
+            tem_alerta_par = ocorrencias_alerta > 0
+
+            st.markdown(
+                _ui_section(
+                    "Tabela técnica e consistência dos pares",
+                    "Conferência dos resultados repetidos por CP e idade. Diferenças acima de 2,0 MPa são destacadas para revisão.",
+                    "🚨" if tem_alerta_par else "🧪",
+                    "REVISAR" if tem_alerta_par else "SEM ALERTAS"
+                ),
+                unsafe_allow_html=True
+            )
+
+            if tem_alerta_par:
+                st.markdown(
+                    f"""
+                    <div style="
+                        margin:2px 0 12px;padding:14px 16px;border-radius:14px;
+                        border:1px solid rgba(239,68,68,.45);
+                        background:linear-gradient(90deg,rgba(239,68,68,.16),rgba(249,115,22,.08));
+                        box-shadow:0 8px 24px rgba(239,68,68,.08);
+                    ">
+                      <div style="font-size:16px;font-weight:950;color:#ef4444">
+                        🚨 ATENÇÃO — diferença entre pares acima de 2,0 MPa
+                      </div>
+                      <div style="font-size:12px;color:var(--muted);margin-top:4px">
+                        Encontrados <b>{cps_com_alerta} CP(s)</b> com <b>{ocorrencias_alerta} ocorrência(s)</b>.
+                        Maior diferença observada: <b>{maior_delta_geral:.2f} MPa</b>.
+                        Este alerta é de consistência do par e não altera sozinho a situação de atendimento ao FCK.
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="
+                        margin:2px 0 12px;padding:13px 16px;border-radius:14px;
+                        border:1px solid rgba(34,197,94,.35);
+                        background:rgba(34,197,94,.08);
+                    ">
+                      <div style="font-size:15px;font-weight:900;color:#22c55e">
+                        ✅ Pares conferidos — nenhuma diferença acima de 2,0 MPa
+                      </div>
+                      <div style="font-size:12px;color:var(--muted);margin-top:4px">
+                        Não foram identificadas divergências de pares acima do limite no filtro atual.
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            k1, k2, k3 = st.columns(3)
+            k1.metric("CPs com alerta de pares", cps_com_alerta)
+            k2.metric("Ocorrências Δ > 2 MPa", ocorrencias_alerta)
+            k3.metric("Maior Δ encontrado", f"{maior_delta_geral:.2f} MPa" if tem_alerta_par else "≤ 2,00 MPa")
+
+            if tem_alerta_par:
+                alertas_view = alertas_df.copy()
+
+                def _style_alerta_rows(row):
+                    return [
+                        "background-color:rgba(239,68,68,.10);font-weight:700;"
+                        for _ in row.index
+                    ]
+
+                alerta_styler = (
+                    alertas_view.style
+                    .apply(_style_alerta_rows, axis=1)
+                    .format({
+                        "Menor resultado (MPa)": "{:.2f}",
+                        "Maior resultado (MPa)": "{:.2f}",
+                        "Δ do par (MPa)": "{:.2f}",
+                    }, na_rep="—")
+                )
+                st.markdown(
+                    "<div class='ui-table-title' style='margin-top:8px'>🚨 Ocorrências que exigem revisão</div>"
+                    "<div class='ui-table-sub' style='margin-bottom:7px'>Veja primeiro estes CPs antes da tabela completa.</div>",
+                    unsafe_allow_html=True
+                )
+                st.dataframe(
+                    alerta_styler,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(120 + 35 * len(alertas_view), 430)
+                )
+
+            # Cópia exclusiva da tela: traz o alerta para as primeiras colunas
+            # e mostra o maior delta encontrado por CP.
+            pv_tecnica_screen = pv_cp_status.copy()
+            pv_tecnica_screen["Situação dos Pares"] = pv_tecnica_screen["CP"].map(
+                lambda cp: "🚨 REVISAR" if alerta_por_cp.get(cp, "") else "✅ OK"
+            )
+            pv_tecnica_screen["Maior Δ do Par (MPa)"] = pv_tecnica_screen["CP"].map(maior_delta_por_cp)
+            pv_tecnica_screen["Detalhe Δ > 2 MPa"] = pv_tecnica_screen["CP"].map(detalhe_por_cp).fillna("Sem par disponível")
+
+            # Remove da visualização a coluna antiga redundante e traz as
+            # novas colunas de conferência para perto do CP.
+            pv_tecnica_screen = pv_tecnica_screen.drop(
+                columns=["Alerta Pares (Δ>2 MPa)"],
+                errors="ignore"
+            )
+            front_cols = [
+                "CP",
+                "Situação dos Pares",
+                "Maior Δ do Par (MPa)",
+                "Detalhe Δ > 2 MPa",
+            ]
+            other_cols = [c for c in pv_tecnica_screen.columns if c not in front_cols]
+            pv_tecnica_screen = pv_tecnica_screen[front_cols + other_cols]
+
+            def _style_tech_rows(row):
+                has_alert = str(row.get("Situação dos Pares", "")).startswith("🚨")
+                if has_alert:
+                    return [
+                        "background-color:rgba(239,68,68,.10);"
+                        + ("font-weight:800;" if col in ("CP", "Situação dos Pares", "Maior Δ do Par (MPa)", "Detalhe Δ > 2 MPa") else "")
+                        for col in row.index
+                    ]
+                return ["" for _ in row.index]
+
+            tech_styler = (
+                pv_tecnica_screen.style
+                .apply(_style_tech_rows, axis=1)
+                .format({"Maior Δ do Par (MPa)": "{:.2f}"}, na_rep="—")
+            )
+
+            expander_label = (
+                f"🚨 VER TABELA TÉCNICA COMPLETA — {cps_com_alerta} CP(s) COM ALERTA"
+                if tem_alerta_par
+                else "📋 VER TABELA TÉCNICA COMPLETA — PARES OK"
+            )
+            with st.expander(expander_label, expanded=tem_alerta_par):
+                st.caption(
+                    "Linhas destacadas em vermelho exigem revisão. "
+                    "A coluna 'Detalhe Δ > 2 MPa' informa imediatamente a idade e a diferença encontrada."
+                )
+                st.dataframe(
+                    tech_styler,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(180 + 34 * len(pv_tecnica_screen), 680)
+                )
+
 
         # ---------------------------------------------------------------
         # SEÇÃO 4 — exportações

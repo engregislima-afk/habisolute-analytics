@@ -626,6 +626,18 @@ def _render_interactive_crosshair(fig):
         # Ancorar o valor no ponto efetivamente medido; nunca inventar pontos.
         is_reference = is_fck
         marker_style = "diamond" if is_mean else "circle"
+        if is_reference:
+            # Matplotlib axhline usa coordenadas relativas 0..1, não idades reais.
+            # Referências devem cobrir a idade efetiva dos dados, sem inventar CPs.
+            data_ages = []
+            for source_line in ax.get_lines():
+                if source_line is line or "fck" in str(source_line.get_label()).lower():
+                    continue
+                vals = pd.to_numeric(pd.Series(source_line.get_xdata()), errors="coerce").dropna()
+                data_ages.extend(vals.tolist())
+            if data_ages:
+                x = [min(data_ages), max(data_ages)]
+                y = [float(y[0]), float(y[0])]
         chart.add_trace(go.Scatter(
             x=x, y=y, name=label if label and not label.startswith("_") else f"Série {index+1}",
             mode="lines+markers" if has_marker and not is_reference else "lines",
@@ -641,7 +653,7 @@ def _render_interactive_crosshair(fig):
         template="plotly_dark", paper_bgcolor="#383D40", plot_bgcolor="#464B4F",
         font=dict(family="Arial, sans-serif", color="#E8ECEF", size=11),
         margin=dict(l=15, r=20, t=25, b=20), height=480,
-        hovermode="closest", hoverdistance=35, spikedistance=-1,
+        hovermode="closest", hoverdistance=-1, spikedistance=-1,
         legend=dict(orientation="h", yanchor="top", y=-0.23, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
         hoverlabel=dict(bgcolor="#293035", bordercolor="#F97316", font=dict(size=12, color="#FFFFFF")),
         dragmode="pan",
@@ -649,8 +661,8 @@ def _render_interactive_crosshair(fig):
     axis_common = dict(
         showgrid=True, gridcolor="rgba(205,212,215,0.15)", zeroline=False,
         showline=True, linecolor="#9BA3A6", mirror=False,
-        showspikes=True, spikemode="toaxis", spikesnap="data",
-        spikethickness=1.5, spikecolor="#F97316", spikedash="dash",
+        showspikes=True, spikemode="across", spikesnap="data",
+        spikethickness=2, spikecolor="#FFAB62", spikedash="solid",
         ticks="outside", tickfont=dict(size=11),
     )
     chart.update_xaxes(title_text="IDADE (DIAS)", **axis_common)
@@ -809,12 +821,17 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
         # Na tela, Plotly habilita mira interativa com guias até os eixos.
         try:
             _render_interactive_crosshair(fscreen)
-        except Exception:
-            st.pyplot(fscreen, use_container_width=True)
+        except ImportError as exc:
+            st.error("A mira interativa precisa da biblioteca Plotly. Adicione plotly>=5.18 ao requirements.txt e reinicie o sistema.")
+            st.exception(exc)
+        except Exception as exc:
+            st.error("Não foi possível abrir o gráfico interativo. Veja o erro abaixo para corrigirmos sem perder os dados.")
+            st.exception(exc)
         finally:
             plt.close(fscreen)
-    except Exception:
-        st.pyplot(fig, use_container_width=True)
+    except Exception as exc:
+        st.error("Erro ao preparar o gráfico interativo:")
+        st.exception(exc)
 
 def _render_header():
     st.markdown("""

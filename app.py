@@ -477,6 +477,45 @@ section[data-testid="stSidebar"] h3 {font-size:14px!important}
 """,unsafe_allow_html=True)
 
 
+# DESIGN SYSTEM V3 — nova composição visual, mantendo as rotinas e dados intactos.
+st.markdown("""
+<style>
+:root {--hx-ink:#0b1220;--hx-accent:#ff792d;--hx-cyan:#22d3ee;--hx-border:#263347}
+html {scroll-behavior:smooth}
+[data-testid="stAppViewContainer"]>.main {background:linear-gradient(135deg,#08111d 0%,#101c2c 55%,#0a1421 100%)!important}
+.stApp {--bg:#0b1422!important;--surface:#111e2e!important;--panel:#142235!important;--panel2:#1a293c!important;--text:#f4f7fc!important;--muted:#a1aec2!important;--line:#304056!important;--soft-line:rgba(160,181,208,.16)!important;color:#f4f7fc!important}
+[data-testid="stSidebar"]>div {background:#0c1726!important;border-right:1px solid #2c3b4e!important}
+.block-container {max-width:1680px!important;padding:12px 38px 80px!important}
+[data-testid="stHeader"] {background:transparent!important}
+.hx-top {min-height:75px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 5px 18px;border-bottom:1px solid #273951;margin-bottom:22px}
+.hx-topbrand {display:flex;align-items:center;gap:13px}.hx-logo {width:47px;height:47px;display:grid;place-items:center;border-radius:13px;background:#ff792d;color:#fff;font-size:27px;font-weight:900}.hx-logo span {font-size:17px;margin-left:-3px;color:#203044}
+.hx-company{font-size:20px;color:#fff;font-weight:900;letter-spacing:1px}.hx-company em{font-style:normal;color:#ff792d;font-size:12px;letter-spacing:2px;margin-left:8px}.hx-tagline{font-size:10px;color:#98a9be;letter-spacing:1.2px;margin-top:4px}
+.hx-topright {font-size:10px;color:#b9c6d7;font-weight:800;letter-spacing:1.1px}.hx-live{display:inline-block;width:7px;height:7px;border-radius:50%;background:#30d7a3;box-shadow:0 0 0 5px rgba(48,215,163,.10);margin-right:7px}.hx-version{padding:7px 11px;border:1px solid #3a485c;border-radius:7px;margin-left:15px;color:#f1f5fb}
+.hx-welcome{position:relative;display:flex;justify-content:space-between;gap:24px;align-items:center;overflow:hidden;background:radial-gradient(circle at 84% 34%,rgba(255,121,45,.23),transparent 35%),linear-gradient(110deg,#182a42,#142236 62%,#243044);border:1px solid #37465d;border-radius:22px;padding:36px 42px;min-height:220px;box-shadow:0 20px 45px rgba(0,0,0,.20)}
+.hx-overline{font-size:11px;font-weight:850;color:#ffab72;letter-spacing:2px;margin-bottom:14px}.hx-welcome h1{font-size:clamp(27px,3vw,43px);line-height:1.1;font-weight:900;letter-spacing:-1.6px;color:#fff;margin:0 0 15px}.hx-welcome h1 span{color:#ff914f}.hx-welcome p{color:#adbed0;font-size:13px;margin:0;max-width:580px;line-height:1.7}
+.hx-welcome-art{display:flex;align-items:flex-end;flex-direction:column;gap:7px;min-width:255px}.hx-welcome-art strong{font-size:10px;letter-spacing:1.2px;color:#cbd9e7}.hx-welcome-art small{font-size:11px;color:#95a9bf}
+.hx-pulse{display:flex;gap:8px;height:90px;align-items:flex-end;margin-bottom:10px}.hx-pulse span{width:19px;border-radius:5px 5px 0 0;background:linear-gradient(0deg,#ef6a1f,#ffad68);height:38%}.hx-pulse span:nth-child(2){height:59%}.hx-pulse span:nth-child(3){height:42%}.hx-pulse span:nth-child(4){height:80%;background:linear-gradient(0deg,#0e9ab6,#43e0ee)}.hx-pulse span:nth-child(5){height:69%}.hx-pulse span:nth-child(6){height:91%;background:linear-gradient(0deg,#0e9ab6,#43e0ee)}.hx-pulse span:nth-child(7){height:74%}.hx-pulse span:nth-child(8){height:100%;background:linear-gradient(0deg,#0e9ab6,#43e0ee)}
+.hx-jump{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#111e30;border:1px solid #283a52;border-radius:13px;margin:14px 0 26px;padding:9px 12px}.hx-jump>span{font-size:10px;letter-spacing:1px;font-weight:850;color:#788fa8;padding:0 14px 0 4px}.hx-jump a{display:inline-flex;color:#bdcfe2!important;text-decoration:none!important;border-radius:8px;padding:10px 13px;font-size:12px;font-weight:750;transition:background .2s}.hx-jump a:hover{background:#243750;color:#ff995c!important}
+.ui-statusbar{display:none!important}
+.ui-section-head{position:relative;background:#121f31!important;padding:20px 22px!important;border:1px solid #304056!important;border-radius:15px!important;margin:34px 0 16px!important;box-shadow:0 9px 30px rgba(0,0,0,.10)!important;border-bottom:1px solid #304056!important}
+.ui-section-title{font-size:22px!important;font-weight:900!important;color:#f4f7fc!important}.ui-section-sub{font-size:12px!important;color:#94a7bd!important}.ui-section-ico{background:#2b3443!important;color:#ff984c!important;border-radius:11px!important;width:47px!important;height:47px!important;font-size:21px!important}.ui-chip{background:#332819!important;color:#ffb477!important;border:1px solid #624328!important;padding:8px 11px!important}
+.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:15px!important}.ov-kpis[style*="repeat(4"]{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.ov-card{background:#17263a!important;border:1px solid #31445c!important;border-top:0!important;border-left:4px solid #ff873e!important;border-radius:14px!important;min-height:128px!important;padding:21px!important;box-shadow:0 10px 28px rgba(0,0,0,.12)!important}.ov-card:nth-child(3n+2){border-left-color:#22d3ee!important}.ov-card:nth-child(3n){border-left-color:#34d399!important}.ov-label{font-size:11px!important;color:#a7bdd4!important}.ov-value{color:#f8fafc!important;font-size:26px!important;font-weight:900!important;margin-top:15px!important}.ov-hint{color:#849db5!important}
+.ov-tech-card {background:#17263a!important;border:1px solid #31445c!important;border-top:3px solid #ff873e!important;border-left:1px solid #31445c!important;padding:18px!important}
+.stTabs [data-baseweb="tab-list"]{background:#17263a!important;border:1px solid #34445b!important;border-radius:12px!important;padding:7px!important}.stTabs [data-baseweb="tab"]{height:46px!important;color:#b4c6dc!important;font-size:13px!important}.stTabs [aria-selected="true"]{background:#ff792d!important;color:#fff!important;box-shadow:none!important}
+[data-testid="stFileUploader"]{background:#16283d!important;border:1px solid #3d5169!important;padding:18px!important;border-radius:16px!important}[data-testid="stFileUploaderDropzone"]{background:#1b3148!important;border:2px dashed #ff8e49!important;border-radius:13px!important;padding:27px!important}
+.stButton>button,.stDownloadButton>button{min-height:40px!important}.stDownloadButton>button{background:#f97316!important}
+.ui-chart-head{background:#192a40!important;border:1px solid #3d516b!important;border-left:4px solid #22d3ee!important;padding:17px!important;border-radius:14px!important}.ui-chart-title{font-size:17px!important}.ui-chart-tag{color:#72e5ff!important;background:#153344!important}
+.ui-table-head{background:#1a2b42!important;border-radius:12px 12px 0 0!important;border:1px solid #354961!important;padding:16px!important;margin-bottom:0!important}.ui-table-title{color:#f1f6fd!important;font-size:17px!important}.ui-table-sub{color:#a5b8cb!important}.ui-table-count{background:#273a50!important;color:#d2e1ef!important}
+[data-testid="stDataFrame"]{border:1px solid #364960!important;border-radius:0 0 12px 12px!important}
+section[data-testid="stSidebar"] .sidebar-brand-title{font-size:22px!important;color:white!important}
+section[data-testid="stSidebar"] label,section[data-testid="stSidebar"] p{color:#c6d5e4!important}
+.stTextInput input,.stNumberInput input,.stDateInput input,.stSelectbox div[data-baseweb="select"]>div{background:#16263b!important;color:#f1f5fc!important;border:1px solid #3b506b!important}
+@media(max-width:1100px){.hx-welcome-art{display:none}.ov-kpis,.ov-kpis[style*="repeat(4"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}.block-container{padding-left:20px!important;padding-right:20px!important}}
+@media(max-width:650px){.hx-topright{display:none}.hx-welcome{padding:26px 22px;min-height:0}.ov-kpis,.ov-kpis[style*="repeat(4"]{grid-template-columns:1fr!important}.hx-jump{gap:2px}.hx-jump a{font-size:11px;padding:8px}.hx-company{font-size:15px}.hx-tagline{font-size:8px}}
+</style>
+""", unsafe_allow_html=True)
+
 def _ui_section(title: str, subtitle: str = "", icon: str = "◆", chip: str = "") -> str:
     import html as _html
     chip_html = f'<div class="ui-chip">{_html.escape(chip)}</div>' if chip else ""
@@ -653,17 +692,26 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
         st.pyplot(fig, use_container_width=True)
 
 def _render_header():
-    """Identidade executiva: cabeçalho compacto, sem modificar o processamento."""
     st.markdown("""
-    <div class="habi-hero">
-      <div class="habi-brand-mark">H</div>
-      <div class="habi-brand-copy">
-        <div class="habi-eyebrow">HABISOLUTE ENGENHARIA · CONTROLE TECNOLÓGICO</div>
-        <div class="habi-hero-title">Analytics <span>Laboratório inteligente</span></div>
-        <div class="habi-hero-sub">Gestão de certificados, resistência e conformidade em um só painel.</div>
+    <div class="hx-top">
+      <div class="hx-topbrand"><span class="hx-logo">H<span>◆</span></span>
+        <div><div class="hx-company">HABISOLUTE <em>ANALYTICS</em></div>
+        <div class="hx-tagline">ENGENHARIA · INTELIGÊNCIA DE CONTROLE TECNOLÓGICO</div></div>
       </div>
-      <div class="habi-hero-right"><span class="habi-dot"></span> PAINEL DE ANÁLISES <small>AMBIENTE OPERACIONAL</small></div>
+      <div class="hx-topright"><span class="hx-live"></span> AMBIENTE DE ANÁLISE
+        <span class="hx-version">PAINEL V3</span></div>
     </div>
+    <div class="hx-welcome">
+       <div><div class="hx-overline">CENTRAL DE INTELIGÊNCIA LABORATORIAL</div>
+       <h1>Controle tecnológico <span>em tempo real.</span></h1>
+       <p>Importe certificados, encontre divergências e acompanhe a resistência do concreto em um só lugar.</p></div>
+       <div class="hx-welcome-art"><div class="hx-pulse"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+       <strong>ANÁLISE DE RESISTÊNCIA</strong><small>Precisão e rastreabilidade</small></div>
+    </div>
+    <div class="hx-jump"><span>ACESSO RÁPIDO</span>
+      <a href="#upload-area">01 &nbsp; Importação</a><a href="#technical-alerts">02 &nbsp; Alertas</a>
+      <a href="#attention-map">03 &nbsp; Mapa de CPs</a><a href="#graphs">04 &nbsp; Gráficos</a>
+      <a href="#pair-analysis">05 &nbsp; Tabela técnica</a></div>
     """, unsafe_allow_html=True)
 
 # =============================================================================
@@ -1953,6 +2001,7 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
 # =============================================================================
 # Uploader
 # =============================================================================
+st.markdown("<div id='upload-area'></div>", unsafe_allow_html=True)
 st.markdown(_ui_section("Importar certificados", "Envie os PDFs de rompimento para iniciar a análise.", "📄", "PDF"), unsafe_allow_html=True)
 
 BATCH_MODE = bool(s.get("BATCH_MODE", False))
@@ -2073,7 +2122,6 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     import pandas as _pd
     from datetime import datetime as _dt
 
-    st.markdown("#### Visão Geral")
 
     def _format_float_label_local(value: Optional[float]) -> str:
         if value is None or _pd.isna(value): return "—"
@@ -2694,6 +2742,7 @@ if uploaded_files:
             viol_cp=viol_cp,
             viol_nf=viol_nf,
         )
+        st.markdown("<div id='technical-alerts'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section(
             "Central de Alertas Técnicos",
             "Identifique primeiro os CPs que merecem revisão e depois aprofunde a análise.",

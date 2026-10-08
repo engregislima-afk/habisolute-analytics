@@ -572,6 +572,96 @@ def render_screen_table(df_: pd.DataFrame, title: str, subtitle: str = "", heigh
         kwargs["height"] = height
     st.dataframe(df_, **kwargs)
 
+def _render_interactive_crosshair(fig):
+    """Gráfico interativo: linhas-guia até os eixos e leitura dos pontos reais.
+
+    Usa as séries já calculadas no Matplotlib, sem recalcular resistências.
+    O eixo X indica idade (dias); o eixo Y indica resistência (MPa).
+    """
+    import numpy as np
+    import plotly.graph_objects as go
+    from matplotlib.colors import to_hex
+    from matplotlib.collections import PolyCollection
+
+    if not fig.axes:
+        raise ValueError("Figura sem eixos")
+    ax = fig.axes[0]
+    chart = go.Figure()
+
+    # Conservar faixas técnicas ±1 DP, quando presentes no gráfico de origem.
+    for coll in ax.collections:
+        if isinstance(coll, PolyCollection):
+            try:
+                for path in coll.get_paths():
+                    pts = path.vertices
+                    if len(pts) < 3:
+                        continue
+                    chart.add_trace(go.Scatter(
+                        x=pts[:, 0], y=pts[:, 1], mode="lines", fill="toself",
+                        line=dict(width=0), fillcolor="rgba(56,189,248,0.12)",
+                        showlegend=False, hoverinfo="skip",
+                    ))
+            except (ValueError, TypeError, AttributeError):
+                pass
+
+    colors = ["#38BDF8", "#FB923C", "#34D399", "#A78BFA", "#F472B6", "#FACC15", "#60A5FA"]
+    for index, line in enumerate(ax.get_lines()):
+        import pandas as pd
+        label = str(line.get_label() or "")
+        xraw = pd.to_numeric(pd.Series(line.get_xdata()), errors="coerce")
+        yraw = pd.to_numeric(pd.Series(line.get_ydata()), errors="coerce")
+        valid = xraw.notna() & yraw.notna()
+        x = xraw.loc[valid].tolist()
+        y = yraw.loc[valid].tolist()
+        if not x:
+            continue
+        low = label.lower()
+        is_fck = "fck" in low or "projeto" in low
+        is_mean = "média" in low or "media" in low
+        is_est = "estim" in low or "curva estimada" in low
+        color = ("#FB7185" if is_fck else "#38BDF8" if is_mean else "#FB923C" if is_est else colors[index % len(colors)])
+        has_marker = str(line.get_marker()) not in ("None", "none", "", " ")
+        linestyle = str(line.get_linestyle())
+        dash = "dot" if linestyle == ":" or is_fck else "dash" if linestyle in ("--", "-.") else "solid"
+        # Ancorar o valor no ponto efetivamente medido; nunca inventar pontos.
+        is_reference = is_fck
+        marker_style = "diamond" if is_mean else "circle"
+        chart.add_trace(go.Scatter(
+            x=x, y=y, name=label if label and not label.startswith("_") else f"Série {index+1}",
+            mode="lines+markers" if has_marker and not is_reference else "lines",
+            line=dict(color=color, width=2.5 if is_mean or is_fck else 2, dash=dash),
+            marker=dict(size=8, color=color, symbol=marker_style, line=dict(width=1, color="#E7E9EB")),
+            hovertemplate=("<b>%{fullData.name}</b><br>Idade: <b>%{x:g} dias</b><br>Resistência: <b>%{y:.2f} MPa</b><extra></extra>"),
+            connectgaps=False,
+        ))
+
+    if not chart.data:
+        raise ValueError("Sem dados numéricos para gráfico interativo")
+    chart.update_layout(
+        template="plotly_dark", paper_bgcolor="#383D40", plot_bgcolor="#464B4F",
+        font=dict(family="Arial, sans-serif", color="#E8ECEF", size=11),
+        margin=dict(l=15, r=20, t=25, b=20), height=480,
+        hovermode="closest", hoverdistance=35, spikedistance=-1,
+        legend=dict(orientation="h", yanchor="top", y=-0.23, x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+        hoverlabel=dict(bgcolor="#293035", bordercolor="#F97316", font=dict(size=12, color="#FFFFFF")),
+        dragmode="pan",
+    )
+    axis_common = dict(
+        showgrid=True, gridcolor="rgba(205,212,215,0.15)", zeroline=False,
+        showline=True, linecolor="#9BA3A6", mirror=False,
+        showspikes=True, spikemode="toaxis", spikesnap="data",
+        spikethickness=1.5, spikecolor="#F97316", spikedash="dash",
+        ticks="outside", tickfont=dict(size=11),
+    )
+    chart.update_xaxes(title_text="IDADE (DIAS)", **axis_common)
+    chart.update_yaxes(title_text="RESISTÊNCIA (MPa)", **axis_common)
+    chart.update_xaxes(tickformat="d")
+    st.plotly_chart(chart, use_container_width=True, config={
+        "displaylogo": False, "scrollZoom": True,
+        "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+    })
+
+
 def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLISE"):
     """Renderização tecnológica somente na tela; o figure original continua intacto para PDFs/exportações."""
     import copy
@@ -715,8 +805,14 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
                     t.set_color("#DDEBFA")
                     t.set_fontsize(9)
 
-        st.pyplot(fscreen, use_container_width=True)
-        plt.close(fscreen)
+        # A imagem Matplotlib continua sendo a fonte dos PDFs e downloads.
+        # Na tela, Plotly habilita mira interativa com guias até os eixos.
+        try:
+            _render_interactive_crosshair(fscreen)
+        except Exception:
+            st.pyplot(fscreen, use_container_width=True)
+        finally:
+            plt.close(fscreen)
     except Exception:
         st.pyplot(fig, use_container_width=True)
 
@@ -2873,7 +2969,7 @@ if uploaded_files:
         ax.set_title("Crescimento da resistência por corpo de prova")
         place_right_legend(ax)
         ax.grid(True, linestyle="--", alpha=0.35); ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        render_screen_chart(fig1, "Crescimento da resistência", "Evolução real por corpo de prova ao longo das idades.", "GRÁFICO 1")
+        render_screen_chart(fig1, "Crescimento da resistência", "Passe o mouse sobre os pontos: cruz de leitura para idade (dias) e resistência (MPa).", "GRÁFICO 1")
         if CAN_EXPORT:
             _buf1 = io.BytesIO(); fig1.savefig(_buf1, format="png", dpi=200, bbox_inches="tight")
             st.download_button("🖼️ Baixar Gráfico 1 (PNG)", data=_buf1.getvalue(), file_name="grafico1_real.png", mime="image/png")
@@ -2895,7 +2991,7 @@ if uploaded_files:
             ax2.set_title("Curva estimada")
             ax2.set_xlabel("Idade (dias)"); ax2.set_ylabel("Resistência (MPa)")
             place_right_legend(ax2); ax2.grid(True, linestyle="--", alpha=0.5)
-            render_screen_chart(fig2, "Curva estimada", "Referência técnica calculada a partir dos dados disponíveis.", "GRÁFICO 2")
+            render_screen_chart(fig2, "Curva estimada", "Passe o mouse sobre a curva para ver idade e resistência estimada.", "GRÁFICO 2")
             if CAN_EXPORT:
                 _buf2 = io.BytesIO(); fig2.savefig(_buf2, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 2 (PNG)", data=_buf2.getvalue(), file_name="grafico2_estimado.png", mime="image/png")
@@ -2942,7 +3038,7 @@ if uploaded_files:
             ax3.set_xlabel("Idade (dias)"); ax3.set_ylabel("Resistência (MPa)")
             ax3.set_title("Comparação Real × Estimado (médias)")
             place_right_legend(ax3); ax3.grid(True, linestyle="--", alpha=0.5)
-            render_screen_chart(fig3, "Comparação Real × Estimado", "Médias reais comparadas com a curva de referência.", "GRÁFICO 3")
+            render_screen_chart(fig3, "Comparação Real × Estimado", "Mira interativa para comparar a resistência real e a estimada por idade.", "GRÁFICO 3")
             if CAN_EXPORT:
                 _buf3 = io.BytesIO(); fig3.savefig(_buf3, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 3 (PNG)", data=_buf3.getvalue(), file_name="grafico3_comparacao.png", mime="image/png")
@@ -2995,7 +3091,7 @@ if uploaded_files:
             ax4.set_xlabel("Idade (dias)"); ax4.set_ylabel("Resistência (MPa)")
             ax4.set_title("Pareamento Real × Estimado por CP (Curva de Crescimento)")
             place_right_legend(ax4); ax4.grid(True, linestyle="--", alpha=0.5)
-            render_screen_chart(fig4, "Real × Estimado ponto a ponto", "Diferença entre cada leitura real e sua referência estimada.", "GRÁFICO 4")
+            render_screen_chart(fig4, "Real × Estimado ponto a ponto", "Passe o mouse nos pontos reais e estimados para visualizar os valores.", "GRÁFICO 4")
             if CAN_EXPORT:
                 _buf4 = io.BytesIO(); fig4.savefig(_buf4, format="png", dpi=200, bbox_inches="tight")
                 st.download_button("🖼️ Baixar Gráfico 4 (PNG)", data=_buf4.getvalue(), file_name="grafico4_pareamento.png", mime="image/png")

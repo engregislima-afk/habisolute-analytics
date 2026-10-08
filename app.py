@@ -516,6 +516,35 @@ section[data-testid="stSidebar"] label,section[data-testid="stSidebar"] p{color:
 </style>
 """, unsafe_allow_html=True)
 
+# V4 — Cinza concreto escuro + tipografia compacta (somente apresentação)
+st.markdown("""
+<style>
+/* Cinza grafite neutro inspirado no concreto, sem fundo preto nem azul-marinho */
+.stApp {--bg:#34383B!important;--surface:#3E4347!important;--panel:#464B4F!important;--panel2:#50555A!important;--text:#F3F3F0!important;--muted:#C4C9C9!important;--line:#656B6F!important;--soft-line:rgba(225,229,227,.15)!important;background:#34383B!important;color:#F3F3F0!important}
+[data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"]>.main {background:linear-gradient(165deg,#383D40 0%,#34383B 55%,#3C4144 100%)!important}
+[data-testid="stSidebar"]>div,section[data-testid="stSidebar"]>div {background:#3B4043!important;border-right:1px solid #62686B!important}
+.hx-top {border-bottom-color:#62686B!important;min-height:61px!important;margin-bottom:15px!important;padding-bottom:12px!important}
+.hx-company{font-size:17px!important}.hx-company em{font-size:10px!important}.hx-logo{width:41px!important;height:41px!important;font-size:23px!important}
+.hx-welcome{background:linear-gradient(112deg,#4A4F52 0%,#42474B 61%,#555A5D 100%)!important;border-color:#666C6F!important;min-height:156px!important;padding:23px 29px!important;box-shadow:0 8px 20px rgba(0,0,0,.10)!important;border-radius:15px!important}
+.hx-welcome h1{font-size:clamp(23px,2.3vw,32px)!important;letter-spacing:-.7px!important;margin-bottom:10px!important}
+.hx-welcome p{font-size:12px!important;line-height:1.5!important;color:#DBDFDF!important}.hx-overline{font-size:10px!important;margin-bottom:8px!important}
+.hx-pulse{height:66px!important}.hx-pulse span{width:15px!important}.hx-jump{background:#42474B!important;border-color:#646A6E!important;padding:6px 10px!important;margin:12px 0 17px!important}.hx-jump a{font-size:11px!important;padding:7px 10px!important;color:#ECF0F0!important}.hx-jump a:hover{background:#555B5F!important}
+.ui-section-head{background:#464B4F!important;border-color:#656B6F!important;padding:13px 16px!important;margin:23px 0 12px!important;box-shadow:none!important;border-radius:11px!important}
+.ui-section-title{font-size:17px!important;font-weight:800!important}.ui-section-sub{font-size:11px!important;color:#C9D0D0!important}.ui-section-ico{width:36px!important;height:36px!important;font-size:17px!important;background:#55595B!important}.ui-chip{font-size:10px!important}
+.ov-kpis{gap:10px!important}.ov-card{background:#4A4F52!important;border-color:#666B6F!important;border-left-width:3px!important;min-height:99px!important;padding:14px 16px!important;box-shadow:none!important}.ov-label{font-size:10px!important;color:#D1D6D6!important}.ov-value{font-size:21px!important;margin-top:8px!important}.ov-hint{font-size:10px!important;color:#C5CBCB!important}.ov-tech-card{background:#4A4F52!important;border-color:#666B6F!important;padding:13px!important}
+.stTabs [data-baseweb="tab-list"]{background:#464B4F!important;border-color:#686E71!important}.stTabs [data-baseweb="tab"]{height:37px!important;font-size:11px!important;padding:0 11px!important;color:#ECEEEE!important}
+[data-testid="stFileUploader"]{background:#464B4F!important;border-color:#696F72!important;padding:12px!important}[data-testid="stFileUploaderDropzone"]{background:#50565A!important;border-color:#EB8B4A!important;padding:16px!important}
+.ui-chart-head{background:#4A4F52!important;border-color:#697074!important;padding:12px 14px!important}.ui-chart-title,.ui-table-title{font-size:14px!important}.ui-chart-sub,.ui-table-sub{font-size:11px!important}
+.ui-table-head{background:#484D51!important;border-color:#656D70!important;padding:12px!important}.ui-table-count{background:#585D61!important;color:#F1F2F1!important}
+[data-testid="stDataFrame"]{border-color:#697073!important}
+.stTextInput input,.stNumberInput input,.stDateInput input,.stSelectbox div[data-baseweb="select"]>div,.stMultiSelect div[data-baseweb="select"]>div{background:#4E5357!important;color:#F3F5F5!important;border-color:#6A7174!important;font-size:12px!important}
+.stButton>button,.stDownloadButton>button{min-height:36px!important;font-size:12px!important;padding:7px 12px!important}
+section[data-testid="stSidebar"] .sidebar-brand-title{font-size:17px!important}section[data-testid="stSidebar"] label,section[data-testid="stSidebar"] p{color:#E3E8E7!important;font-size:12px!important}
+.habi-hero{background:#474C50!important;border-color:#696F72!important;min-height:85px!important;padding:14px 18px!important}.habi-hero-title{font-size:23px!important}
+@media(max-width:650px){.hx-welcome{padding:17px 18px!important}.hx-welcome h1{font-size:23px!important}.ui-section-title{font-size:16px!important}}
+</style>
+""",unsafe_allow_html=True)
+
 def _ui_section(title: str, subtitle: str = "", icon: str = "◆", chip: str = "") -> str:
     import html as _html
     chip_html = f'<div class="ui-chip">{_html.escape(chip)}</div>' if chip else ""
@@ -576,13 +605,13 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
             "#FF5E7A",  # coral
             "#22D3EE",  # turquesa
         ]
-        tech_bg = "#050B12"
-        panel_bg = "#07111D"
+        tech_bg = "#383D40"
+        panel_bg = "#464B4F"
         text_main = "#F3F8FF"
-        text_muted = "#8FA7BE"
-        grid_major = "#244258"
-        grid_minor = "#173044"
-        spine = "#2A4A60"
+        text_muted = "#CAD0D1"
+        grid_major = "#6D7679"
+        grid_minor = "#626B6E"
+        spine = "#858D8F"
 
         fscreen.patch.set_facecolor(tech_bg)
         fscreen.patch.set_edgecolor("#16364A")

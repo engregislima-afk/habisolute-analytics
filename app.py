@@ -234,7 +234,7 @@ s["logged_in"] = True
 s["username"] = "Habisolute"
 s["is_admin"] = True
 s["must_change"] = False
-s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Claro corporativo"))
+s.setdefault("theme_mode", load_user_prefs().get("theme_mode", "Escuro moderno"))
 s.setdefault("brand", load_user_prefs().get("brand", "Laranja"))
 s.setdefault("uploader_key", 0); s.setdefault("OUTLIER_SIGMA", 3.0)
 s.setdefault("TOL_MP", 1.0); s.setdefault("BATCH_MODE", False); s.setdefault("_prev_batch", s["BATCH_MODE"])
@@ -403,6 +403,80 @@ section[data-testid="stSidebar"] .stExpander details{{box-shadow:none!important}
 """
 st.markdown(css, unsafe_allow_html=True)
 
+# ============================================================================
+# HABISOLUTE / DESIGN SYSTEM 2026 — apresentação apenas, sem alterar regras
+# ============================================================================
+st.markdown("""
+<style>
+:root { --h-orange:#f97316;--h-orange-soft:rgba(249,115,22,.12);--h-green:#31c48d;--h-danger:#fb7185; }
+html,body,[data-testid="stAppViewContainer"] { font-family:Inter,"Segoe UI",Arial,sans-serif; }
+.stApp { background:var(--bg)!important; }
+.block-container { padding-top:1.0rem!important; padding-bottom:4rem!important; }
+[data-testid="stHeader"] { height:2.5rem; }
+.habi-hero { display:flex;align-items:center;gap:18px;min-height:114px;padding:23px 27px;
+    background:linear-gradient(120deg,#111d2b,#152537 58%,#1e2a36);border:1px solid #293849;
+    border-radius:20px;margin:2px 0 18px;box-shadow:0 12px 28px rgba(0,0,0,.12); }
+.habi-brand-mark {width:55px;height:55px;flex:none;display:flex;align-items:center;justify-content:center;
+    border-radius:14px;background:linear-gradient(145deg,#fb923c,#ea580c);font-size:33px;color:white;
+    font-weight:900;box-shadow:0 8px 22px rgba(249,115,22,.18);}
+.habi-brand-copy {flex:1;min-width:0}.habi-eyebrow {font-size:10px;font-weight:750;letter-spacing:1.8px;color:#b6c5d7}
+.habi-hero-title {font-size:30px;letter-spacing:-1.2px;color:#f8fafc;font-weight:850;line-height:1.32}
+.habi-hero-title span {font-size:13px;font-weight:550;color:#fb923c;letter-spacing:0;margin-left:11px}
+.habi-hero-sub {font-size:12px;color:#a9bacb;margin-top:2px}
+.habi-hero-right {border:1px solid #31465a;color:#e4edf7;border-radius:12px;padding:11px 15px;font-size:10px;
+    font-weight:800;letter-spacing:1.0px;white-space:nowrap}
+.habi-hero-right small {display:block;color:#9aadc2;font-size:9px;margin:6px 0 0 17px;letter-spacing:.8px}
+.habi-dot {width:7px;height:7px;background:#34d399;border-radius:50%;display:inline-block;margin-right:7px}
+.ui-statusbar { margin:0 0 21px!important; padding:8px 13px!important;border-radius:9px!important;
+    box-shadow:none!important; font-size:11px!important; }
+.ui-section-head { margin:31px 0 13px!important;padding-bottom:12px;border-bottom:1px solid var(--soft-line); }
+.ui-section-ico { background:var(--h-orange-soft)!important;border:0!important;border-radius:10px!important;width:39px!important;height:39px!important; }
+.ui-section-title {font-size:19px!important;font-weight:800!important;letter-spacing:-.5px!important}
+.ui-section-sub {font-size:12px!important;margin-top:4px!important;line-height:1.5}
+.ui-chip,.ui-chart-tag,.ov-tech-label { color:var(--h-orange)!important; }
+.h-card,.ov-card,.ov-tech-card,[data-testid="stVerticalBlockBorderWrapper"] {box-shadow:none!important;
+    background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:14px!important;}
+.ov-kpis {gap:12px!important;margin-top:15px!important}.ov-card {padding:18px!important;min-height:107px!important;
+    border-top:2px solid rgba(249,115,22,.45)!important}
+.ov-label,.h-kpi-label {font-size:11px!important;letter-spacing:.6px!important}
+.ov-value {font-size:25px!important;margin-top:12px!important;letter-spacing:-.7px}
+.ov-hint {font-size:11px!important}
+.ov-tech-card {border-left:3px solid var(--h-orange)!important}
+.ui-semaforo,.ov-semaforo {border-radius:12px!important}
+.stButton>button { background:var(--panel2)!important;color:var(--text)!important;border:1px solid var(--line)!important;
+    box-shadow:none!important;font-weight:700!important;border-radius:10px!important;}
+.stButton>button[kind="primary"],.stButton>button[data-testid="stBaseButton-primary"],
+.stDownloadButton>button {background:#ea580c!important;color:#fff!important;border:1px solid #ea580c!important;
+    box-shadow:none!important;border-radius:10px!important;font-weight:750!important;}
+.stButton>button:hover {color:var(--h-orange)!important;border-color:var(--h-orange)!important;transform:none!important;box-shadow:none!important}
+.stDownloadButton>button:hover,.stButton>button[kind="primary"]:hover {background:#c2410c!important;color:white!important;transform:none!important}
+.stTextInput input,.stNumberInput input,.stDateInput input,.stTextArea textarea {min-height:42px;border-radius:9px!important}
+.stSelectbox div[data-baseweb="select"]>div,.stMultiSelect div[data-baseweb="select"]>div {min-height:42px;border-radius:9px!important}
+[data-testid="stFileUploader"] {border:1px solid var(--line)!important;box-shadow:none!important;padding:15px!important;background:var(--panel)!important}
+[data-testid="stFileUploaderDropzone"] {border:1.5px dashed rgba(249,115,22,.55)!important;background:var(--panel2)!important;padding:14px!important}
+.stTabs [data-baseweb="tab-list"] {box-shadow:none!important;border-radius:11px!important;padding:5px!important;gap:4px!important}
+.stTabs [data-baseweb="tab"] {border-radius:8px!important;font-size:12px!important;padding:0 13px!important;font-weight:700!important}
+.stTabs [aria-selected="true"] {color:var(--text)!important;background:var(--h-orange-soft)!important;box-shadow:inset 0 -2px 0 var(--h-orange)!important}
+.stExpander details,[data-testid="stDataFrame"] {box-shadow:none!important;border-radius:11px!important}
+.ui-chart-head {border:1px solid var(--line)!important;border-left:3px solid var(--h-orange)!important;
+    border-radius:10px!important;background:var(--panel)!important;box-shadow:none!important;padding:12px 14px!important;}
+.ui-chart-title,.ui-table-title {font-size:15px!important;letter-spacing:-.2px}
+.ui-chart-tag {border-color:var(--line)!important;background:var(--panel2)!important;box-shadow:none!important}
+.ui-table-head {padding-top:12px!important}
+section[data-testid="stSidebar"]>div {background:var(--surface)!important}
+section[data-testid="stSidebar"] .block-container {padding-top:20px!important}
+.sidebar-brand {background:transparent!important;box-shadow:none!important;border:none!important;
+    border-bottom:1px solid var(--line)!important;border-radius:0!important;padding:14px 4px 19px!important}
+.sidebar-brand-title {font-size:20px!important;letter-spacing:1px!important}
+.sidebar-brand-sub {letter-spacing:1.5px!important;font-size:10px!important}
+section[data-testid="stSidebar"] h3 {font-size:14px!important}
+[data-testid="stAlert"] {box-shadow:none!important;border-radius:10px!important}
+@media(max-width:1000px){.habi-hero-right{display:none}.habi-hero-title span{display:block;margin-left:0}.habi-hero{padding:18px}}
+@media(max-width:600px){.habi-hero-title{font-size:24px}.habi-brand-mark{width:44px;height:44px;font-size:27px}.habi-eyebrow{font-size:8px}.habi-hero{gap:12px}}
+</style>
+""",unsafe_allow_html=True)
+
+
 def _ui_section(title: str, subtitle: str = "", icon: str = "◆", chip: str = "") -> str:
     import html as _html
     chip_html = f'<div class="ui-chip">{_html.escape(chip)}</div>' if chip else ""
@@ -456,10 +530,10 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
             "#FF8A00",  # laranja vivo
             "#00E676",  # verde neon
             "#8B5CF6",  # violeta
-            "#FF3DCC",  # magenta
+            "#F472B6",  # rosa técnico
             "#2F80FF",  # azul elétrico
             "#FFD60A",  # amarelo
-            "#A3FF12",  # lima
+            "#A3E635",  # verde claro
             "#FF5E7A",  # coral
             "#22D3EE",  # turquesa
         ]
@@ -579,32 +653,18 @@ def render_screen_chart(fig, title: str, subtitle: str = "", tag: str = "ANÁLIS
         st.pyplot(fig, use_container_width=True)
 
 def _render_header():
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;
-                    padding:18px 22px;margin-bottom:12px;border-radius:18px;
-                    background:linear-gradient(135deg,#07111d 0%,#0b1827 58%,#101827 100%);
-                    border:1px solid rgba(148,163,184,.18);box-shadow:0 16px 42px rgba(0,0,0,.18);">
-          <div style="display:flex;align-items:center;gap:16px;min-width:0">
-            <div style="width:5px;height:56px;border-radius:99px;background:#f97316;box-shadow:0 0 22px rgba(249,115,22,.35)"></div>
-            <div>
-              <div style="font-size:28px;line-height:1;font-weight:900;letter-spacing:.5px;color:white">
-                H<span style="color:#f97316">ABI</span>SOLUTE
-              </div>
-              <div style="font-size:11px;letter-spacing:1.25px;margin-top:7px;color:#cbd5e1">
-                ENGENHARIA E CONTROLE TECNOLÓGICO
-              </div>
-            </div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:17px;font-weight:800;color:#f8fafc">Habisolute Analytics</div>
-            <div style="font-size:12px;margin-top:4px;color:#94a3b8">Certificados • Resistência • Controle tecnológico</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    """Identidade executiva: cabeçalho compacto, sem modificar o processamento."""
+    st.markdown("""
+    <div class="habi-hero">
+      <div class="habi-brand-mark">H</div>
+      <div class="habi-brand-copy">
+        <div class="habi-eyebrow">HABISOLUTE ENGENHARIA · CONTROLE TECNOLÓGICO</div>
+        <div class="habi-hero-title">Analytics <span>Laboratório inteligente</span></div>
+        <div class="habi-hero-sub">Gestão de certificados, resistência e conformidade em um só painel.</div>
+      </div>
+      <div class="habi-hero-right"><span class="habi-dot"></span> PAINEL DE ANÁLISES <small>AMBIENTE OPERACIONAL</small></div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # =============================================================================
 # Autenticação & gerenciamento de usuários

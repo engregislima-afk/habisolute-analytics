@@ -245,13 +245,10 @@ s.setdefault("rt_responsavel", "")
 s.setdefault("rt_cliente", "")
 s.setdefault("rt_cidade", "")
 s.setdefault("rt_material", "Concreto")
-# dados de calibração das prensas para exibir no PDF
-s.setdefault("cal_prensa_concreto_nome", "")
-s.setdefault("cal_prensa_concreto_cert", "")
-s.setdefault("cal_prensa_concreto_validade", "")
-s.setdefault("cal_prensa_argamassa_nome", "")
-s.setdefault("cal_prensa_argamassa_cert", "")
-s.setdefault("cal_prensa_argamassa_validade", "")
+# Identificação fixa da prensa e validade da calibração.
+# Aplicada automaticamente aos relatórios de Concreto, Argamassa e Graute.
+PRENSA_IDENTIFICACAO_FIXA = "P01 - 4HCI 100 tf - Série 457 R (04114A26)"
+PRENSA_CALIBRACAO_VALIDADE_FIXA = "17/03/2027"
 
 # O sistema abre diretamente, sem depender de usuário ou senha salvos.
 
@@ -1557,34 +1554,15 @@ def _fmt_data_calibracao(valor: Any) -> str:
 
 
 def _dados_calibracao_por_material(material: str) -> str:
-    """Retorna texto de calibração da prensa conforme o material.
+    """Informação fixa da prensa, usada em todos os materiais e PDFs.
 
-    Concreto e Graute usam a prensa de concreto/graute.
-    Argamassa usa a prensa de argamassa.
+    O equipamento e a data ficam definidos no código e não dependem de
+    preenchimento na interface ou de valores antigos da sessão.
     """
-    mat = _normalizar_material(material)
-    if mat == "Argamassa":
-        nome = s.get("cal_prensa_argamassa_nome", "")
-        cert = s.get("cal_prensa_argamassa_cert", "")
-        validade = s.get("cal_prensa_argamassa_validade", "")
-    else:
-        nome = s.get("cal_prensa_concreto_nome", "")
-        cert = s.get("cal_prensa_concreto_cert", "")
-        validade = s.get("cal_prensa_concreto_validade", "")
-
-    nome = str(nome or "").strip()
-    cert = str(cert or "").strip()
-    validade = _fmt_data_calibracao(validade)
-
-    partes = []
-    if nome:
-        partes.append(f"Prensa: {nome}")
-    if cert:
-        partes.append(f"Certificado: {cert}")
-    if validade:
-        partes.append(f"Validade: {validade}")
-
-    return " | ".join(partes) if partes else "Calibração da prensa não informada"
+    return (
+        f"Prensa: {PRENSA_IDENTIFICACAO_FIXA} | "
+        f"Validade da calibração: {PRENSA_CALIBRACAO_VALIDADE_FIXA}"
+    )
 
 
 def _resumo_calibracao_df(df_: pd.DataFrame) -> str:
@@ -1646,40 +1624,12 @@ with st.sidebar:
     s["rt_cidade"]      = st.text_input("Cidade / UF", value=s.get("rt_cidade",""))
 
     st.markdown("---")
-    st.markdown("#### 🧪 Calibração das prensas")
-    with st.expander("Prensa de Concreto / Graute", expanded=False):
-        s["cal_prensa_concreto_nome"] = st.text_input(
-            "Nome da prensa - Concreto/Graute",
-            value=s.get("cal_prensa_concreto_nome", ""),
-            placeholder="Ex.: P01 - 4HCI 100 tf"
-        )
-        s["cal_prensa_concreto_cert"] = st.text_input(
-            "Nº do certificado - Concreto/Graute",
-            value=s.get("cal_prensa_concreto_cert", ""),
-            placeholder="Ex.: ACTEST 04114A26"
-        )
-        s["cal_prensa_concreto_validade"] = st.date_input(
-            "Validade da calibração - Concreto/Graute",
-            value=None,
-            key="cal_prensa_concreto_validade_input"
-        )
-
-    with st.expander("Prensa de Argamassa", expanded=False):
-        s["cal_prensa_argamassa_nome"] = st.text_input(
-            "Nome da prensa - Argamassa",
-            value=s.get("cal_prensa_argamassa_nome", ""),
-            placeholder="Ex.: Prensa Argamassa"
-        )
-        s["cal_prensa_argamassa_cert"] = st.text_input(
-            "Nº do certificado - Argamassa",
-            value=s.get("cal_prensa_argamassa_cert", ""),
-            placeholder="Ex.: Certificado nº ..."
-        )
-        s["cal_prensa_argamassa_validade"] = st.date_input(
-            "Validade da calibração - Argamassa",
-            value=None,
-            key="cal_prensa_argamassa_validade_input"
-        )
+    st.markdown("#### 🧪 Calibração da prensa (fixa)")
+    st.markdown(
+        f"**Prensa:** {PRENSA_IDENTIFICACAO_FIXA}  \n"
+        f"**Validade da calibração:** {PRENSA_CALIBRACAO_VALIDADE_FIXA}"
+    )
+    st.caption("Dados aplicados automaticamente aos relatórios de Concreto, Argamassa e Graute.")
 
     st.markdown("---")
     st.caption(f"Usuário: **{nome_login}** ({papel})")

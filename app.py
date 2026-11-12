@@ -245,10 +245,13 @@ s.setdefault("rt_responsavel", "")
 s.setdefault("rt_cliente", "")
 s.setdefault("rt_cidade", "")
 s.setdefault("rt_material", "Concreto")
-# Identificação fixa da prensa e validade da calibração.
-# Aplicada automaticamente aos relatórios de Concreto, Argamassa e Graute.
-PRENSA_IDENTIFICACAO_FIXA = "P01 - 4HCI 100 tf - Série 457 R (04114A26)"
-PRENSA_CALIBRACAO_VALIDADE_FIXA = "17/03/2027"
+# dados de calibração das prensas para exibir no PDF
+s.setdefault("cal_prensa_concreto_nome", "")
+s.setdefault("cal_prensa_concreto_cert", "")
+s.setdefault("cal_prensa_concreto_validade", "")
+s.setdefault("cal_prensa_argamassa_nome", "")
+s.setdefault("cal_prensa_argamassa_cert", "")
+s.setdefault("cal_prensa_argamassa_validade", "")
 
 # O sistema abre diretamente, sem depender de usuário ou senha salvos.
 
@@ -1203,8 +1206,7 @@ def _norma_por_material(material: str) -> str:
         return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndrico"
 
     if material == "argamassa":
-        return ("ABNT NBR 13279:2005 - Argamassa para assentamento e revestimento de "
-                "paredes e tetos - Determinação da resistência à tração na flexão e à compressão")
+        return "NBR 13279 - Argamassa para assentamento e revestimento de paredes e tetos"
 
     if material == "graute":
         return "NBR 5739 - Ensaio de Compressão de Corpos de Prova Cilíndricos - Graute"
@@ -1251,7 +1253,7 @@ def _inferir_material_certificado(cp: str = "", norma_texto: str = "", local_tex
     base_s = f"{norma_s} {local_s}"
 
     # CPs de argamassa na base Habisolute normalmente começam com A: A562, A039.258 etc.
-    if re.fullmatch(r"A\d+(?:\.\d+)*", cp_s):
+    if re.fullmatch(r"A\d+(?:\.\d+)?", cp_s):
         return "Argamassa"
 
     # Graute tem prioridade sobre concreto quando o próprio bloco/local indicar grauteamento.
@@ -1315,228 +1317,6 @@ def _resumo_material_norma_df(df_: pd.DataFrame) -> tuple[str, str, str]:
     return material_label, norma_label, dimensao_label
 
 
-
-# =============================================================================
-# HABISOLUTE / EVIDÊNCIAS DE ARGAMASSA — ABNT NBR 13279:2005, item 7(d)
-# =============================================================================
-# A estatística de argamassa é INDEPENDENTE do desvio-padrão já existente.
-# Cada série representa um certificado/NF e uma idade, para não misturar lotes.
-
-def _argamassa_arredondar_decimo(valor: float) -> float:
-    """Arredondamento decimal convencional, sem o empate-par do round do Python."""
-    from decimal import Decimal, ROUND_HALF_UP
-    return float(Decimal(str(valor)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-
-
-def _argamassa_tipo_ensaio() -> str:
-    tipo = str(s.get("argamassa_tipo_ensaio", "Compressão axial"))
-    return tipo if tipo in ("Compressão axial", "Tração na flexão") else "Compressão axial"
-
-
-def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[str] = None) -> pd.DataFrame:
-    """Resumo rastreável de resultados INDIVIDUAIS, média e desvio absoluto máximo.
-
-    NBR 13279:2005: itens 6.1 a 6.5 e 7(d). Valores individuais a 0,01 MPa;
-    médias e desvios absolutos máximos a 0,1 MPa. Excluídos recebem '*'.
-    Não se declara conformidade se faltarem exemplares da série original.
-    """
-    colunas = [
-        "Arquivo", "Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio",
-        "Resultados individuais (MPa)", "Média (MPa)",
-        "Desvio absoluto máximo (MPa)", "DAM inicial (MPa)",
-        "Limite DAM (MPa)", "n inicial", "n válido", "Descartados (*)",
-        "Situação normativa",
-    ]
-    if df_base is None or df_base.empty or "CP" not in df_base.columns:
-        return pd.DataFrame(columns=colunas)
-    df = _atualizar_material_norma_linhas(df_base)
-    df = df[df["Material"].astype(str).str.casefold().eq("argamassa")].copy()
-    if df.empty:
-        return pd.DataFrame(columns=colunas)
-
-    tipo = tipo_ensaio or _argamassa_tipo_ensaio()
-    flexao = "flexão" in tipo.casefold()
-    limite = 0.3 if flexao else 0.5
-    n_esperado = 3 if flexao else 6
-    n_minimo = 2 if flexao else 4
-
-    # Evita misturar certificados distintos com mesmo número de relatório.
-    grupo = [c for c in ("Arquivo", "Obra", "Relatório", "Nota Fiscal", "Idade (dias)") if c in df.columns]
-    df["Resistência (MPa)"] = pd.to_numeric(df["Resistência (MPa)"], errors="coerce")
-    df = df.dropna(subset=["Resistência (MPa)", "Idade (dias)"])
-    if df.empty:
-        return pd.DataFrame(columns=colunas)
-
-    resultados = []
-    for _, sub in df.groupby(grupo, sort=False, dropna=False):
-        sub = sub.reset_index(drop=True)
-        # IDs repetidos ganham ordinal para que cada ruptura seja identificável.
-        repeticoes = sub["CP"].astype(str).value_counts().to_dict()
-        vistos = {}
-        cps = []
-        for cp in sub["CP"].astype(str):
-            vistos[cp] = vistos.get(cp, 0) + 1
-            cps.append(f"{cp} [{vistos[cp]}]" if repeticoes.get(cp, 0) > 1 else cp)
-        valores = [float(x) for x in sub["Resistência (MPa)"].tolist()]
-        ativos = list(range(len(valores)))
-        excluidos = []
-
-        def resumo(indices):
-            media = sum(valores[i] for i in indices) / len(indices)
-            distancias = [abs(valores[i] - media) for i in indices]
-            maior = max(distancias) if distancias else 0.0
-            pos_mais_distante = distancias.index(maior) if distancias else None
-            return media, _argamassa_arredondar_decimo(maior), pos_mais_distante
-
-        media_inicial, dam_inicial, _ = resumo(ativos)
-        # Recalcula por uma exclusão de cada vez, preservando o mínimo normativo.
-        while len(ativos) > n_minimo:
-            media_calc, dam_calc, pos = resumo(ativos)
-            if dam_calc <= limite + 1e-9:
-                break
-            excluidos.append(ativos.pop(pos))
-
-        media_final, dam_final, _ = resumo(ativos)
-        n_inicial, n_valido = len(valores), len(ativos)
-        if n_inicial < n_esperado:
-            situacao = f"SÉRIE INCOMPLETA: {n_inicial}/{n_esperado} resultados; conferir ensaio"
-        elif dam_final > limite + 1e-9 or n_valido < n_minimo:
-            situacao = "REFAZER ENSAIO: desvio acima do limite / série inválida"
-        elif excluidos:
-            situacao = "VALIDADE ESTATÍSTICA: média recalculada; valores * excluídos"
-        else:
-            situacao = "VALIDADE ESTATÍSTICA: desvio dentro do limite"
-
-        individuais = "; ".join(
-            f"{cp}{'*' if i in excluidos else ''}: {valores[i]:.2f}"
-            for i, cp in enumerate(cps)
-        )
-        descartados = "; ".join(
-            f"{cps[i]}: {valores[i]:.2f}" for i in excluidos
-        ) or "—"
-        primeira = sub.iloc[0]
-        def campo(nome):
-            v = primeira.get(nome, "—")
-            return "—" if pd.isna(v) or str(v).strip() == "" else str(v)
-        resultados.append({
-            "Arquivo": campo("Arquivo"),
-            "Relatório": campo("Relatório"),
-            "Nota Fiscal": campo("Nota Fiscal"),
-            "Idade (dias)": int(primeira["Idade (dias)"]),
-            "Ensaio": tipo,
-            "Resultados individuais (MPa)": individuais,
-            "Média (MPa)": _argamassa_arredondar_decimo(media_final),
-            "Desvio absoluto máximo (MPa)": dam_final,
-            "DAM inicial (MPa)": dam_inicial,
-            "Limite DAM (MPa)": limite,
-            "n inicial": n_inicial,
-            "n válido": n_valido,
-            "Descartados (*)": descartados,
-            "Situação normativa": situacao,
-        })
-    return pd.DataFrame(resultados, columns=colunas).sort_values(
-        ["Relatório", "Idade (dias)"], kind="stable"
-    ).reset_index(drop=True)
-
-
-def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float) -> list:
-    """Inserção reutilizável para PDF comum, básico e agrupado, sem omitir 7(d)."""
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER
-    from xml.sax.saxutils import escape as xml_escape
-
-    evidencias = calcular_evidencias_argamassa(df_base)
-    if evidencias.empty:
-        return []
-    conteudo = [Spacer(1, 10)]
-    conteudo.append(Paragraph(
-        "<b>ARGAMASSA - EVIDÊNCIAS ABNT NBR 13279:2005 (item 7d)</b>",
-        styles["Heading3"],
-    ))
-    tipo = _argamassa_tipo_ensaio()
-    item = "6.4" if "flexão" in tipo.casefold() else "6.5"
-    conteudo.append(Paragraph(
-        f"Ensaio selecionado: <b>{xml_escape(tipo)}</b>. "
-        f"Resultados por certificado, nota fiscal e idade; itens 6.1, 6.2, 6.3, {item} e 7(d).",
-        styles["Normal"],
-    ))
-    estilo_cab = ParagraphStyle("argamassa_cab", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=7.2, leading=8.4, alignment=TA_CENTER)
-    estilo_cel = ParagraphStyle("argamassa_cel", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=7, leading=8.4, alignment=TA_LEFT, wordWrap="CJK")
-    nomes = ["Relatório", "NF", "Idade", "Individuais (MPa)",
-             "Média (MPa)", "DAM (MPa)", "n válido", "Situação"]
-    colunas = ["Relatório", "Nota Fiscal", "Idade (dias)",
-               "Resultados individuais (MPa)", "Média (MPa)",
-               "Desvio absoluto máximo (MPa)", "n válido", "Situação normativa"]
-    pesos = [0.7, 0.75, 0.55, 3.5, 0.75, 0.75, 0.55, 2.2]
-    widths = [largura_util * peso / sum(pesos) for peso in pesos]
-    linha_cab = [Paragraph(xml_escape(n), estilo_cab) for n in nomes]
-    linhas = [linha_cab]
-    for _, registro in evidencias.iterrows():
-        linha = []
-        for nome in colunas:
-            valor = registro[nome]
-            if isinstance(valor, float):
-                texto = f"{valor:.1f}".replace(".", ",")
-            else:
-                texto = str(valor)
-            linha.append(Paragraph(xml_escape(texto), estilo_cel))
-        linhas.append(linha)
-    tabela = Table(linhas, colWidths=widths, repeatRows=1, hAlign="LEFT", splitByRow=1)
-    estilos = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F5E1D1")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#8A8A8A")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]
-    for linha_ind, (_, registro) in enumerate(evidencias.iterrows(), start=1):
-        if "REFAZER" in registro["Situação normativa"] or "INCOMPLETA" in registro["Situação normativa"]:
-            estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#FFF0E8")))
-    tabela.setStyle(TableStyle(estilos))
-    conteudo.extend([Spacer(1, 6), tabela, Spacer(1, 7)])
-    conteudo.append(Paragraph(
-        "DAM = maior diferença absoluta entre resistência individual e média da série; "
-        "(*) valor desconsiderado no recálculo. Valores individuais em 0,01 MPa; "
-        "média e DAM em 0,1 MPa. "
-        "Série incompleta ou desvio excedente requer conferência/repetição; "
-        "este quadro não substitui os demais dados exigidos no item 7(a-c).",
-        styles["Normal"],
-    ))
-    return conteudo
-
-
-def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
-    """Quadro explícito e contínuo na tela; retornado também para exportações."""
-    existentes = df_base["Material"].astype(str).str.casefold().eq("argamassa") if "Material" in df_base.columns else []
-    if not any(existentes):
-        return pd.DataFrame()
-    st.markdown(_ui_section(
-        "Argamassa - NBR 13279:2005", "Evidências de resultados individuais, média e desvio absoluto máximo por idade (item 7d).",
-        "🧪", "NORMA TÉCNICA"), unsafe_allow_html=True)
-    st.selectbox("Tipo de ensaio para os certificados de argamassa",
-        ["Compressão axial", "Tração na flexão"],
-        key="argamassa_tipo_ensaio",
-        help="O prefixo A identifica o material, mas não identifica sozinho o tipo de ruptura. "
-             "Selecione o ensaio realizado; compressão: 6 resultados, limite 0,5 MPa e mínimo 4; "
-             "tração na flexão: 3 resultados, limite 0,3 MPa e mínimo 2.")
-    dados = calcular_evidencias_argamassa(df_base)
-    st.caption("Prefixo A reconhecido automaticamente. Agrupamento por certificado, NF e idade; "
-               "resultados individuais (0,01 MPa), média e desvio absoluto máximo (0,1 MPa). "
-               "* indica valor desconsiderado no recálculo normativo.")
-    exibir = dados[["Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio",
-                    "Resultados individuais (MPa)", "Média (MPa)",
-                    "Desvio absoluto máximo (MPa)", "n válido", "Situação normativa"]].copy()
-    render_screen_table(exibir, "Verificação ABNT NBR 13279:2005 - item 7(d)",
-        "Os cálculos normativos não alteram os gráficos e as médias de concreto existentes.")
-    problemas = dados["Situação normativa"].astype(str).str.contains("REFAZER|INCOMPLETA", regex=True)
-    if problemas.any():
-        st.warning(f"Atenção: {int(problemas.sum())} série(s) de argamassa exigem conferência ou repetição.")
-    return dados
-
 def _fmt_data_calibracao(valor: Any) -> str:
     """Formata data de validade da calibração para dd/mm/aaaa quando possível."""
     if valor is None:
@@ -1554,15 +1334,34 @@ def _fmt_data_calibracao(valor: Any) -> str:
 
 
 def _dados_calibracao_por_material(material: str) -> str:
-    """Informação fixa da prensa, usada em todos os materiais e PDFs.
+    """Retorna texto de calibração da prensa conforme o material.
 
-    O equipamento e a data ficam definidos no código e não dependem de
-    preenchimento na interface ou de valores antigos da sessão.
+    Concreto e Graute usam a prensa de concreto/graute.
+    Argamassa usa a prensa de argamassa.
     """
-    return (
-        f"Prensa: {PRENSA_IDENTIFICACAO_FIXA} | "
-        f"Validade da calibração: {PRENSA_CALIBRACAO_VALIDADE_FIXA}"
-    )
+    mat = _normalizar_material(material)
+    if mat == "Argamassa":
+        nome = s.get("cal_prensa_argamassa_nome", "")
+        cert = s.get("cal_prensa_argamassa_cert", "")
+        validade = s.get("cal_prensa_argamassa_validade", "")
+    else:
+        nome = s.get("cal_prensa_concreto_nome", "")
+        cert = s.get("cal_prensa_concreto_cert", "")
+        validade = s.get("cal_prensa_concreto_validade", "")
+
+    nome = str(nome or "").strip()
+    cert = str(cert or "").strip()
+    validade = _fmt_data_calibracao(validade)
+
+    partes = []
+    if nome:
+        partes.append(f"Prensa: {nome}")
+    if cert:
+        partes.append(f"Certificado: {cert}")
+    if validade:
+        partes.append(f"Validade: {validade}")
+
+    return " | ".join(partes) if partes else "Calibração da prensa não informada"
 
 
 def _resumo_calibracao_df(df_: pd.DataFrame) -> str:
@@ -1624,12 +1423,40 @@ with st.sidebar:
     s["rt_cidade"]      = st.text_input("Cidade / UF", value=s.get("rt_cidade",""))
 
     st.markdown("---")
-    st.markdown("#### 🧪 Calibração da prensa (fixa)")
-    st.markdown(
-        f"**Prensa:** {PRENSA_IDENTIFICACAO_FIXA}  \n"
-        f"**Validade da calibração:** {PRENSA_CALIBRACAO_VALIDADE_FIXA}"
-    )
-    st.caption("Dados aplicados automaticamente aos relatórios de Concreto, Argamassa e Graute.")
+    st.markdown("#### 🧪 Calibração das prensas")
+    with st.expander("Prensa de Concreto / Graute", expanded=False):
+        s["cal_prensa_concreto_nome"] = st.text_input(
+            "Nome da prensa - Concreto/Graute",
+            value=s.get("cal_prensa_concreto_nome", ""),
+            placeholder="Ex.: P01 - 4HCI 100 tf"
+        )
+        s["cal_prensa_concreto_cert"] = st.text_input(
+            "Nº do certificado - Concreto/Graute",
+            value=s.get("cal_prensa_concreto_cert", ""),
+            placeholder="Ex.: ACTEST 04114A26"
+        )
+        s["cal_prensa_concreto_validade"] = st.date_input(
+            "Validade da calibração - Concreto/Graute",
+            value=None,
+            key="cal_prensa_concreto_validade_input"
+        )
+
+    with st.expander("Prensa de Argamassa", expanded=False):
+        s["cal_prensa_argamassa_nome"] = st.text_input(
+            "Nome da prensa - Argamassa",
+            value=s.get("cal_prensa_argamassa_nome", ""),
+            placeholder="Ex.: Prensa Argamassa"
+        )
+        s["cal_prensa_argamassa_cert"] = st.text_input(
+            "Nº do certificado - Argamassa",
+            value=s.get("cal_prensa_argamassa_cert", ""),
+            placeholder="Ex.: Certificado nº ..."
+        )
+        s["cal_prensa_argamassa_validade"] = st.date_input(
+            "Validade da calibração - Argamassa",
+            value=None,
+            key="cal_prensa_argamassa_validade_input"
+        )
 
     st.markdown("---")
     st.caption(f"Usuário: **{nome_login}** ({papel})")
@@ -1667,16 +1494,52 @@ def _detecta_usina(linhas: List[str]) -> Optional[str]:
     return None
 
 def _parse_abatim_nf_pair(tok: str) -> Tuple[Optional[float], Optional[float]]:
-    if not tok: return None, None
-    t = str(tok).strip().lower().replace("±", "+-").replace("mm", "").replace(",", ".").replace(" ", "")
-    m = re.match(r"^\s*(\d+(?:\.\d+)?)(?:\s*\+?-?\s*(\d+(?:\.\d+)?))?\s*$", t)
-    if not m: return None, None
-    try:
-        v = float(m.group(1))
-        tol = float(m.group(2)) if m.group(2) is not None else None
-        return v, tol
-    except Exception:
+    """Interpreta 700+-50, 700 ± 50, 700+/-50, 700-50 e 100 mm.
+
+    Mantém o valor nominal e a tolerância como números separados para
+    permitir análises estatísticas e relatórios com a tolerância correta.
+    """
+    if tok is None:
         return None, None
+    t = str(tok).strip().lower()
+    t = t.replace("−", "-").replace("–", "-").replace(",", ".")
+    t = re.sub(r"\s*mm\s*$", "", t).strip()
+    m = re.fullmatch(
+        r"(\d+(?:\.\d+)?)\s*(?:(?:±|\+\s*/\s*-|\+\s*-|\+|-)\s*(\d+(?:\.\d+)?))?",
+        t,
+    )
+    if not m:
+        return None, None
+    try:
+        return float(m.group(1)), (float(m.group(2)) if m.group(2) else None)
+    except (ValueError, TypeError):
+        return None, None
+
+
+def _parse_abatimento_obra(tok: str) -> Optional[float]:
+    """Abatimento em mm, incluindo medidas de espalhamento acima de 400 mm.
+
+    720/740/750 mm são valores válidos que o filtro antigo (<=400 mm)
+    descartava. Não convertemos mm para cm, nem alteramos o valor medido.
+    """
+    if tok is None:
+        return None
+    t = str(tok).strip().lower().replace(",", ".")
+    m = re.fullmatch(r"(\d{1,4})(?:\s*mm)?", t)
+    if not m:
+        return None
+    v = float(m.group(1))
+    return v if 0 <= v <= 1200 else None
+
+
+def _formatar_abatimento_nf_celula(valor, tolerancia) -> str:
+    """Exibe 700 ± 50 no PDF sem alterar os dados numéricos internos."""
+    v = _to_float_or_none(valor)
+    if v is None:
+        return ""
+    tol = _to_float_or_none(tolerancia)
+    base = f"{v:g}"
+    return f"{base} ± {tol:g}" if tol is not None else base
 
 def _detecta_abatimentos(linhas: List[str]) -> Tuple[Optional[float], Optional[float]]:
     abat_nf = None; abat_obra = None
@@ -1951,20 +1814,22 @@ def extrair_dados_certificado(uploaded_file):
                         nf_idx = j
                         break
 
+                # Na tabela do certificado, o abatimento de obra é a coluna
+                # imediatamente anterior à data de ruptura. O código anterior
+                # descartava valores >400 mm (ex.: 720, 740 e 750 mm).
                 abat_obra_val = None
-                if i_data is not None:
-                    for j in range(i_data - 1, max(-1, i_data - 6), -1):
-                        tok = partes[j]
-                        if re.fullmatch(r"\d{2,3}", tok):
-                            v = int(tok)
-                            if 20 <= v <= 400:
-                                abat_obra_val = float(v); break
+                if i_data is not None and i_data >= 2:
+                    abat_obra_val = _parse_abatimento_obra(partes[i_data - 1])
 
+                # A coluna de abatimento da NF vem DEPOIS do número da nota.
+                # Reconhece tanto 700+-50 quanto 700 ± 50 / 700+/-50, inclusive
+                # quando o extrator de PDF separa o sinal e a tolerância.
                 abat_nf_val, abat_nf_tol = None, None
                 if nf_idx is not None:
-                    for tok in partes[nf_idx + 1: nf_idx + 5]:
-                        v, tol = _parse_abatim_nf_pair(tok)
-                        if v is not None and 20 <= v <= 400:
+                    after_nf = partes[nf_idx + 1:]
+                    for largura in range(min(4, len(after_nf)), 0, -1):
+                        v, tol = _parse_abatim_nf_pair(" ".join(after_nf[:largura]))
+                        if v is not None and 0 <= v <= 1200:
                             abat_nf_val = float(v)
                             abat_nf_tol = float(tol) if tol is not None else None
                             break
@@ -2304,7 +2169,7 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
           w.document.write('<!doctype html><html><head><title>Imprimir</title>'+
             '<style>html,body{{margin:0;height:100%}}</style></head><body>'+
             '<iframe id="__pf" style="width:100%;height:100%;border:0"></iframe>'+
-            '<script>var f=document.getElementById("__pf");f.onload=function(){{try{{f.contentWindow.focus();f.contentWindow.print();}}catch(e){{}}}};f.src="'+url+'#zoom=page-width";<\/script>'+
+            '<script>var f=document.getElementById("__pf");f.onload=function(){{try{{f.contentWindow.focus();f.contentWindow.print();}}catch(e){{}}}};f.src="'+url+'#zoom=page-width";<\\/script>'+
             '</body></html>');
           w.document.close();
         }} catch(e) {{ alert('Falha ao preparar impressão: '+e); }}
@@ -3119,9 +2984,6 @@ if uploaded_files:
         st.markdown("<div style='font-size:12px;color:var(--muted);margin:2px 0 10px'>Dados estruturados com sucesso a partir dos certificados selecionados.</div>", unsafe_allow_html=True)
         render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
 
-        # Evidências normativas somente para argamassa (CP com prefixo A).
-        evidencias_argamassa = _render_argamassa_evidencias_tela(df_view)
-
         # ---------------------------------------------------------------
         # SEÇÃO 2 — gráficos
         # ---------------------------------------------------------------
@@ -3762,8 +3624,11 @@ if uploaded_files:
                 snf = pd.to_numeric(df_.get("Abatimento NF (mm)"), errors="coerce").dropna()
                 stol = pd.to_numeric(df_.get("Abatimento NF tol (mm)"), errors="coerce").dropna()
                 if snf.empty: return "—"
-                v = float(snf.mode().iloc[0]); t = float(stol.mode().iloc[0]) if not stol.empty else 0.0
-                return f"{v:.0f} ± {t:.0f} mm"
+                v = float(snf.mode().iloc[0])
+                if not stol.empty:
+                    t = float(stol.mode().iloc[0])
+                    return f"{v:.0f} ± {t:.0f} mm"
+                return f"{v:.0f} mm"
 
             material_label, norma_label, dimensao_label = _resumo_material_norma_df(df)
             calibracao_label = _resumo_calibracao_df(df)
@@ -3821,7 +3686,6 @@ if uploaded_files:
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(norma_box)
-            story.extend(_argamassa_pdf_flowables(df, styles, doc.width))
             if cliente:
                 story.append(Paragraph(f"Cliente / Empreendimento: {cliente}", styles['Normal']))
             if cidade:
@@ -3842,6 +3706,12 @@ if uploaded_files:
                 for col in headers:
                     if col not in df_tab.columns:
                         df_tab[col] = ""
+                # Apresenta a tolerância por NF sem converter a coluna original em texto.
+                if "Abatimento NF tol (mm)" in df_tab.columns:
+                    df_tab["Abatimento NF (mm)"] = [
+                        _formatar_abatimento_nf_celula(v, t)
+                        for v, t in zip(df_tab["Abatimento NF (mm)"], df_tab["Abatimento NF tol (mm)"])
+                    ]
 
                 # estilos (quebra automática dentro da célula)
                 st_head = ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, leading=9, alignment=TA_CENTER)
@@ -4359,6 +4229,11 @@ if uploaded_files:
                 for col in headers:
                     if col not in df_tab.columns:
                         df_tab[col] = ""
+                if "Abatimento NF tol (mm)" in df_tab.columns:
+                    df_tab["Abatimento NF (mm)"] = [
+                        _formatar_abatimento_nf_celula(v, t)
+                        for v, t in zip(df_tab["Abatimento NF (mm)"], df_tab["Abatimento NF tol (mm)"])
+                    ]
                 usable = float(doc.width)
                 base = [46, 58, 44, 60, 62, None, 62, 72, 78, 96]
                 fixed_sum = sum(w for w in base if w is not None)
@@ -4520,7 +4395,6 @@ if uploaded_files:
                 ]))
                 story.append(norma_box)
                 story.append(Spacer(1, 8))
-                story.extend(_argamassa_pdf_flowables(df_g, styles, doc.width))
 
                 _add_principal_table(df_g)
                 fig_g = _fig_crescimento_pdf(df_g, fck_g)
@@ -4680,8 +4554,6 @@ if uploaded_files:
                 with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
                     df_view.to_excel(writer, sheet_name="Individuais", index=False)
                     stats_cp_idade.to_excel(writer, sheet_name="Médias_DP", index=False)
-                    if not evidencias_argamassa.empty:
-                        evidencias_argamassa.to_excel(writer, sheet_name="Argamassa_NBR13279", index=False)
                     comp_df = stats_all_full.rename(columns={"mean": "Média Real", "std": "DP Real", "count": "n"})
                     if 'est_df' in locals() and isinstance(est_df, pd.DataFrame) and (not est_df.empty):
                         comp_df = comp_df.merge(est_df.rename(columns={"Resistência (MPa)": "Estimado"}), on="Idade (dias)", how="outer").sort_values("Idade (dias)")
@@ -4699,8 +4571,6 @@ if uploaded_files:
                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z:
                     z.writestr("Individuais.csv", df_view.to_csv(index=False, sep=";"))
                     z.writestr("Medias_DP.csv", stats_cp_idade.to_csv(index=False, sep=";"))
-                    if not evidencias_argamassa.empty:
-                        z.writestr("Argamassa_NBR13279.csv", evidencias_argamassa.to_csv(index=False, sep=";"))
                     if 'est_df' in locals() and isinstance(est_df, pd.DataFrame) and (not est_df.empty):
                         z.writestr("Estimativas.csv", est_df.to_csv(index=False, sep=";"))
                     z.writestr("Comparacao.csv", comp_df.to_csv(index=False, sep=";"))

@@ -1317,6 +1317,33 @@ def _resumo_material_norma_df(df_: pd.DataFrame) -> tuple[str, str, str]:
 
 
 # =============================================================================
+# ESTATÍSTICAS DESCRITIVAS — CP / IDADE
+# =============================================================================
+def calcular_estatisticas_cp_idade(df_base: pd.DataFrame) -> pd.DataFrame:
+    """DP amostral somente com pelo menos duas leituras da mesma idade/CP.
+
+    n=1 não é DP inválido e tampouco significa reprovação ou novo ensaio.
+    A coluna numérica permanece NaN (não substituímos artificialmente por zero).
+    O status é apenas estatístico, não é atestado de conformidade do material.
+    """
+    colunas = ["CP", "Idade (dias)", "Média", "Desvio_Padrão", "n", "Situação DP"]
+    if df_base is None or df_base.empty:
+        return pd.DataFrame(columns=colunas)
+    dados = df_base.copy()
+    dados["Resistência (MPa)"] = pd.to_numeric(dados["Resistência (MPa)"], errors="coerce")
+    dados["Idade (dias)"] = pd.to_numeric(dados["Idade (dias)"], errors="coerce")
+    dados = dados.dropna(subset=["CP", "Idade (dias)", "Resistência (MPa)"])
+    if dados.empty:
+        return pd.DataFrame(columns=colunas)
+    result = (dados.groupby(["CP", "Idade (dias)"], dropna=False)["Resistência (MPa)"]
+              .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index())
+    result["Situação DP"] = result["n"].map(
+        lambda n: "Calculado (n>=2)" if n >= 2 else "Não calculável: 1 leitura; não indica novo ensaio"
+    )
+    return result[colunas]
+
+
+# =============================================================================
 # HABISOLUTE / EVIDÊNCIAS DE ARGAMASSA — ABNT NBR 13279:2005, item 7(d)
 # =============================================================================
 # A estatística de argamassa é INDEPENDENTE do desvio-padrão já existente.
@@ -1334,11 +1361,14 @@ def _argamassa_tipo_ensaio() -> str:
 
 
 def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[str] = None) -> pd.DataFrame:
-    """Resumo rastreável de resultados INDIVIDUAIS, média e desvio absoluto máximo.
+    """Evidências rastreáveis da NBR 13279:2005 (itens 6.1-6.5 e 7d).
 
-    NBR 13279:2005: itens 6.1 a 6.5 e 7(d). Valores individuais a 0,01 MPa;
-    médias e desvios absolutos máximos a 0,1 MPa. Excluídos recebem '*'.
-    Não se declara conformidade se faltarem exemplares da série original.
+    - Diferencia desvio absoluto máximo (DAM) de desvio-padrão amostral.
+    - Somente a série completa é avaliada conclusivamente; filtro parcial,
+      leitura incompleta ou agrupamento duvidoso implicam conferência, NÃO
+      ordem automática de repetir ensaio.
+    - Exclusões são sequenciais e marcadas com *, preservando o mínimo de
+      2 resultados na flexão ou 4 na compressão.
     """
     colunas = [
         "Arquivo", "Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio",
@@ -1360,9 +1390,10 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
     n_esperado = 3 if flexao else 6
     n_minimo = 2 if flexao else 4
 
-    # Evita misturar certificados distintos com mesmo número de relatório.
+    # Nunca combinar silenciosamente notas fiscais/relatórios/idades diferentes.
     grupo = [c for c in ("Arquivo", "Obra", "Relatório", "Nota Fiscal", "Idade (dias)") if c in df.columns]
     df["Resistência (MPa)"] = pd.to_numeric(df["Resistência (MPa)"], errors="coerce")
+    df["Idade (dias)"] = pd.to_numeric(df["Idade (dias)"], errors="coerce")
     df = df.dropna(subset=["Resistência (MPa)", "Idade (dias)"])
     if df.empty:
         return pd.DataFrame(columns=colunas)
@@ -1370,42 +1401,53 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
     resultados = []
     for _, sub in df.groupby(grupo, sort=False, dropna=False):
         sub = sub.reset_index(drop=True)
-        # IDs repetidos ganham ordinal para que cada ruptura seja identificável.
         repeticoes = sub["CP"].astype(str).value_counts().to_dict()
         vistos = {}
         cps = []
         for cp in sub["CP"].astype(str):
             vistos[cp] = vistos.get(cp, 0) + 1
             cps.append(f"{cp} [{vistos[cp]}]" if repeticoes.get(cp, 0) > 1 else cp)
+
         valores = [float(x) for x in sub["Resistência (MPa)"].tolist()]
         ativos = list(range(len(valores)))
         excluidos = []
+        n_inicial = len(ativos)
 
         def resumo(indices):
-            media = sum(valores[i] for i in indices) / len(indices)
+            if not indices:
+                return None, None, None
+            media = _argamassa_arredondar_decimo(
+                sum(valores[i] for i in indices) / len(indices)
+            )
+            # O cálculo usa a média arredondada ao décimo conforme o item 6.2.
             distancias = [abs(valores[i] - media) for i in indices]
-            maior = max(distancias) if distancias else 0.0
-            pos_mais_distante = distancias.index(maior) if distancias else None
-            return media, _argamassa_arredondar_decimo(maior), pos_mais_distante
+            maior = _argamassa_arredondar_decimo(max(distancias)) if len(indices) >= 2 else None
+            pos_mais_distante = distancias.index(max(distancias)) if len(indices) >= 2 else None
+            return media, maior, pos_mais_distante
 
         media_inicial, dam_inicial, _ = resumo(ativos)
-        # Recalcula por uma exclusão de cada vez, preservando o mínimo normativo.
-        while len(ativos) > n_minimo:
-            media_calc, dam_calc, pos = resumo(ativos)
-            if dam_calc <= limite + 1e-9:
-                break
-            excluidos.append(ativos.pop(pos))
+        if n_inicial == n_esperado:
+            # Somente séries completas entram em avaliação normativa e descarte.
+            while len(ativos) > n_minimo:
+                _media, dam_atual, pos = resumo(ativos)
+                if dam_atual is None or dam_atual <= limite + 1e-9:
+                    break
+                excluidos.append(ativos.pop(pos))
 
         media_final, dam_final, _ = resumo(ativos)
-        n_inicial, n_valido = len(valores), len(ativos)
+        n_valido = len(ativos)
         if n_inicial < n_esperado:
-            situacao = f"SÉRIE INCOMPLETA: {n_inicial}/{n_esperado} resultados; conferir ensaio"
-        elif dam_final > limite + 1e-9 or n_valido < n_minimo:
-            situacao = "REFAZER ENSAIO: desvio acima do limite / série inválida"
+            situacao = (f"CONFERIR DADOS: série parcial ({n_inicial}/{n_esperado}); "
+                        "sem conclusão normativa nem indicação automática de repetição")
+        elif n_inicial > n_esperado:
+            situacao = (f"CONFERIR AGRUPAMENTO: {n_inicial} resultados, "
+                        f"esperados {n_esperado}; sem conclusão normativa")
+        elif n_valido < n_minimo or dam_final is None or dam_final > limite + 1e-9:
+            situacao = "REPETIÇÃO NECESSÁRIA: série completa não atende ao limite normativo"
         elif excluidos:
-            situacao = "VALIDADE ESTATÍSTICA: média recalculada; valores * excluídos"
+            situacao = "VÁLIDO: média recalculada; resultados * desconsiderados"
         else:
-            situacao = "VALIDADE ESTATÍSTICA: desvio dentro do limite"
+            situacao = "VÁLIDO: desvio absoluto máximo dentro do limite"
 
         individuais = "; ".join(
             f"{cp}{'*' if i in excluidos else ''}: {valores[i]:.2f}"
@@ -1425,7 +1467,7 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
             "Idade (dias)": int(primeira["Idade (dias)"]),
             "Ensaio": tipo,
             "Resultados individuais (MPa)": individuais,
-            "Média (MPa)": _argamassa_arredondar_decimo(media_final),
+            "Média (MPa)": media_final,
             "Desvio absoluto máximo (MPa)": dam_final,
             "DAM inicial (MPa)": dam_inicial,
             "Limite DAM (MPa)": limite,
@@ -1477,7 +1519,9 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         linha = []
         for nome in colunas:
             valor = registro[nome]
-            if isinstance(valor, float):
+            if valor is None or (not isinstance(valor, (list, tuple, dict)) and pd.isna(valor)):
+                texto = "—"
+            elif isinstance(valor, float):
                 texto = f"{valor:.1f}".replace(".", ",")
             else:
                 texto = str(valor)
@@ -1494,7 +1538,7 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
     for linha_ind, (_, registro) in enumerate(evidencias.iterrows(), start=1):
-        if "REFAZER" in registro["Situação normativa"] or "INCOMPLETA" in registro["Situação normativa"]:
+        if "REPETIÇÃO NECESSÁRIA" in registro["Situação normativa"] or "CONFERIR" in registro["Situação normativa"]:
             estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#FFF0E8")))
     tabela.setStyle(TableStyle(estilos))
     conteudo.extend([Spacer(1, 6), tabela, Spacer(1, 7)])
@@ -1502,8 +1546,10 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         "DAM = maior diferença absoluta entre resistência individual e média da série; "
         "(*) valor desconsiderado no recálculo. Valores individuais em 0,01 MPa; "
         "média e DAM em 0,1 MPa. "
-        "Série incompleta ou desvio excedente requer conferência/repetição; "
-        "este quadro não substitui os demais dados exigidos no item 7(a-c).",
+        "Série parcial ou agrupamento divergente requer conferência dos dados de origem, "
+        "sem determinação automática de refazer ensaios. Repetição somente quando "
+        "a série completa permanecer fora dos critérios dos itens 6.4/6.5; "
+        "este quadro não substitui os dados exigidos no item 7(a-c).",
         styles["Normal"],
     ))
     return conteudo
@@ -1532,9 +1578,16 @@ def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
                     "Desvio absoluto máximo (MPa)", "n válido", "Situação normativa"]].copy()
     render_screen_table(exibir, "Verificação ABNT NBR 13279:2005 - item 7(d)",
         "Os cálculos normativos não alteram os gráficos e as médias de concreto existentes.")
-    problemas = dados["Situação normativa"].astype(str).str.contains("REFAZER|INCOMPLETA", regex=True)
-    if problemas.any():
-        st.warning(f"Atenção: {int(problemas.sum())} série(s) de argamassa exigem conferência ou repetição.")
+    estados = dados["Situação normativa"].astype(str)
+    conferir = estados.str.startswith("CONFERIR")
+    repetir = estados.str.startswith("REPETIÇÃO NECESSÁRIA")
+    if conferir.any():
+        st.warning(f"{int(conferir.sum())} série(s) exigem conferência da leitura/agrupamento "
+                   "do certificado. Isso NÃO determina repetição do ensaio.")
+    if repetir.any():
+        st.error(f"{int(repetir.sum())} série(s) completas permaneceram fora do "
+                 "critério da NBR 13279:2005 após o tratamento normativo: "
+                 "avaliar repetição do ensaio e registrar a decisão técnica.")
     return dados
 
 def _fmt_data_calibracao(valor: Any) -> str:
@@ -2569,7 +2622,8 @@ def render_overview_and_tables(df_view: pd.DataFrame, stats_cp_idade: pd.DataFra
     with t_res:
         render_screen_table(df_view, "Resultados individuais", "Leituras extraídas dos certificados selecionados.")
     with t_stats:
-        render_screen_table(stats_cp_idade, "Estatísticas por CP e idade", "Média, desvio-padrão e quantidade de leituras.")
+        render_screen_table(stats_cp_idade, "Estatísticas por CP e idade",
+                            "DP amostral: n=1 não é calculável; não significa ensaio inválido ou repetição.")
     with t_alerts:
         if outliers_df is not None and not outliers_df.empty:
             render_screen_table(outliers_df, "CPs fora da curva", "Resultados acima do limite de sigma configurado.")
@@ -3057,10 +3111,7 @@ if uploaded_files:
             st.stop()
 
         # ===== Estatísticas por CP/Idade
-        stats_cp_idade = (
-            df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                  .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
-        )
+        stats_cp_idade = calcular_estatisticas_cp_idade(df_view)
 
         # ===== Outliers (simples com sigma do state)
         outliers_df = None
@@ -3127,10 +3178,7 @@ if uploaded_files:
                 f"As análises e exportações abaixo seguem este filtro enquanto ele estiver ativo.</div>",
                 unsafe_allow_html=True,
             )
-            stats_cp_idade = (
-                df_view.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                       .agg(Média="mean", Desvio_Padrão="std", n="count").reset_index()
-            )
+            stats_cp_idade = calcular_estatisticas_cp_idade(df_view)
             if outliers_df is not None and not outliers_df.empty:
                 outliers_df = outliers_df[outliers_df["CP"].astype(str).isin(problem_cps)].copy()
 
@@ -3941,7 +3989,12 @@ if uploaded_files:
 
             # >>>>>> NOVO: no básico NÃO entra "Resumo Estatístico"
             if (not is_basic) and stats is not None and not stats.empty:
-                stt = [["CP","Idade (dias)","Média","DP","n"]] + stats.values.tolist()
+                _cols_stats = ["CP", "Idade (dias)", "Média", "Desvio_Padrão", "n"]
+                _stats_pdf = stats.loc[:, _cols_stats].copy()
+                _stats_pdf["Desvio_Padrão"] = _stats_pdf["Desvio_Padrão"].apply(
+                    lambda v: "—" if pd.isna(v) else round(float(v), 3)
+                )
+                stt = [["CP", "Idade (dias)", "Média", "DP", "n"]] + _stats_pdf.values.tolist()
                 story.append(Paragraph("Resumo Estatístico (Média + DP)", styles['Heading3']))
                 t2 = Table(stt, repeatRows=1)
                 t2.setStyle(TableStyle([
@@ -4200,11 +4253,9 @@ if uploaded_files:
         def _stats_cp_idade_pdf(df_: pd.DataFrame) -> pd.DataFrame:
             if df_ is None or df_.empty:
                 return pd.DataFrame(columns=["CP", "Idade (dias)", "Média", "Desvio_Padrão", "n"])
-            return (
-                df_.groupby(["CP", "Idade (dias)"])["Resistência (MPa)"]
-                   .agg(Média="mean", Desvio_Padrão="std", n="count")
-                   .reset_index()
-            )
+            return calcular_estatisticas_cp_idade(df_)[
+                ["CP", "Idade (dias)", "Média", "Desvio_Padrão", "n"]
+            ]
 
         def _fig_crescimento_pdf(df_: pd.DataFrame, fck_val: Optional[float]):
             try:

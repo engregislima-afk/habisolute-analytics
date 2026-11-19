@@ -1563,35 +1563,8 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         f"Resultados por certificado, nota fiscal e idade; itens 6.1, 6.2, 6.3, {item} e 7(d).",
         styles["Normal"],
     ))
-    # RESUMO VISUAL V5: indicadores do próprio cálculo normativo, sem
-    # duplicar lógica de aprovação e sem interferir na tabela detalhada.
-    _status_pdf = evidencias["Situação normativa"].astype(str)
-    _contagens = [
-        ("SÉRIES", len(evidencias), "#E7E8E9", "#28323A"),
-        ("VÁLIDAS", int(_status_pdf.eq("Válido").sum()), "#DCFCE7", "#166534"),
-        ("SUGESTÃO REFAZER", int(_status_pdf.eq("Sugestão refazer o ensaio").sum()), "#FFE4E6", "#9F1239"),
-        ("CONFERIR DADOS", int(_status_pdf.eq("Conferir dados").sum()), "#FEF3C7", "#92400E"),
-    ]
-    _resumo_cab = ParagraphStyle("argamassa_resumo_cab_v5", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=7.2, leading=9.2, alignment=TA_CENTER)
-    _resumo_num = ParagraphStyle("argamassa_resumo_num_v5", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=13, leading=15, alignment=TA_CENTER)
-    _quadro = [[Paragraph(nome, _resumo_cab) for nome, _, _, _ in _contagens],
-               [Paragraph(str(quantidade), _resumo_num) for _, quantidade, _, _ in _contagens]]
-    _resumo_tabela = Table(_quadro, colWidths=[largura_util / 4.0] * 4, hAlign="LEFT")
-    _estilos_resumo = [
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, 0), 7),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 7),
-        ("LINEBELOW", (0, -1), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
-    ]
-    for _col, (_, _, _bg, _fg) in enumerate(_contagens):
-        _estilos_resumo.extend([
-            ("BACKGROUND", (_col, 0), (_col, -1), colors.HexColor(_bg)),
-            ("TEXTCOLOR", (_col, 0), (_col, -1), colors.HexColor(_fg)),
-        ])
-    _resumo_tabela.setStyle(TableStyle(_estilos_resumo))
-    conteudo.extend([Spacer(1, 8), _resumo_tabela, Spacer(1, 7)])
+    # Indicadores permanecem na dashboard. No PDF, a abertura da seção de
+    # argamassa segue direta para a tabela técnica, sem os cartões-resumo.
 
     estilo_cab = ParagraphStyle("argamassa_cab", parent=styles["Normal"],
         fontName="Helvetica-Bold", fontSize=7.2, leading=8.4, alignment=TA_CENTER)

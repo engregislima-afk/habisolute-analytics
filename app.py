@@ -1371,7 +1371,7 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
       2 resultados na flexão ou 4 na compressão.
     """
     colunas = [
-        "Arquivo", "Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio",
+        "Arquivo", "Obra", "Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio", "CP(s)",
         "Resultados individuais (MPa)", "Média (MPa)",
         "Desvio absoluto máximo (MPa)", "DAM inicial (MPa)",
         "Limite DAM (MPa)", "n inicial", "n válido", "Descartados (*)",
@@ -1436,18 +1436,14 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
 
         media_final, dam_final, _ = resumo(ativos)
         n_valido = len(ativos)
-        if n_inicial < n_esperado:
-            situacao = (f"CONFERIR DADOS: série parcial ({n_inicial}/{n_esperado}); "
-                        "sem conclusão normativa nem indicação automática de repetição")
-        elif n_inicial > n_esperado:
-            situacao = (f"CONFERIR AGRUPAMENTO: {n_inicial} resultados, "
-                        f"esperados {n_esperado}; sem conclusão normativa")
+        if n_inicial != n_esperado:
+            # Resultado parcial ou agrupamento suspeito: não é ensaio reprovado.
+            situacao = "Conferir dados"
         elif n_valido < n_minimo or dam_final is None or dam_final > limite + 1e-9:
-            situacao = "REPETIÇÃO NECESSÁRIA: série completa não atende ao limite normativo"
-        elif excluidos:
-            situacao = "VÁLIDO: média recalculada; resultados * desconsiderados"
+            # Sugestão de providência, nunca uma ordem automática de moldagem.
+            situacao = "Sugestão refazer o ensaio"
         else:
-            situacao = "VÁLIDO: desvio absoluto máximo dentro do limite"
+            situacao = "Válido"
 
         individuais = "; ".join(
             f"{cp}{'*' if i in excluidos else ''}: {valores[i]:.2f}"
@@ -1462,10 +1458,12 @@ def calcular_evidencias_argamassa(df_base: pd.DataFrame, tipo_ensaio: Optional[s
             return "—" if pd.isna(v) or str(v).strip() == "" else str(v)
         resultados.append({
             "Arquivo": campo("Arquivo"),
+            "Obra": campo("Obra"),
             "Relatório": campo("Relatório"),
             "Nota Fiscal": campo("Nota Fiscal"),
             "Idade (dias)": int(primeira["Idade (dias)"]),
             "Ensaio": tipo,
+            "CP(s)": "; ".join(dict.fromkeys(sub["CP"].astype(str).tolist())),
             "Resultados individuais (MPa)": individuais,
             "Média (MPa)": media_final,
             "Desvio absoluto máximo (MPa)": dam_final,
@@ -1538,17 +1536,23 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
     for linha_ind, (_, registro) in enumerate(evidencias.iterrows(), start=1):
-        if "REPETIÇÃO NECESSÁRIA" in registro["Situação normativa"] or "CONFERIR" in registro["Situação normativa"]:
-            estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#FFF0E8")))
+        status = str(registro["Situação normativa"])
+        if status == "Válido":
+            estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#DCFCE7")))
+        elif status == "Sugestão refazer o ensaio":
+            estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#FFE4E6")))
+        else:
+            estilos.append(("BACKGROUND", (7, linha_ind), (7, linha_ind), colors.HexColor("#FEF3C7")))
     tabela.setStyle(TableStyle(estilos))
     conteudo.extend([Spacer(1, 6), tabela, Spacer(1, 7)])
     conteudo.append(Paragraph(
         "DAM = maior diferença absoluta entre resistência individual e média da série; "
         "(*) valor desconsiderado no recálculo. Valores individuais em 0,01 MPa; "
         "média e DAM em 0,1 MPa. "
-        "Série parcial ou agrupamento divergente requer conferência dos dados de origem, "
-        "sem determinação automática de refazer ensaios. Repetição somente quando "
-        "a série completa permanecer fora dos critérios dos itens 6.4/6.5; "
+        "Situação: Válido quando a série atende ao limite; Sugestão refazer o ensaio "
+        "quando a série completa não atende; Conferir dados quando não é conclusiva. "
+        "A sugestão não substitui a avaliação do responsável técnico. "
+        "Não misturar resultados de lotes, certificados ou idades distintos. "
         "este quadro não substitui os dados exigidos no item 7(a-c).",
         styles["Normal"],
     ))
@@ -1556,39 +1560,103 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
 
 
 def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
-    """Quadro explícito e contínuo na tela; retornado também para exportações."""
-    existentes = df_base["Material"].astype(str).str.casefold().eq("argamassa") if "Material" in df_base.columns else []
-    if not any(existentes):
+    """Painel aberto e visível para TODAS as argamassas (sem regras por cliente).
+
+    Os indicadores e o PDF utilizam a mesma função de cálculo normativo.
+    Não usar o FCK de concreto para classificar os ensaios de argamassa.
+    """
+    if df_base is None or df_base.empty or "CP" not in df_base.columns:
         return pd.DataFrame()
+    df_mat = _atualizar_material_norma_linhas(df_base)
+    if not df_mat["Material"].astype(str).str.casefold().eq("argamassa").any():
+        return pd.DataFrame()
+
     st.markdown(_ui_section(
-        "Argamassa - NBR 13279:2005", "Evidências de resultados individuais, média e desvio absoluto máximo por idade (item 7d).",
-        "🧪", "NORMA TÉCNICA"), unsafe_allow_html=True)
-    st.selectbox("Tipo de ensaio para os certificados de argamassa",
+        "Situação das argamassas — NBR 13279:2005",
+        "Resultado normativo por certificado, obra e idade, visível também nos PDFs.",
+        "🧪", "TODOS OS CLIENTES"), unsafe_allow_html=True)
+    st.selectbox(
+        "Tipo de ensaio para os certificados de argamassa",
         ["Compressão axial", "Tração na flexão"],
         key="argamassa_tipo_ensaio",
-        help="O prefixo A identifica o material, mas não identifica sozinho o tipo de ruptura. "
-             "Selecione o ensaio realizado; compressão: 6 resultados, limite 0,5 MPa e mínimo 4; "
-             "tração na flexão: 3 resultados, limite 0,3 MPa e mínimo 2.")
+        help="Selecione o tipo efetivamente ensaiado: compressão (6 leituras, DAM 0,5 MPa, "
+             "mínimo 4 após exclusões) ou flexão (3 leituras, DAM 0,3 MPa, mínimo 2).",
+    )
     dados = calcular_evidencias_argamassa(df_base)
-    st.caption("Prefixo A reconhecido automaticamente. Agrupamento por certificado, NF e idade; "
-               "resultados individuais (0,01 MPa), média e desvio absoluto máximo (0,1 MPa). "
-               "* indica valor desconsiderado no recálculo normativo.")
-    exibir = dados[["Relatório", "Nota Fiscal", "Idade (dias)", "Ensaio",
-                    "Resultados individuais (MPa)", "Média (MPa)",
-                    "Desvio absoluto máximo (MPa)", "n válido", "Situação normativa"]].copy()
-    render_screen_table(exibir, "Verificação ABNT NBR 13279:2005 - item 7(d)",
-        "Os cálculos normativos não alteram os gráficos e as médias de concreto existentes.")
-    estados = dados["Situação normativa"].astype(str)
-    conferir = estados.str.startswith("CONFERIR")
-    repetir = estados.str.startswith("REPETIÇÃO NECESSÁRIA")
-    if conferir.any():
-        st.warning(f"{int(conferir.sum())} série(s) exigem conferência da leitura/agrupamento "
-                   "do certificado. Isso NÃO determina repetição do ensaio.")
-    if repetir.any():
-        st.error(f"{int(repetir.sum())} série(s) completas permaneceram fora do "
-                 "critério da NBR 13279:2005 após o tratamento normativo: "
-                 "avaliar repetição do ensaio e registrar a decisão técnica.")
+    if dados.empty:
+        st.info("Não há resultados de argamassa suficientes para montar o quadro.")
+        return dados
+
+    status = dados["Situação normativa"].astype(str)
+    validos = int(status.eq("Válido").sum())
+    sugestoes = int(status.eq("Sugestão refazer o ensaio").sum())
+    conferir = int(status.eq("Conferir dados").sum())
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Séries analisadas", len(dados))
+    k2.metric("Válido", validos)
+    k3.metric("Sugestão refazer o ensaio", sugestoes)
+    k4.metric("Conferir dados", conferir)
+
+    exibir = dados[["Obra", "Relatório", "Nota Fiscal", "CP(s)", "Idade (dias)",
+                    "Ensaio", "Resultados individuais (MPa)", "Média (MPa)",
+                    "Desvio absoluto máximo (MPa)", "Limite DAM (MPa)",
+                    "n válido", "Situação normativa"]].copy()
+    exibir = exibir.rename(columns={"Situação normativa": "Situação"})
+    st.caption("(*) leitura excluída do recálculo normativo; os resultados originais "
+               "são preservados para rastreabilidade. Os estados são os mesmos da versão PDF.")
+    render_screen_table(exibir, "Situação por obra, certificado e idade",
+        "Aplicado automaticamente a todas as argamassas, sem misturar clientes ou idades.")
+
+    if sugestoes:
+        st.warning(f"{sugestoes} série(s): sugestão de refazer o ensaio. "
+                   "Conferir o certificado e registrar decisão do responsável técnico.")
+    if conferir:
+        st.info(f"{conferir} série(s): conferir dados/agrupamento; "
+                "sem reprovação ou sugestão automática de repetição.")
     return dados
+
+
+def _argamassa_status_por_cp_idade(df_base: pd.DataFrame,
+                                   evidencias: Optional[pd.DataFrame] = None) -> Dict[tuple, str]:
+    """Status por CP e idade quando uma única série permite associá-lo com segurança.
+
+    O quadro normativo principal mantém o agrupamento por obra e certificado;
+    esta função nunca escolhe arbitrariamente entre séries incompatíveis.
+    """
+    ev = evidencias if evidencias is not None else calcular_evidencias_argamassa(df_base)
+    if ev is None or ev.empty:
+        return {}
+    encontrados = {}
+    for _, r in ev.iterrows():
+        idade = pd.to_numeric(pd.Series([r.get("Idade (dias)")]), errors="coerce").iloc[0]
+        if pd.isna(idade):
+            continue
+        for cp in str(r.get("CP(s)", "")).split(";"):
+            cp = cp.strip()
+            if not cp:
+                continue
+            encontrados.setdefault((cp, int(idade)), set()).add(str(r["Situação normativa"]))
+    return {chave: next(iter(estados)) if len(estados) == 1 else "Conferir dados"
+            for chave, estados in encontrados.items()}
+
+
+def _aplicar_status_argamassa_pv(pv: pd.DataFrame, df_base: pd.DataFrame,
+                                 evidencias: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Atualiza no quadro detalhado só as situações de argamassa, mantendo concreto/graute."""
+    if pv is None or pv.empty or "CP" not in pv.columns:
+        return pv
+    mapa = _argamassa_status_por_cp_idade(df_base, evidencias)
+    if not mapa:
+        return pv
+    saida = pv.copy()
+    for i, row in saida.iterrows():
+        cp = str(row["CP"]).strip()
+        for idade in (1, 3, 7, 14, 21, 28, 56, 63):
+            col = f"Status {idade}d"
+            estado = mapa.get((cp, idade))
+            if col in saida.columns and estado is not None:
+                saida.at[i, col] = estado
+    return saida
 
 def _fmt_data_calibracao(valor: Any) -> str:
     """Formata data de validade da calibração para dd/mm/aaaa quando possível."""
@@ -2206,11 +2274,11 @@ def render_fck_dashboard(pv_df: pd.DataFrame, fck_value: Optional[float]):
 
     def _status_kind(txt):
         t = str(txt or "").lower()
-        if "não atingiu" in t or "nao atingiu" in t:
+        if "sugestão refazer" in t or "sugestao refazer" in t or "não atingiu" in t or "nao atingiu" in t:
             return "bad"
-        if "atingiu" in t:
+        if t.strip() == "válido" or t.strip() == "valido" or "atingiu" in t:
             return "ok"
-        if "coletando" in t or "análise" in t or "analise" in t:
+        if "conferir dados" in t or "coletando" in t or "análise" in t or "analise" in t:
             return "wait"
         return "none"
 
@@ -3203,10 +3271,10 @@ if uploaded_files:
         st.markdown("<div id='overview-alerts'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section("Visão geral", "Indicadores, resultados individuais, estatísticas e alertas do conjunto selecionado.", "▦", "RESUMO"), unsafe_allow_html=True)
         st.markdown("<div style='font-size:12px;color:var(--muted);margin:2px 0 10px'>Dados estruturados com sucesso a partir dos certificados selecionados.</div>", unsafe_allow_html=True)
-        render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
-
-        # Evidências normativas somente para argamassa (CP com prefixo A).
+        # Resultado de argamassa aparece ABERTO, antes dos indicadores gerais.
+        # Vale para qualquer cliente/obra; o PDF usa o mesmo cálculo.
         evidencias_argamassa = _render_argamassa_evidencias_tela(df_view)
+        render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
 
         # ---------------------------------------------------------------
         # SEÇÃO 2 — gráficos
@@ -3383,7 +3451,17 @@ if uploaded_files:
         # SEÇÃO 3 — verificação do fck (USANDO df_view para médias por idade)
         # ---------------------------------------------------------------
         st.markdown("<div id='fck-verification'></div>", unsafe_allow_html=True)
-        st.markdown(_ui_section("Verificação do FCK", "Situação por corpo de prova e idade, considerando a regra de aprovação pelo melhor resultado do par.", "✅", "CONTROLE"), unsafe_allow_html=True)
+        somente_argamassa = (not df_view.empty and "Material" in df_view.columns
+                             and df_view["Material"].astype(str).str.casefold().eq("argamassa").all())
+        if somente_argamassa:
+            st.markdown(_ui_section(
+                "Verificação por CP — Argamassa",
+                "A situação é determinada pelo DAM e pelo número de resultados, sem exigir FCK de projeto.",
+                "✅", "NBR 13279"), unsafe_allow_html=True)
+        else:
+            st.markdown(_ui_section(
+                "Verificação do FCK", "Situação por corpo de prova e idade, considerando a regra de aprovação pelo melhor resultado do par.",
+                "✅", "CONTROLE"), unsafe_allow_html=True)
 
         # usa o conjunto filtrado completo (df_view), não o df_plot
         fck_series_all = pd.to_numeric(df_view["Fck Projeto"], errors="coerce").dropna()
@@ -3439,8 +3517,9 @@ if uploaded_files:
                     else:
                         resumo_status.append("🟢 Atingiu fck" if float(media) >= float(fckp) else "🔴 Não atingiu fck")
         verif_fck_df2["Status"] = resumo_status
-        with st.expander("📋 Resumo técnico por idade", expanded=False):
-            render_screen_table(verif_fck_df2, "Resumo por idade", "Média real comparada ao FCK de projeto.")
+        if not somente_argamassa:
+            with st.expander("📋 Resumo técnico por idade", expanded=False):
+                render_screen_table(verif_fck_df2, "Resumo por idade", "Média real comparada ao FCK de projeto.")
 
         # detalhado por CP — incluindo 1, 3, 7, 14, 21, 28, 56 e 63 dias
         idades_interesse = [1, 3, 7, 14, 21, 28, 56, 63]
@@ -3589,11 +3668,12 @@ if uploaded_files:
                 + ["Alerta Pares (Δ>2 MPa)"]
             )
             pv = pv[ordered_cols]
-            pv_cp_status = pv.copy()
+            pv_cp_status = _aplicar_status_argamassa_pv(pv, df_view, evidencias_argamassa)
 
-            # O painel principal agora também mostra uma coluna "PARES"
-            # e um KPI com a quantidade de CPs que exigem revisão.
-            render_fck_dashboard(pv_cp_status, fck_active2)
+            # O painel de FCK não avalia argamassa; o painel NBR 13279
+            # acima já apresenta as situações e indicadores normativos.
+            if not somente_argamassa:
+                render_fck_dashboard(pv_cp_status, fck_active2)
 
             # ===============================================================
             # TABELA TÉCNICA / ALERTAS — DESTAQUE DE TELA
@@ -4020,7 +4100,9 @@ if uploaded_files:
                     if fig3: story.append(_img_from_fig_pdf(fig3, w=640, h=430)); story.append(Spacer(1, 8))
                     if fig4: story.append(_img_from_fig_pdf(fig4, w=660, h=440)); story.append(Spacer(1, 8))
 
-            if include_verif and verif_fck_df is not None and not verif_fck_df.empty:
+            df_somente_argamassa = ("Material" in df.columns and not df.empty
+                                   and _atualizar_material_norma_linhas(df)["Material"].astype(str).str.casefold().eq("argamassa").all())
+            if include_verif and not df_somente_argamassa and verif_fck_df is not None and not verif_fck_df.empty:
                 story.append(PageBreak())
                 story.append(Paragraph("Verificação do fck de Projeto (Resumo por idade)", styles["Heading3"]))
                 rows_v = [["Idade (dias)","Média Real (MPa)","fck Projeto (MPa)","Status"]]
@@ -4209,11 +4291,11 @@ if uploaded_files:
                         if "Status" not in col_name:
                             continue
                         txt = str(row[c_i]).lower()
-                        if "analisando" in txt or "coletando" in txt:
+                        if "conferir dados" in txt or "analisando" in txt or "coletando" in txt:
                             ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#facc15")))
-                        elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                        elif "sugestão refazer" in txt or "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
                             ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#ef4444")))
-                        elif "atingiu" in txt or "dentro" in txt:
+                        elif txt.strip() == "válido" or "atingiu" in txt or "dentro" in txt:
                             ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#16a34a")))
                         elif "acima" in txt:
                             ts.append(("BACKGROUND",(c_i,r_i),(c_i,r_i),C.HexColor("#3b82f6")))
@@ -4570,11 +4652,11 @@ if uploaded_files:
                         if "Status" not in str(col_name):
                             continue
                         txt = str(row[c_i]).lower()
-                        if "analisando" in txt or "coletando" in txt:
+                        if "conferir dados" in txt or "analisando" in txt or "coletando" in txt:
                             ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#facc15")))
-                        elif "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
+                        elif "sugestão refazer" in txt or "não atingiu" in txt or "nao atingiu" in txt or "abaixo" in txt:
                             ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#ef4444")))
-                        elif "atingiu" in txt or "dentro" in txt:
+                        elif txt.strip() == "válido" or "atingiu" in txt or "dentro" in txt:
                             ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#16a34a")))
                         elif "sem dados" in txt:
                             ts.append(("BACKGROUND", (c_i,r_i), (c_i,r_i), _C.HexColor("#e5e7eb")))
@@ -4598,7 +4680,10 @@ if uploaded_files:
                     story.append(PageBreak())
                 first_group = False
 
-                story.append(Paragraph(f"<b>Grupo fck {fck_label} MPa</b>", styles["Heading2"]))
+                if df_g["Material"].astype(str).str.casefold().eq("argamassa").all() and fck_g is None:
+                    story.append(Paragraph("<b>Argamassa — evidências NBR 13279:2005</b>", styles["Heading2"]))
+                else:
+                    story.append(Paragraph(f"<b>Grupo fck {fck_label} MPa</b>", styles["Heading2"]))
                 story.append(Paragraph(f"Obra: {_obra_label_from_df_pdf(df_g)}", styles['Normal']))
                 story.append(Paragraph(f"Período (datas dos certificados): {_date_label_from_df_pdf(df_g)}", styles['Normal']))
                 story.append(Paragraph(f"fck de projeto: {fck_label}", styles['Normal']))
@@ -4631,7 +4716,7 @@ if uploaded_files:
                 if fig_g is not None:
                     figs_to_close.append(fig_g)
                 _add_fig(fig_g)
-                pv_g = _pv_cp_status_pdf(df_g, fck_g)
+                pv_g = _aplicar_status_argamassa_pv(_pv_cp_status_pdf(df_g, fck_g), df_g)
                 if pv_g is not None and not pv_g.empty:
                     story.append(Paragraph("Verificação detalhada por CP (1/3/7/14/21/28/56/63 dias)", styles["Heading3"]))
                     _add_pv_table(pv_g)

@@ -542,6 +542,69 @@ section[data-testid="stSidebar"] .sidebar-brand-title{font-size:17px!important}s
 </style>
 """,unsafe_allow_html=True)
 
+# =============================================================================
+# HABISOLUTE V6 — REDESIGN VISUAL ESTRUTURAL
+# Mudanças exclusivamente de interface: sem interferir em resultados normativos.
+# =============================================================================
+st.markdown("""
+<style>
+/* Base do sistema: contraste e profundidade, sem abandonar o grafite/concreto. */
+.stApp{--bg:#1b2226!important;--surface:#202a2e!important;--panel:#253036!important;
+ --panel2:#2d3a40!important;--line:#45535a!important;--soft-line:rgba(224,231,235,.12)!important;
+ --text:#f5f8fa!important;--muted:#b4c1c7!important;background:#1b2226!important;color:#f5f8fa!important}
+[data-testid="stAppViewContainer"],[data-testid="stAppViewContainer"]>.main{
+ background:radial-gradient(ellipse at 80% 4%,rgba(246,124,42,.11),transparent 34%),#1b2226!important}
+section[data-testid="stSidebar"]>div,[data-testid="stSidebar"]>div{background:#182126!important;border-color:#35434a!important}
+.block-container{max-width:1700px!important;padding-top:14px!important}
+.hx-top{background:#1e282d!important;border:1px solid #42525a!important;border-radius:15px!important;
+ padding:14px 19px!important;margin-bottom:14px!important}
+.hx-logo{background:linear-gradient(145deg,#ffa358,#ef6a1a)!important;border-radius:12px!important;box-shadow:0 8px 26px rgba(249,115,22,.22)!important}
+.hx-version{background:rgba(249,115,22,.13)!important;border-color:rgba(251,146,60,.42)!important;color:#ffc08d!important}
+.hx-welcome{background:radial-gradient(circle at 90% 10%,rgba(251,146,60,.35),transparent 30%),linear-gradient(115deg,#28373d 0%,#202c31 57%,#3a3430 100%)!important;
+ border:1px solid #5f6566!important;border-left:6px solid #ff8b39!important;min-height:235px!important;
+ padding:30px 35px!important;border-radius:17px!important;box-shadow:0 18px 38px rgba(0,0,0,.18)!important}
+.hx-welcome h1{font-size:clamp(28px,3vw,43px)!important;font-weight:950!important;max-width:710px!important;line-height:1.1!important;letter-spacing:-1.1px!important}
+.hx-welcome h1 span{color:#ffab66!important}
+.hx-welcome p{color:#dae4e8!important;max-width:670px!important;font-size:13px!important}
+.hx-overline{color:#ffc297!important;letter-spacing:2px!important}
+.hx-welcome-art{background:rgba(19,28,32,.45);border:1px solid rgba(255,255,255,.12);
+ border-radius:15px;padding:14px 18px;min-width:235px}
+.hx-jump{background:#253137!important;border:1px solid #44545b!important;border-radius:12px!important;
+ margin:14px 0 18px!important;padding:9px!important}
+.hx-jump a{background:rgba(255,255,255,.04);margin:2px;border:1px solid rgba(255,255,255,.07);
+ border-radius:8px!important;font-size:11px!important;color:#eef2f4!important}
+.hx-jump a:hover{background:rgba(255,146,72,.15)!important;border-color:#bd713a!important}
+.ui-section-head{background:#263238!important;border:1px solid #46555d!important;border-left:4px solid #ff923e!important;
+ box-shadow:0 9px 22px rgba(0,0,0,.10)!important;border-radius:12px!important;margin:21px 0 12px!important}
+.ui-section-ico{background:rgba(255,146,72,.13)!important;color:#ffb274!important}
+.ov-card,.ov-tech-card{background:#29363b!important;border-color:#46565b!important;box-shadow:none!important}
+.stTabs [data-baseweb="tab-list"]{background:#263238!important;border-color:#45565c!important}
+.stTabs [aria-selected="true"]{background:#ff8b39!important;color:#182126!important}
+[data-testid="stFileUploader"]{background:#263238!important;border:1px solid #58646a!important;
+ border-radius:15px!important;padding:18px!important}
+[data-testid="stFileUploaderDropzone"]{background:#29383e!important;border:2px dashed #ff9b51!important;border-radius:12px!important}
+.qa-v5-card{background:#29383d!important;border:1px solid #4d5c61!important;
+ border-left:4px solid var(--qa-accent,#ff9a57)!important;box-shadow:0 7px 22px rgba(0,0,0,.12)!important}
+.qa-v5-kpis{gap:15px!important}
+/* Cards novos da abertura e pós-upload. */
+.hx-start{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:12px 0 22px}
+.hx-step{background:linear-gradient(145deg,#29363b,#253036);border:1px solid #46565e;border-radius:14px;padding:20px;min-height:130px}
+.hx-step-label{font-size:10px;font-weight:850;letter-spacing:1.4px;color:#ffa86e;margin-bottom:14px}
+.hx-step-title{font-weight:900;font-size:17px;color:#fff;margin-bottom:7px}
+.hx-step-text{font-size:12px;color:#c0ced3;line-height:1.55}
+.hx-workspace{border:1px solid #536169;border-radius:15px;display:flex;justify-content:space-between;
+ align-items:center;gap:15px;padding:18px 22px;background:linear-gradient(100deg,#2d3b40,#283339 58%,#37423b);margin:10px 0 17px}
+.hx-workspace-eyebrow{font-size:10px;letter-spacing:1.8px;color:#ffb779;font-weight:850}
+.hx-workspace-title{font-size:23px;font-weight:930;color:#fff;margin-top:6px;line-height:1.1}
+.hx-workspace-desc{font-size:12px;color:#c8d3d6;margin-top:6px}
+.hx-workspace-number{font-size:30px;color:#ffae75;font-weight:950;letter-spacing:-1px}
+.hx-workspace-right{display:flex;gap:21px;text-align:center;white-space:nowrap}
+.hx-workspace-right small{display:block;font-size:10px;font-weight:700;color:#ced6d9;letter-spacing:.6px}
+@media(max-width:1000px){.hx-workspace{align-items:flex-start;flex-direction:column}.hx-start{grid-template-columns:1fr}}
+@media(max-width:620px){.hx-welcome{min-height:0!important;padding:23px!important}.hx-workspace-right{gap:16px}.hx-workspace-number{font-size:23px}}
+</style>
+""", unsafe_allow_html=True)
+
 def _ui_section(title: str, subtitle: str = "", icon: str = "◆", chip: str = "") -> str:
     import html as _html
     chip_html = f'<div class="ui-chip">{_html.escape(chip)}</div>' if chip else ""
@@ -838,19 +901,19 @@ def _render_header():
         <div class="hx-tagline">ENGENHARIA · INTELIGÊNCIA DE CONTROLE TECNOLÓGICO</div></div>
       </div>
       <div class="hx-topright"><span class="hx-live"></span> AMBIENTE DE ANÁLISE
-        <span class="hx-version">PAINEL V3</span></div>
+        <span class="hx-version">V6 · NOVO VISUAL</span></div>
     </div>
     <div class="hx-welcome">
        <div><div class="hx-overline">CENTRAL DE INTELIGÊNCIA LABORATORIAL</div>
-       <h1>Controle tecnológico <span>em tempo real.</span></h1>
-       <p>Importe certificados, encontre divergências e acompanhe a resistência do concreto em um só lugar.</p></div>
+       <h1>Engenharia dos dados.<br><span>Qualidade à primeira vista.</span></h1>
+       <p>Controle de concreto, argamassa e graute com resultados rastreáveis, evidências normativas e diagnósticos visuais no mesmo ambiente.</p></div>
        <div class="hx-welcome-art"><div class="hx-pulse"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-       <strong>ANÁLISE DE RESISTÊNCIA</strong><small>Precisão e rastreabilidade</small></div>
+       <strong>HABISOLUTE · VISÃO TÉCNICA</strong><small>Resultados, rastreabilidade e evidências</small></div>
     </div>
     <div class="hx-jump"><span>ACESSO RÁPIDO</span>
-      <a href="#upload-area">01 &nbsp; Importação</a><a href="#technical-alerts">02 &nbsp; Alertas</a>
-      <a href="#attention-map">03 &nbsp; Mapa de CPs</a><a href="#graphs">04 &nbsp; Gráficos</a>
-      <a href="#pair-analysis">05 &nbsp; Tabela técnica</a></div>
+      <a href="#upload-area">01 &nbsp; Importação</a><a href="#quality-dashboard">02 &nbsp; Qualidade</a>
+      <a href="#technical-alerts">03 &nbsp; Alertas</a><a href="#attention-map">04 &nbsp; CPs</a>
+      <a href="#graphs">05 &nbsp; Gráficos</a><a href="#pair-analysis">06 &nbsp; Tabela técnica</a></div>
     """, unsafe_allow_html=True)
 
 # =============================================================================
@@ -1500,6 +1563,36 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
         f"Resultados por certificado, nota fiscal e idade; itens 6.1, 6.2, 6.3, {item} e 7(d).",
         styles["Normal"],
     ))
+    # RESUMO VISUAL V5: indicadores do próprio cálculo normativo, sem
+    # duplicar lógica de aprovação e sem interferir na tabela detalhada.
+    _status_pdf = evidencias["Situação normativa"].astype(str)
+    _contagens = [
+        ("SÉRIES", len(evidencias), "#E7E8E9", "#28323A"),
+        ("VÁLIDAS", int(_status_pdf.eq("Válido").sum()), "#DCFCE7", "#166534"),
+        ("SUGESTÃO REFAZER", int(_status_pdf.eq("Sugestão refazer o ensaio").sum()), "#FFE4E6", "#9F1239"),
+        ("CONFERIR DADOS", int(_status_pdf.eq("Conferir dados").sum()), "#FEF3C7", "#92400E"),
+    ]
+    _resumo_cab = ParagraphStyle("argamassa_resumo_cab_v5", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=7.2, leading=9.2, alignment=TA_CENTER)
+    _resumo_num = ParagraphStyle("argamassa_resumo_num_v5", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=13, leading=15, alignment=TA_CENTER)
+    _quadro = [[Paragraph(nome, _resumo_cab) for nome, _, _, _ in _contagens],
+               [Paragraph(str(quantidade), _resumo_num) for _, quantidade, _, _ in _contagens]]
+    _resumo_tabela = Table(_quadro, colWidths=[largura_util / 4.0] * 4, hAlign="LEFT")
+    _estilos_resumo = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 7),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 7),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+    ]
+    for _col, (_, _, _bg, _fg) in enumerate(_contagens):
+        _estilos_resumo.extend([
+            ("BACKGROUND", (_col, 0), (_col, -1), colors.HexColor(_bg)),
+            ("TEXTCOLOR", (_col, 0), (_col, -1), colors.HexColor(_fg)),
+        ])
+    _resumo_tabela.setStyle(TableStyle(_estilos_resumo))
+    conteudo.extend([Spacer(1, 8), _resumo_tabela, Spacer(1, 7)])
+
     estilo_cab = ParagraphStyle("argamassa_cab", parent=styles["Normal"],
         fontName="Helvetica-Bold", fontSize=7.2, leading=8.4, alignment=TA_CENTER)
     estilo_cel = ParagraphStyle("argamassa_cel", parent=styles["Normal"],
@@ -1559,11 +1652,100 @@ def _argamassa_pdf_flowables(df_base: pd.DataFrame, styles, largura_util: float)
     return conteudo
 
 
-def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
-    """Painel aberto e visível para TODAS as argamassas (sem regras por cliente).
 
-    Os indicadores e o PDF utilizam a mesma função de cálculo normativo.
-    Não usar o FCK de concreto para classificar os ensaios de argamassa.
+# ============================================================================
+# HABISOLUTE — PAINEL DE QUALIDADE DE ARGAMASSA / VISUAL V5
+# Este módulo é apenas de APRESENTAÇÃO: utiliza os resultados já calculados pela
+# rotina normativa, sem substituir médias, limites ou regras de exclusão.
+# ============================================================================
+
+def _argamassa_linhas_detalhe(evidencia: pd.Series) -> pd.DataFrame:
+    """Converte a evidência já auditada em leituras para tabela/gráfico.
+
+    O asterisco é escrito exclusivamente pela rotina normativa. Não existe
+    exclusão nova, recálculo da média ou classificação por FCK nesta função.
+    """
+    campos = ["Nº", "Identificação", "Resistência (MPa)", "Uso no cálculo", "Distância da média (MPa)"]
+    texto = str(evidencia.get("Resultados individuais (MPa)", "") or "")
+    media = pd.to_numeric(pd.Series([evidencia.get("Média (MPa)")]), errors="coerce").iloc[0]
+    linhas = []
+    for item in texto.split(";"):
+        item = item.strip()
+        if not item or ":" not in item:
+            continue
+        identificacao, valor_txt = item.rsplit(":", 1)
+        identificacao = identificacao.strip()
+        excluido = identificacao.endswith("*")
+        if excluido:
+            identificacao = identificacao[:-1].strip()
+        try:
+            valor = float(valor_txt.strip().replace(",", "."))
+        except (TypeError, ValueError):
+            continue
+        linhas.append({
+            "Nº": len(linhas) + 1,
+            "Identificação": identificacao,
+            "Resistência (MPa)": valor,
+            "Uso no cálculo": "Desconsiderado (*)" if excluido else "Considerado",
+            "Distância da média (MPa)": abs(valor - float(media)) if pd.notna(media) else float("nan"),
+        })
+    return pd.DataFrame(linhas, columns=campos)
+
+
+def _argamassa_grafico_dispersao(evidencia: pd.Series, leituras: pd.DataFrame):
+    """Desenho interativo ilustrando média e faixa DAM, sem recalcular norma."""
+    import plotly.graph_objects as go
+    figura = go.Figure()
+    media = pd.to_numeric(pd.Series([evidencia.get("Média (MPa)")]), errors="coerce").iloc[0]
+    limite = pd.to_numeric(pd.Series([evidencia.get("Limite DAM (MPa)")]), errors="coerce").iloc[0]
+    if pd.notna(media) and pd.notna(limite):
+        figura.add_hrect(y0=float(media - limite), y1=float(media + limite),
+                         fillcolor="rgba(52,211,153,0.12)", line_width=0)
+        figura.add_hline(y=float(media), line_dash="dash", line_width=2,
+                         line_color="#FBBF24", annotation_text=f"Média: {media:.1f} MPa",
+                         annotation_position="top left")
+        figura.add_hline(y=float(media + limite), line_dash="dot",
+                         line_color="rgba(52,211,153,.8)", line_width=1)
+        figura.add_hline(y=float(media - limite), line_dash="dot",
+                         line_color="rgba(52,211,153,.8)", line_width=1)
+    if not leituras.empty:
+        for tipo, nome, cor, simbolo in [
+            ("Considerado", "Considerado", "#34D399", "circle"),
+            ("Desconsiderado (*)", "Desconsiderado (*)", "#FB7185", "x"),
+        ]:
+            sub = leituras.loc[leituras["Uso no cálculo"].eq(tipo)]
+            if sub.empty:
+                continue
+            figura.add_trace(go.Scatter(
+                x=sub["Nº"].tolist(), y=sub["Resistência (MPa)"].tolist(),
+                customdata=sub[["Identificação", "Uso no cálculo"]].to_numpy(),
+                mode="markers+text", text=[f"{v:.2f}" for v in sub["Resistência (MPa)"]],
+                textposition="top center", textfont=dict(color="#E8EEF0", size=10),
+                name=nome, marker=dict(color=cor, symbol=simbolo, size=13,
+                                       line=dict(width=1, color="#E8EEF0")),
+                hovertemplate=("<b>%{customdata[0]}</b><br>Resistência: %{y:.2f} MPa"
+                               "<br>%{customdata[1]}<extra></extra>"),
+            ))
+    figura.update_layout(
+        template="plotly_dark", paper_bgcolor="#34383B", plot_bgcolor="#484D51",
+        font=dict(family="Arial, sans-serif", color="#ECF0F0", size=11),
+        margin=dict(l=40, r=20, t=24, b=42), height=335,
+        legend=dict(orientation="h", yanchor="top", y=-0.22, x=0),
+        hovermode="closest",
+    )
+    figura.update_xaxes(title_text="Número da leitura", tickmode="linear", dtick=1,
+                        gridcolor="rgba(205,212,215,.13)", zeroline=False)
+    figura.update_yaxes(title_text="Resistência (MPa)",
+                        gridcolor="rgba(205,212,215,.16)", zeroline=False)
+    return figura
+
+
+def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
+    """Painel V5: KPIs, tabela semáforo, filtros e detalhe rastreável por série.
+
+    Escopo global: toda argamassa detectada, independentemente do cliente.
+    Retorna TODAS as evidências, inclusive se a tela estiver filtrada, para
+    preservar PDF, Excel, verificações por CP e demais integrações.
     """
     if df_base is None or df_base.empty or "CP" not in df_base.columns:
         return pd.DataFrame()
@@ -1572,47 +1754,146 @@ def _render_argamassa_evidencias_tela(df_base: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     st.markdown(_ui_section(
-        "Situação das argamassas — NBR 13279:2005",
-        "Resultado normativo por certificado, obra e idade, visível também nos PDFs.",
-        "🧪", "TODOS OS CLIENTES"), unsafe_allow_html=True)
+        "Controle de Qualidade — Argamassas",
+        "Indicadores, dispersão e rastreabilidade conforme ABNT NBR 13279:2005.",
+        "🧪", "TODAS AS OBRAS"), unsafe_allow_html=True)
     st.selectbox(
         "Tipo de ensaio para os certificados de argamassa",
         ["Compressão axial", "Tração na flexão"],
         key="argamassa_tipo_ensaio",
-        help="Selecione o tipo efetivamente ensaiado: compressão (6 leituras, DAM 0,5 MPa, "
-             "mínimo 4 após exclusões) ou flexão (3 leituras, DAM 0,3 MPa, mínimo 2).",
+        help="Selecione o ensaio realmente executado. O cálculo respeita a série completa "
+             "e as exclusões permitidas pela NBR 13279:2005.",
     )
     dados = calcular_evidencias_argamassa(df_base)
     if dados.empty:
-        st.info("Não há resultados de argamassa suficientes para montar o quadro.")
+        st.info("Não há resultados de argamassa para apresentar neste conjunto.")
         return dados
 
+    st.markdown("""
+    <style>
+    .qa-v5-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:10px 0 16px}
+    .qa-v5-card{border:1px solid #6B7274;border-radius:13px;background:#474D50;padding:15px 16px;
+        min-height:100px;box-shadow:inset 3px 0 0 var(--qa-accent,#FF9A57)}
+    .qa-v5-label{font-size:10px;font-weight:850;color:#D6DDDE;letter-spacing:.65px;text-transform:uppercase}
+    .qa-v5-number{font-size:27px;font-weight:900;color:var(--qa-accent,#FFFFFF);margin:10px 0 2px}
+    .qa-v5-hint{font-size:10px;color:#C6CCCE}
+    .qa-v5-subtitle{font-size:13px;font-weight:800;color:#F2F4F4;margin:15px 0 7px}
+    @media(max-width:1150px){.qa-v5-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:650px){.qa-v5-kpis{grid-template-columns:1fr 1fr}.qa-v5-card{padding:11px}.qa-v5-number{font-size:22px}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    import html as _html
     status = dados["Situação normativa"].astype(str)
     validos = int(status.eq("Válido").sum())
     sugestoes = int(status.eq("Sugestão refazer o ensaio").sum())
     conferir = int(status.eq("Conferir dados").sum())
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Séries analisadas", len(dados))
-    k2.metric("Válido", validos)
-    k3.metric("Sugestão refazer o ensaio", sugestoes)
-    k4.metric("Conferir dados", conferir)
+    cards = [
+        ("Séries analisadas", len(dados), "#FF9A57", "certificados / idades"),
+        ("Válido", validos, "#4ADE80", "critério normativo atendido"),
+        ("Sugestão refazer", sugestoes, "#FDA4AF", "avaliar com responsável técnico"),
+        ("Conferir dados", conferir, "#FCD34D", "série parcial ou agrupamento"),
+    ]
+    cards_html = "".join(
+        '<div class="qa-v5-card" style="--qa-accent:%s">'
+        '<div class="qa-v5-label">%s</div><div class="qa-v5-number">%s</div>'
+        '<div class="qa-v5-hint">%s</div></div>' %
+        (cor, _html.escape(nome), valor, _html.escape(descricao))
+        for nome, valor, cor, descricao in cards
+    )
+    st.markdown('<div class="qa-v5-kpis">'+cards_html+'</div>', unsafe_allow_html=True)
 
-    exibir = dados[["Obra", "Relatório", "Nota Fiscal", "CP(s)", "Idade (dias)",
-                    "Ensaio", "Resultados individuais (MPa)", "Média (MPa)",
-                    "Desvio absoluto máximo (MPa)", "Limite DAM (MPa)",
-                    "n válido", "Situação normativa"]].copy()
-    exibir = exibir.rename(columns={"Situação normativa": "Situação"})
-    st.caption("(*) leitura excluída do recálculo normativo; os resultados originais "
-               "são preservados para rastreabilidade. Os estados são os mesmos da versão PDF.")
-    render_screen_table(exibir, "Situação por obra, certificado e idade",
-        "Aplicado automaticamente a todas as argamassas, sem misturar clientes ou idades.")
+    # Os filtros só alteram o que é VISÍVEL. Não alteram os cálculos ou a exportação.
+    obras = sorted({str(v) for v in dados["Obra"].dropna()})
+    idades = sorted({int(v) for v in dados["Idade (dias)"].dropna()})
+    cf1, cf2, cf3 = st.columns([1.5, 1.2, 0.9])
+    with cf1:
+        filtro_obra = st.selectbox("Filtrar obra", ["Todas as obras"] + obras, key="qa_v5_obra")
+    with cf2:
+        filtro_status = st.selectbox("Filtrar situação", ["Todas", "Válido", "Sugestão refazer o ensaio", "Conferir dados"], key="qa_v5_status")
+    with cf3:
+        filtro_idade = st.selectbox("Filtrar idade", ["Todas as idades"] + idades, key="qa_v5_idade")
+    visiveis = dados.copy()
+    if filtro_obra != "Todas as obras":
+        visiveis = visiveis[visiveis["Obra"].astype(str).eq(filtro_obra)]
+    if filtro_status != "Todas":
+        visiveis = visiveis[visiveis["Situação normativa"].eq(filtro_status)]
+    if filtro_idade != "Todas as idades":
+        visiveis = visiveis[visiveis["Idade (dias)"].eq(int(filtro_idade))]
 
-    if sugestoes:
-        st.warning(f"{sugestoes} série(s): sugestão de refazer o ensaio. "
-                   "Conferir o certificado e registrar decisão do responsável técnico.")
-    if conferir:
-        st.info(f"{conferir} série(s): conferir dados/agrupamento; "
-                "sem reprovação ou sugestão automática de repetição.")
+    st.markdown('<div class="qa-v5-subtitle">Situação por certificado e idade</div>', unsafe_allow_html=True)
+    st.caption(f"Mostrando {len(visiveis)} de {len(dados)} série(s). Os indicadores acima consideram todo o conjunto analisado.")
+    colunas = ["Obra", "Relatório", "Nota Fiscal", "CP(s)", "Idade (dias)",
+               "Ensaio", "Média (MPa)", "Desvio absoluto máximo (MPa)",
+               "Limite DAM (MPa)", "n válido", "Descartados (*)", "Situação normativa"]
+    exibir = visiveis[colunas].copy().rename(columns={"Situação normativa": "Situação"})
+
+    if exibir.empty:
+        st.info("Nenhuma série corresponde aos filtros selecionados.")
+    else:
+        def _qa_v5_estilo_linha(linha):
+            estado = str(linha.get("Situação", ""))
+            cor = ("#173B2D" if estado == "Válido" else
+                   "#4C2630" if estado == "Sugestão refazer o ensaio" else "#493D22")
+            fonte = ("#B6F7CF" if estado == "Válido" else
+                     "#FFD0D7" if estado == "Sugestão refazer o ensaio" else "#FFE6A6")
+            return [f"background-color:{cor};color:{fonte};font-weight:800" if c == "Situação" else "" for c in linha.index]
+        tabela = (exibir.style.apply(_qa_v5_estilo_linha, axis=1)
+                  .format({"Média (MPa)": "{:.1f}",
+                           "Desvio absoluto máximo (MPa)": "{:.1f}",
+                           "Limite DAM (MPa)": "{:.1f}"}, na_rep="—"))
+        st.dataframe(tabela, use_container_width=True, hide_index=True,
+                     height=min(500, 88 + len(exibir) * 38))
+        st.caption("Verde: Válido · Vermelho: Sugestão refazer o ensaio · Amarelo: Conferir dados. "
+                   "(*) Resultados desconsiderados no recálculo conforme a norma; dados originais preservados.")
+
+        # A seleção sempre recupera UMA série já calculada, com chave por linha,
+        # sem misturar certificados, obras, notas fiscais ou idades.
+        st.markdown('<div class="qa-v5-subtitle">Detalhamento e dispersão da série</div>', unsafe_allow_html=True)
+        def _nome_serie(i):
+            r = visiveis.loc[i]
+            return (f"{r['Obra']} | Rel. {r['Relatório']} | CP {r['CP(s)']} | "
+                    f"{r['Idade (dias)']} dias | {r['Situação normativa']}")
+        opcoes = list(visiveis.index)
+        selecao = st.selectbox("Selecionar série para detalhar", opcoes,
+                              format_func=_nome_serie, key="qa_v5_selecao")
+        selecionada = visiveis.loc[selecao]
+        leituras = _argamassa_linhas_detalhe(selecionada)
+        media = selecionada["Média (MPa)"]
+        dam = selecionada["Desvio absoluto máximo (MPa)"]
+        estado = str(selecionada["Situação normativa"])
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Média da série", f"{media:.1f} MPa" if pd.notna(media) else "—")
+        c2.metric("DAM da série", f"{dam:.1f} MPa" if pd.notna(dam) else "—")
+        c3.metric("Limite DAM", f"{selecionada['Limite DAM (MPa)']:.1f} MPa")
+        c4.metric("Leituras consideradas", f"{int(selecionada['n válido'])} / {int(selecionada['n inicial'])}")
+        if estado == "Sugestão refazer o ensaio":
+            st.warning("Sugestão refazer o ensaio. A decisão exige conferência dos registros "
+                       "e avaliação pelo responsável técnico.")
+        elif estado == "Conferir dados":
+            st.info("Conferir dados: a série não permite avaliação normativa conclusiva.")
+        else:
+            st.success("Válido — a série atende ao critério normativo aplicado.")
+        if not leituras.empty:
+            try:
+                grafico = _argamassa_grafico_dispersao(selecionada, leituras)
+                st.plotly_chart(grafico, use_container_width=True, key="qa_v5_grafico")
+                st.caption("Faixa sombreada: média final ± limite de desvio absoluto máximo. "
+                           "Pontos rosa: leituras desconsideradas do recálculo. "
+                           "O gráfico é ilustrativo; a situação vem do cálculo normativo, não do gráfico.")
+            except ImportError:
+                st.info("Instale plotly>=5.18 para exibir o gráfico de dispersão interativo.")
+            tabela_leituras = (leituras.style
+                              .apply(lambda linha: ["background-color:#4C2630;color:#FFD0D7"
+                                  if linha.get("Uso no cálculo") == "Desconsiderado (*)" else ""
+                                  for _ in linha.index], axis=1)
+                              .format({"Resistência (MPa)": "{:.2f}",
+                                       "Distância da média (MPa)": "{:.2f}"}, na_rep="—"))
+            st.dataframe(tabela_leituras, use_container_width=True, hide_index=True)
+        st.caption("Resultado por certificado/NF/idade · ABNT NBR 13279:2005. "
+                   "Não utilizar FCK de concreto na verificação da argamassa.")
+
+    # Sempre entrega o conjunto COMPLETO para PDFs, Excel e o quadro por CP.
     return dados
 
 
@@ -2489,6 +2770,24 @@ else:
                            key=_uploader_key, help="Carregue um PDF de certificado.")
     uploaded_files = [up1] if up1 is not None else []
 
+# Painel de entrada: visível mesmo antes da importação de certificados.
+# Sem usar valores fictícios nem antecipar avaliação normativa.
+if not uploaded_files:
+    st.markdown("""
+    <div class="hx-start">
+      <div class="hx-step"><div class="hx-step-label">ETAPA 01 / IMPORTAR</div>
+        <div class="hx-step-title">Carregue os certificados</div>
+        <div class="hx-step-text">Concreto, argamassa e graute. Preserve cada leitura original e sua identificação.</div></div>
+      <div class="hx-step"><div class="hx-step-label">ETAPA 02 / ANALISAR</div>
+        <div class="hx-step-title">Confira o painel de qualidade</div>
+        <div class="hx-step-text">Médias, desvio absoluto máximo e situações aparecem na tela após a leitura.</div></div>
+      <div class="hx-step"><div class="hx-step-label">ETAPA 03 / EMITIR</div>
+        <div class="hx-step-title">Exporte com rastreabilidade</div>
+        <div class="hx-step-text">Gere PDF e Excel após conferir os resultados e a avaliação técnica.</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.caption("Painel aguardando certificados. Nenhuma série foi avaliada nesta tela.")
+
 # =============================================================================
 # Helpers de nome de arquivo
 # =============================================================================
@@ -3204,6 +3503,26 @@ if uploaded_files:
         except Exception:
             outliers_df = None
 
+        # V6 — primeiro conteúdo após filtros: quadro operacional e qualidade.
+        # A melhoria não depende de expanders nem de navegar por alertas genéricos.
+        import html as _html_v6
+        _obras_v6 = int(df_view["Obra"].dropna().astype(str).nunique()) if "Obra" in df_view else 0
+        _cps_v6 = int(df_view["CP"].dropna().astype(str).nunique()) if "CP" in df_view else 0
+        st.markdown(
+            '<div class="hx-workspace"><div>'
+            '<div class="hx-workspace-eyebrow">ANÁLISE CARREGADA · RESULTADOS ORIGINAIS</div>'
+            '<div class="hx-workspace-title">Painel operacional</div>'
+            '<div class="hx-workspace-desc">Dados extraídos dos certificados, sem substituir a avaliação técnica.</div>'
+            '</div><div class="hx-workspace-right">'
+            f'<div><div class="hx-workspace-number">{len(df_view)}</div><small>LEITURAS</small></div>'
+            f'<div><div class="hx-workspace-number">{_cps_v6}</div><small>CPs</small></div>'
+            f'<div><div class="hx-workspace-number">{_obras_v6}</div><small>OBRAS</small></div>'
+            '</div></div>', unsafe_allow_html=True,
+        )
+        st.markdown("<div id='quality-dashboard'></div>", unsafe_allow_html=True)
+        # O quadro normativo é apresentado ANTES dos alertas, mapa de calor e gráficos.
+        evidencias_argamassa = _render_argamassa_evidencias_tela(df_view)
+
         # ---------------------------------------------------------------
         # CENTRAL DE ALERTAS TÉCNICOS — leitura imediata antes das análises
         # ---------------------------------------------------------------
@@ -3271,9 +3590,7 @@ if uploaded_files:
         st.markdown("<div id='overview-alerts'></div>", unsafe_allow_html=True)
         st.markdown(_ui_section("Visão geral", "Indicadores, resultados individuais, estatísticas e alertas do conjunto selecionado.", "▦", "RESUMO"), unsafe_allow_html=True)
         st.markdown("<div style='font-size:12px;color:var(--muted);margin:2px 0 10px'>Dados estruturados com sucesso a partir dos certificados selecionados.</div>", unsafe_allow_html=True)
-        # Resultado de argamassa aparece ABERTO, antes dos indicadores gerais.
-        # Vale para qualquer cliente/obra; o PDF usa o mesmo cálculo.
-        evidencias_argamassa = _render_argamassa_evidencias_tela(df_view)
+        # O painel normativo já foi exibido no TOPO da análise (V6).
         render_overview_and_tables(df_view, stats_cp_idade, float(s["TOL_MP"]), outliers_df=outliers_df)
 
         # ---------------------------------------------------------------

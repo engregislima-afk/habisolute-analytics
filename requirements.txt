@@ -5,3 +5,4 @@ matplotlib>=3.7
 plotly>=5.18
 pdfplumber>=0.10
 reportlab>=4.0
+pypdf>=5.0.0,<7.0.0

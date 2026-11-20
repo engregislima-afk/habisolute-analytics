@@ -2727,6 +2727,72 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
     st.components.v1.html(html, height=74)
 
 # =============================================================================
+# Exportação: relatório básico + certificados originais em um único PDF
+# =============================================================================
+def unir_relatorio_basico_e_certificados(pdf_basico: bytes, arquivos_enviados, nomes_usados=None):
+    """Anexa as páginas originais após o relatório básico, respeitando o filtro.
+
+    `nomes_usados` corresponde à coluna Arquivo do relatório em exibição.
+    Sem essa seleção (None), usa todos os certificados anexados, na ordem do upload.
+    Retorna os bytes do PDF único e a lista dos certificados incluídos.
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError as exc:
+        raise RuntimeError(
+            "Biblioteca pypdf não instalada. Inclua pypdf>=5.0 no requirements.txt do Streamlit."
+        ) from exc
+
+    if not pdf_basico:
+        raise ValueError("O relatório básico está vazio.")
+
+    selecionados = None if nomes_usados is None else {
+        str(nome).strip().casefold() for nome in nomes_usados
+        if nome is not None and str(nome).strip()
+    }
+    pdf_unico = PdfWriter()
+    nomes_incluidos = []
+
+    try:
+        origem_relatorio = PdfReader(io.BytesIO(pdf_basico), strict=False)
+        if not origem_relatorio.pages:
+            raise ValueError("O relatório básico não contém páginas.")
+        for pagina in origem_relatorio.pages:
+            pdf_unico.add_page(pagina)
+
+        for arquivo in arquivos_enviados or []:
+            if arquivo is None:
+                continue
+            nome = str(getattr(arquivo, "name", "certificado.pdf"))
+            if selecionados is not None and nome.strip().casefold() not in selecionados:
+                continue
+            # UploadedFile.getvalue() não altera o cursor da leitura do certificado.
+            dados = arquivo.getvalue()
+            if not dados:
+                raise ValueError(f"Certificado '{nome}' está vazio.")
+            try:
+                origem_certificado = PdfReader(io.BytesIO(dados), strict=False)
+                if origem_certificado.is_encrypted:
+                    # Aceita apenas PDF aberto ou com proteção de senha vazia.
+                    if not origem_certificado.decrypt(""):
+                        raise ValueError("PDF protegido por senha.")
+                if not origem_certificado.pages:
+                    raise ValueError("PDF sem páginas.")
+                for pagina in origem_certificado.pages:
+                    pdf_unico.add_page(pagina)
+            except Exception as exc:
+                raise ValueError(f"Não foi possível incluir '{nome}': {exc}") from exc
+            nomes_incluidos.append(nome)
+
+        if not nomes_incluidos:
+            raise ValueError("Nenhum certificado anexado corresponde aos dados do relatório básico.")
+        buffer = io.BytesIO()
+        pdf_unico.write(buffer)
+        return buffer.getvalue(), nomes_incluidos
+    finally:
+        pdf_unico.close()
+
+# =============================================================================
 # Uploader
 # =============================================================================
 st.markdown("<div id='upload-area'></div>", unsafe_allow_html=True)
@@ -5140,6 +5206,33 @@ if uploaded_files:
                         mime="application/pdf",
                         use_container_width=True
                     )
+                    # Nova opção: o relatório básico primeiro e os certificados
+                    # originais do(s) arquivo(s) usado(s), na ordem de envio.
+                    try:
+                        nomes_do_relatorio = (
+                            df_view["Arquivo"].dropna().astype(str).unique().tolist()
+                            if "Arquivo" in df_view.columns else None
+                        )
+                        pdf_com_certificados, certificados_incluidos = unir_relatorio_basico_e_certificados(
+                            pdf_basic_bytes, uploaded_files, nomes_usados=nomes_do_relatorio
+                        )
+                        file_name_unido = (
+                            file_name_basic[:-4] + "_CERTIFICADO_E_RELATORIO.pdf"
+                            if file_name_basic.lower().endswith(".pdf")
+                            else file_name_basic + "_CERTIFICADO_E_RELATORIO.pdf"
+                        )
+                        st.download_button(
+                            "📎 BAIXAR CERTIFICADO + RELATÓRIO",
+                            data=pdf_com_certificados,
+                            file_name=file_name_unido,
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="baixar_certificado_e_relatorio_basico",
+                            help="Um PDF com o relatório básico seguido dos certificados originais usados na análise."
+                        )
+                    except Exception as e:
+                        st.warning(f"Não foi possível preparar o PDF conjunto: {e}")
+
                     log_event("export_pdf_basic", {
                         "rows": int(df_view.shape[0]),
                         "relatorios": int(df_view["Relatório"].nunique()),

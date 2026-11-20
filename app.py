@@ -2730,7 +2730,7 @@ def render_print_block(pdf_all: bytes, pdf_cp: Optional[bytes], brand: str, bran
 # Exportação: relatório básico + certificados originais em um único PDF
 # =============================================================================
 def unir_relatorio_basico_e_certificados(pdf_basico: bytes, arquivos_enviados, nomes_usados=None):
-    """Anexa as páginas originais após o relatório básico, respeitando o filtro.
+    """Reúne primeiro os certificados originais e depois o relatório básico.
 
     `nomes_usados` corresponde à coluna Arquivo do relatório em exibição.
     Sem essa seleção (None), usa todos os certificados anexados, na ordem do upload.
@@ -2754,12 +2754,7 @@ def unir_relatorio_basico_e_certificados(pdf_basico: bytes, arquivos_enviados, n
     nomes_incluidos = []
 
     try:
-        origem_relatorio = PdfReader(io.BytesIO(pdf_basico), strict=False)
-        if not origem_relatorio.pages:
-            raise ValueError("O relatório básico não contém páginas.")
-        for pagina in origem_relatorio.pages:
-            pdf_unico.add_page(pagina)
-
+        # Primeiro: certificados originais, seguindo a ordem do upload.
         for arquivo in arquivos_enviados or []:
             if arquivo is None:
                 continue
@@ -2786,6 +2781,14 @@ def unir_relatorio_basico_e_certificados(pdf_basico: bytes, arquivos_enviados, n
 
         if not nomes_incluidos:
             raise ValueError("Nenhum certificado anexado corresponde aos dados do relatório básico.")
+
+        # Por último: todas as páginas do relatório básico, sem alterações.
+        origem_relatorio = PdfReader(io.BytesIO(pdf_basico), strict=False)
+        if not origem_relatorio.pages:
+            raise ValueError("O relatório básico não contém páginas.")
+        for pagina in origem_relatorio.pages:
+            pdf_unico.add_page(pagina)
+
         buffer = io.BytesIO()
         pdf_unico.write(buffer)
         return buffer.getvalue(), nomes_incluidos
@@ -5206,8 +5209,8 @@ if uploaded_files:
                         mime="application/pdf",
                         use_container_width=True
                     )
-                    # Nova opção: o relatório básico primeiro e os certificados
-                    # originais do(s) arquivo(s) usado(s), na ordem de envio.
+                    # Nova opção: certificados originais primeiro (na ordem de envio),
+                    # seguidos pelo relatório básico.
                     try:
                         nomes_do_relatorio = (
                             df_view["Arquivo"].dropna().astype(str).unique().tolist()
@@ -5228,7 +5231,7 @@ if uploaded_files:
                             mime="application/pdf",
                             use_container_width=True,
                             key="baixar_certificado_e_relatorio_basico",
-                            help="Um PDF com o relatório básico seguido dos certificados originais usados na análise."
+                            help="Um PDF com os certificados originais usados na análise e, ao final, o relatório básico."
                         )
                     except Exception as e:
                         st.warning(f"Não foi possível preparar o PDF conjunto: {e}")
